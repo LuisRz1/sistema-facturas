@@ -11,6 +11,9 @@ Route::redirect('/', '/facturas');
 
 // ── FACTURAS ──────────────────────────────────────────────────────────────
 Route::get('/facturas', [FacturaController::class, 'index'])->name('facturas.index');
+Route::get('/facturas/{id}/edit', [FacturaController::class, 'edit'])->name('facturas.edit');
+Route::put('/facturas/{id}', [FacturaController::class, 'update'])->name('facturas.update');
+Route::post('/facturas/{id}/upload-comprobante', [FacturaController::class, 'uploadComprobante'])->name('facturas.upload-comprobante');
 
 Route::post('/facturas/{id}/enviar-whatsapp-manual',
     [NotificacionController::class, 'enviarWhatsAppManual']
@@ -19,6 +22,14 @@ Route::post('/facturas/{id}/enviar-whatsapp-manual',
 Route::post('/facturas/{id}/enviar-correo-manual',
     [NotificacionController::class, 'enviarCorreoManual']
 )->name('facturas.enviar-correo-manual');
+
+Route::post('/facturas/{id}/enviar-factura-pagada-whatsapp',
+    [NotificacionController::class, 'enviarFacturaPagadaWhatsApp']
+)->name('facturas.enviar-factura-pagada-whatsapp');
+
+Route::post('/facturas/{id}/enviar-factura-pagada-correo',
+    [NotificacionController::class, 'enviarFacturaPagadaCorreo']
+)->name('facturas.enviar-factura-pagada-correo');
 
 // ── IMPORTACIÓN DE FACTURAS ───────────────────────────────────────────────
 Route::get('/facturas/importar',

@@ -297,24 +297,51 @@
                             </div>
                         </td>
                         <td>
-                            <div class="actions-cell" style="justify-content:flex-end;">
+                            <div class="actions-cell" style="justify-content:flex-end;flex-wrap:wrap;gap:6px;">
+                                <!-- BTN EDITAR -->
+                                <button type="button" onclick="abrirModalEditar('{{ $factura->id_factura }}')" class="action-btn" title="Editar factura" style="color:#7c3aed;">
+                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                </button>
+
+                                <!-- BTN SUBIR COMPROBANTE (solo si PENDIENTE) -->
+                                @if($factura->estado === 'PENDIENTE')
+                                    <button type="button" onclick="abrirModalComprobante('{{ $factura->id_factura }}')" class="action-btn" title="Subir comprobante de pago" style="color:#d97706;">
+                                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                                    </button>
+                                @endif
+
+                                <!-- BOTONES DE NOTIFICACIÓN PENDIENTE -->
                                 @if($puedeNotificar)
                                     <form method="POST" action="{{ route('facturas.enviar-whatsapp-manual', $factura->id_factura) }}" style="display:inline;">
                                         @csrf
-                                        <button type="submit" class="btn-icon-text btn-wa" title="Enviar WhatsApp">
+                                        <button type="submit" class="btn-icon-text btn-wa" title="Enviar WhatsApp (Deuda)">
                                             <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                                            WhatsApp
+                                            WA
                                         </button>
                                     </form>
                                     <form method="POST" action="{{ route('facturas.enviar-correo-manual', $factura->id_factura) }}" style="display:inline;">
                                         @csrf
-                                        <button type="submit" class="btn-icon-text btn-mail" title="Enviar Correo">
+                                        <button type="submit" class="btn-icon-text btn-mail" title="Enviar Correo (Deuda)">
                                             <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                                            Correo
+                                            ✉
                                         </button>
                                     </form>
-                                @else
-                                    <span style="font-size:11px;color:var(--text-muted);">No aplica</span>
+                                @endif
+
+                                <!-- BOTONES DE NOTIFICACIÓN PAGADA -->
+                                @if($factura->estado === 'PAGADA')
+                                    <form method="POST" action="{{ route('facturas.enviar-factura-pagada-whatsapp', $factura->id_factura) }}" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" class="btn-icon-text btn-wa" title="Enviar Reporte (Pagada)" style="background:#c6f6d5;">
+                                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="{{ route('facturas.enviar-factura-pagada-correo', $factura->id_factura) }}" style="display:inline;">
+                                        @csrf
+                                        <button type="submit" class="btn-icon-text btn-mail" title="Enviar Reporte (Pagada)" style="background:#bfdbfe;">
+                                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                        </button>
+                                    </form>
                                 @endif
                             </div>
                         </td>
@@ -335,8 +362,250 @@
         </div>
     </div>
 
+    <!-- MODAL EDITAR FACTURA -->
+    <div class="modal-overlay" id="modalEditarOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Editar Factura</h2>
+                <p>Actualiza los datos de la factura</p>
+                <button onclick="cerrarModalEditar()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <form id="formEditarFactura" onsubmit="guardarFactura(event)">
+                @csrf
+                @method('PUT')
+                <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <div class="form-group">
+                        <label class="form-label">Fecha Emisión</label>
+                        <input type="date" name="fecha_emision" id="editFechaEmision" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha Vencimiento</label>
+                        <input type="date" name="fecha_vencimiento" id="editFechaVencimiento" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha Abono</label>
+                        <input type="date" name="fecha_abono" id="editFechaAbono" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select name="estado" id="editEstado" class="form-input">
+                            <option value="PENDIENTE">Pendiente</option>
+                            <option value="POR_VENCER">Por Vencer</option>
+                            <option value="VENCIDA">Vencida</option>
+                            <option value="PAGADA">Pagada</option>
+                            <option value="ANULADA">Anulada</option>
+                            <option value="OBSERVADA">Observada</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Glosa / Descripción</label>
+                        <textarea name="glosa" id="editGlosa" class="form-input" style="resize:vertical;min-height:60px;"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Forma de Pago</label>
+                        <input type="text" name="forma_pago" id="editFormaPago" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Importe Total</label>
+                        <input type="number" name="importe_total" id="editImporteTotal" step="0.01" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">IGV</label>
+                        <input type="number" name="monto_igv" id="editMontoIgv" step="0.01" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Subtotal Gravado</label>
+                        <input type="number" name="subtotal_gravado" id="editSubtotalGravado" step="0.01" class="form-input">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" onclick="cerrarModalEditar()" class="btn btn-ghost">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL SUBIR COMPROBANTE -->
+    <div class="modal-overlay" id="modalComprobanteOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Subir Comprobante de Pago</h2>
+                <p>Selecciona una imagen del comprobante para marcar como pagada</p>
+                <button onclick="cerrarModalComprobante()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <form id="formComprobante" onsubmit="enviarComprobante(event)" enctype="multipart/form-data">
+                @csrf
+                <div class="modal-body" style="text-align:center;padding:48px 24px;">
+                    <div id="dropZone" style="border:2px dashed #cbd5e1;border-radius:12px;padding:40px;cursor:pointer;transition:all .2s;" onmouseover="this.style.borderColor='#1d4ed8';this.style.background='#eff6ff'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#fff'">
+                        <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" style="margin:0 auto;color:#cbd5e1;">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <p style="margin:16px 0 8px;font-weight:600;">Arrastra o haz clic para seleccionar</p>
+                        <p style="font-size:12px;color:#64748b;">Soporta JPG, PNG, GIF (máximo 2MB)</p>
+                        <input type="file" name="comprobante" id="fileComprobante" accept="image/*" style="display:none;" onchange="mostrarPreview(event)">
+                    </div>
+                    <div id="preview" style="display:none;margin-top:20px;">
+                        <img id="previewImg" src="" style="max-width:100%;max-height:300px;border-radius:8px;">
+                        <button type="button" onclick="limpiarPreview()" style="margin-top:12px;padding:8px 16px;border:none;background:#fee2e2;color:#dc2626;border-radius:6px;cursor:pointer;">Cambiar imagen</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" onclick="cerrarModalComprobante()" class="btn btn-ghost">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnEnviarComprobante">Confirmar y Marcar como Pagada</button>
+                </div>
+            </form>
+            <script>
+                document.getElementById('dropZone').addEventListener('click', () => document.getElementById('fileComprobante').click());
+                document.getElementById('dropZone').addEventListener('dragover', (e) => e.preventDefault());
+                document.getElementById('dropZone').addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    document.getElementById('fileComprobante').files = e.dataTransfer.files;
+                    mostrarPreview({target: {files: e.dataTransfer.files}});
+                });
+            </script>
+        </div>
+    </div>
+
     @push('scripts')
         <script>
+            let facturaActualId = null;
+
+            // ── MODAL EDITAR ────────────────────────────────────────────────────
+            function abrirModalEditar(id) {
+                facturaActualId = id;
+                document.getElementById('modalEditarOverlay').classList.add('open');
+                
+                // Cargar datos de la factura
+                fetch(`/facturas/${id}/edit`)
+                    .then(r => r.json())
+                    .then(factura => {
+                        document.getElementById('editFechaEmision').value = factura.fecha_emision || '';
+                        document.getElementById('editFechaVencimiento').value = factura.fecha_vencimiento || '';
+                        document.getElementById('editFechaAbono').value = factura.fecha_abono || '';
+                        document.getElementById('editEstado').value = factura.estado || '';
+                        document.getElementById('editGlosa').value = factura.glosa || '';
+                        document.getElementById('editFormaPago').value = factura.forma_pago || '';
+                        document.getElementById('editImporteTotal').value = factura.importe_total || '';
+                        document.getElementById('editMontoIgv').value = factura.monto_igv || '';
+                        document.getElementById('editSubtotalGravado').value = factura.subtotal_gravado || '';
+                    });
+            }
+
+            function cerrarModalEditar() {
+                document.getElementById('modalEditarOverlay').classList.remove('open');
+            }
+
+            function guardarFactura(event) {
+                event.preventDefault();
+                
+                // Recopilar datos del formulario
+                const datos = {
+                    fecha_emision: document.getElementById('editFechaEmision').value,
+                    fecha_vencimiento: document.getElementById('editFechaVencimiento').value,
+                    fecha_abono: document.getElementById('editFechaAbono').value,
+                    estado: document.getElementById('editEstado').value,
+                    glosa: document.getElementById('editGlosa').value,
+                    forma_pago: document.getElementById('editFormaPago').value,
+                    importe_total: document.getElementById('editImporteTotal').value,
+                    monto_igv: document.getElementById('editMontoIgv').value,
+                    subtotal_gravado: document.getElementById('editSubtotalGravado').value,
+                };
+
+                // Enviar como JSON
+                fetch(`/facturas/${facturaActualId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify(datos)
+                })
+                .then(r => {
+                    if (!r.ok) throw new Error(`Error ${r.status}`);
+                    return r.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        alert('Factura guardada correctamente');
+                        cerrarModalEditar();
+                        location.reload();
+                    } else {
+                        alert('Error: ' + (data.message || 'No se pudo guardar'));
+                    }
+                })
+                .catch(err => {
+                    console.error('Error:', err);
+                    alert('Error al guardar: ' + err.message);
+                });
+            }
+
+            // ── MODAL COMPROBANTE ────────────────────────────────────────────────
+            function abrirModalComprobante(id) {
+                facturaActualId = id;
+                document.getElementById('modalComprobanteOverlay').classList.add('open');
+                limpiarPreview();
+            }
+
+            function cerrarModalComprobante() {
+                document.getElementById('modalComprobanteOverlay').classList.remove('open');
+            }
+
+            function mostrarPreview(event) {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        document.getElementById('previewImg').src = e.target.result;
+                        document.getElementById('preview').style.display = 'block';
+                        document.getElementById('dropZone').style.display = 'none';
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            function limpiarPreview() {
+                document.getElementById('fileComprobante').value = '';
+                document.getElementById('preview').style.display = 'none';
+                document.getElementById('dropZone').style.display = 'block';
+            }
+
+            function enviarComprobante(event) {
+                event.preventDefault();
+                const formData = new FormData(document.getElementById('formComprobante'));
+                const file = document.getElementById('fileComprobante').files[0];
+
+                if (!file) {
+                    alert('Por favor selecciona una imagen');
+                    return;
+                }
+
+                document.getElementById('btnEnviarComprobante').disabled = true;
+                document.getElementById('btnEnviarComprobante').textContent = 'Enviando...';
+
+                fetch(`/facturas/${facturaActualId}/upload-comprobante`, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {'X-Requested-With': 'XMLHttpRequest'}
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        cerrarModalComprobante();
+                        location.reload();
+                    } else {
+                        alert(data.error || 'Error al subir el comprobante');
+                    }
+                })
+                .catch(err => alert('Error: ' + err))
+                .finally(() => {
+                    document.getElementById('btnEnviarComprobante').disabled = false;
+                    document.getElementById('btnEnviarComprobante').textContent = 'Confirmar y Marcar como Pagada';
+                });
+            }
+
+            // ── FILTROS ─────────────────────────────────────────────────────────
             function filtrarTabla() {
                 const search = document.getElementById('searchInput').value.toLowerCase();
                 const estado = document.getElementById('filterEstado').value;
@@ -356,13 +625,21 @@
             function generarReportePDF() {
                 const idCliente = document.getElementById('filterEmpresa').value;
                 const estado = document.getElementById('filterEstadoReporte').value;
-
+                
                 let url = '{{ route("reportes.pdf") }}?';
                 if (idCliente) url += 'id_cliente=' + idCliente;
                 if (estado) url += (idCliente ? '&' : '') + 'estado=' + estado;
-
+                
                 window.open(url, '_blank');
             }
+
+            // Cerrar modales al hacer clic fuera
+            document.getElementById('modalEditarOverlay')?.addEventListener('click', (e) => {
+                if (e.target === e.currentTarget) cerrarModalEditar();
+            });
+            document.getElementById('modalComprobanteOverlay')?.addEventListener('click', (e) => {
+                if (e.target === e.currentTarget) cerrarModalComprobante();
+            });
         </script>
     @endpush
 

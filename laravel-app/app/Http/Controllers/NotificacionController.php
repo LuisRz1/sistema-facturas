@@ -221,4 +221,199 @@ class NotificacionController extends Controller
             return back()->with('error', 'No se pudo enviar el correo.');
         }
     }
+
+    /**
+     * Enviar reporte de factura PAGADA vía WhatsApp
+     */
+    public function enviarFacturaPagadaWhatsApp(int $id, WhatsAppGatewayService $gateway): RedirectResponse
+    {
+        $factura = Factura::with('cliente')->findOrFail($id);
+
+        if (!$factura->cliente) {
+            NotificacionFactura::create([
+                'id_factura' => $factura->id_factura,
+                'id_regla' => null,
+                'canal' => 'WHATSAPP',
+                'categoria' => 'ENVIO_FACTURA',
+                'tipo_notificacion' => 'ENVIO_FACTURA_PAGADA',
+                'numero_intento_dia' => 1,
+                'destinatario' => '',
+                'asunto' => null,
+                'mensaje' => 'No se pudo enviar porque la factura no tiene cliente asociado.',
+                'estado_envio' => 'ERROR',
+                'fecha_programada' => now(),
+                'respuesta_proveedor' => null,
+                'observacion' => 'Factura sin cliente',
+                'fecha_creacion' => now(),
+            ]);
+
+            return back()->with('error', 'La factura no tiene cliente asociado.');
+        }
+
+        if (!$factura->cliente->celular) {
+            NotificacionFactura::create([
+                'id_factura' => $factura->id_factura,
+                'id_regla' => null,
+                'canal' => 'WHATSAPP',
+                'categoria' => 'ENVIO_FACTURA',
+                'tipo_notificacion' => 'ENVIO_FACTURA_PAGADA',
+                'numero_intento_dia' => 1,
+                'destinatario' => '',
+                'asunto' => null,
+                'mensaje' => 'No se pudo enviar porque el cliente no tiene celular registrado.',
+                'estado_envio' => 'ERROR',
+                'fecha_programada' => now(),
+                'respuesta_proveedor' => null,
+                'observacion' => 'Cliente sin celular',
+                'fecha_creacion' => now(),
+            ]);
+
+            return back()->with('error', 'El cliente no tiene celular registrado.');
+        }
+
+        $mensaje = "Estimado cliente:\n\n"
+            . "Le informamos que su factura {$factura->serie}-{$factura->numero} ha sido PAGADA correctamente.\n\n"
+            . "Detalle de pago:\n"
+            . "- Factura: {$factura->serie}-{$factura->numero}\n"
+            . "- Fecha de pago: " . ($factura->fecha_abono ? \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y') : 'Registrada') . "\n"
+            . "- Monto pagado: {$factura->moneda} " . number_format($factura->importe_total, 2) . "\n"
+            . "- Estado: ✓ PAGADA\n\n"
+            . "Gracias por su confianza en nuestros servicios.\n\n"
+            . "Atentamente,\n"
+            . "Sistema de Facturación";
+
+        $resultado = $gateway->enviar($factura->cliente->celular, $mensaje);
+
+        NotificacionFactura::create([
+            'id_factura' => $factura->id_factura,
+            'id_regla' => null,
+            'canal' => 'WHATSAPP',
+            'categoria' => 'ENVIO_FACTURA',
+            'tipo_notificacion' => 'ENVIO_FACTURA_PAGADA',
+            'numero_intento_dia' => 1,
+            'destinatario' => $factura->cliente->celular,
+            'asunto' => null,
+            'mensaje' => $mensaje,
+            'estado_envio' => $resultado['ok'] ? 'ENVIADO' : 'ERROR',
+            'fecha_programada' => now(),
+            'fecha_envio' => $resultado['ok'] ? now() : null,
+            'respuesta_proveedor' => $resultado['ok']
+                ? json_encode($resultado['data'], JSON_UNESCAPED_UNICODE)
+                : $resultado['error'],
+            'observacion' => 'Reporte de factura pagada',
+            'fecha_creacion' => now(),
+        ]);
+
+        return back()->with(
+            $resultado['ok'] ? 'success' : 'error',
+            $resultado['ok'] ? 'Reporte enviado vía WhatsApp.' : 'No se pudo enviar el WhatsApp.'
+        );
+    }
+
+    /**
+     * Enviar reporte de factura PAGADA vía Correo
+     */
+    public function enviarFacturaPagadaCorreo(int $id): RedirectResponse
+    {
+        $factura = Factura::with('cliente')->findOrFail($id);
+
+        if (!$factura->cliente) {
+            NotificacionFactura::create([
+                'id_factura' => $factura->id_factura,
+                'id_regla' => null,
+                'canal' => 'CORREO',
+                'categoria' => 'ENVIO_FACTURA',
+                'tipo_notificacion' => 'ENVIO_FACTURA_PAGADA',
+                'numero_intento_dia' => 1,
+                'destinatario' => '',
+                'asunto' => 'Factura Pagada',
+                'mensaje' => 'No se pudo enviar porque la factura no tiene cliente asociado.',
+                'estado_envio' => 'ERROR',
+                'fecha_programada' => now(),
+                'observacion' => 'Factura sin cliente',
+                'fecha_creacion' => now(),
+            ]);
+
+            return back()->with('error', 'La factura no tiene cliente asociado.');
+        }
+
+        if (!$factura->cliente->correo) {
+            NotificacionFactura::create([
+                'id_factura' => $factura->id_factura,
+                'id_regla' => null,
+                'canal' => 'CORREO',
+                'categoria' => 'ENVIO_FACTURA',
+                'tipo_notificacion' => 'ENVIO_FACTURA_PAGADA',
+                'numero_intento_dia' => 1,
+                'destinatario' => '',
+                'asunto' => 'Factura Pagada',
+                'mensaje' => 'No se pudo enviar porque el cliente no tiene correo registrado.',
+                'estado_envio' => 'ERROR',
+                'fecha_programada' => now(),
+                'observacion' => 'Cliente sin correo',
+                'fecha_creacion' => now(),
+            ]);
+
+            return back()->with('error', 'El cliente no tiene correo registrado.');
+        }
+
+        try {
+            $asunto = "Confirmación de Pago - Factura {$factura->serie}-{$factura->numero}";
+            
+            $mensaje = "Estimado cliente,\n\n"
+                . "Le informamos que su factura {$factura->serie}-{$factura->numero} ha sido PAGADA correctamente.\n\n"
+                . "Detalle de pago:\n"
+                . "- Factura: {$factura->serie}-{$factura->numero}\n"
+                . "- Fecha de pago: " . ($factura->fecha_abono ? \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y') : 'Registrada') . "\n"
+                . "- Monto pagado: {$factura->moneda} " . number_format($factura->importe_total, 2) . "\n"
+                . "- Estado: ✓ PAGADA\n\n"
+                . "Gracias por su confianza en nuestros servicios.\n\n"
+                . "Atentamente,\n"
+                . "Sistema de Facturación";
+
+            Mail::send([], [], function ($message) use ($factura, $asunto, $mensaje) {
+                $message->to($factura->cliente->correo)
+                    ->subject($asunto)
+                    ->setBody($mensaje);
+            });
+
+            NotificacionFactura::create([
+                'id_factura' => $factura->id_factura,
+                'id_regla' => null,
+                'canal' => 'CORREO',
+                'categoria' => 'ENVIO_FACTURA',
+                'tipo_notificacion' => 'ENVIO_FACTURA_PAGADA',
+                'numero_intento_dia' => 1,
+                'destinatario' => $factura->cliente->correo,
+                'asunto' => $asunto,
+                'mensaje' => $mensaje,
+                'estado_envio' => 'ENVIADO',
+                'fecha_programada' => now(),
+                'fecha_envio' => now(),
+                'observacion' => 'Reporte de factura pagada',
+                'fecha_creacion' => now(),
+            ]);
+
+            return back()->with('success', 'Reporte enviado vía correo.');
+        } catch (\Exception $e) {
+            NotificacionFactura::create([
+                'id_factura' => $factura->id_factura,
+                'id_regla' => null,
+                'canal' => 'CORREO',
+                'categoria' => 'ENVIO_FACTURA',
+                'tipo_notificacion' => 'ENVIO_FACTURA_PAGADA',
+                'numero_intento_dia' => 1,
+                'destinatario' => $factura->cliente->correo,
+                'asunto' => $asunto ?? 'Factura Pagada',
+                'mensaje' => $mensaje ?? '',
+                'estado_envio' => 'ERROR',
+                'fecha_programada' => now(),
+                'respuesta_proveedor' => $e->getMessage(),
+                'observacion' => 'Error al enviar correo',
+                'fecha_creacion' => now(),
+            ]);
+
+            return back()->with('error', 'No se pudo enviar el correo.');
+        }
+    }
 }
