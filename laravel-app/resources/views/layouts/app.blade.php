@@ -53,7 +53,12 @@
             position: fixed;
             top: 0; left: 0; bottom: 0;
             z-index: 100;
-            transition: width .25s ease;
+            transition: transform .3s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateX(0);
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(-100%);
         }
 
         .sidebar-brand {
@@ -62,6 +67,7 @@
             display: flex;
             align-items: center;
             gap: 12px;
+            position: relative;
         }
 
         .sidebar-logo {
@@ -153,6 +159,11 @@
             display: flex;
             flex-direction: column;
             min-height: 100vh;
+            transition: margin-left .3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .main-wrapper.sidebar-collapsed {
+            margin-left: 0;
         }
 
         .topbar {
@@ -172,6 +183,59 @@
             display: flex;
             align-items: center;
             gap: 12px;
+        }
+
+        .sidebar-toggle {
+            display: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--text-muted);
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            transition: all .2s ease;
+        }
+
+        .sidebar-toggle:hover {
+            background: var(--main-bg);
+            color: var(--text-primary);
+        }
+
+        /* Botón flotante cuando sidebar está colapsado */
+        .sidebar-toggle-floating {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: var(--sidebar-bg);
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            z-index: 99;
+            align-items: center;
+            justify-content: center;
+            transition: all .3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .sidebar-toggle-floating:hover {
+            background: var(--sidebar-hover);
+            transform: scale(1.08);
+            box-shadow: 0 6px 28px rgba(0, 0, 0, 0.2);
+        }
+
+        .main-wrapper.sidebar-collapsed .sidebar-toggle {
+            display: flex;
+        }
+
+        .main-wrapper.sidebar-collapsed .sidebar-toggle-floating {
+            display: flex;
         }
 
         .breadcrumb {
@@ -529,6 +593,11 @@
             <strong>C.R.C. S.A.C.</strong>
             <span>Gestión Financiera</span>
         </div>
+        <button type="button" onclick="toggleSidebar()" style="position:absolute;right:16px;top:20px;width:32px;height:32px;border:none;background:transparent;color:var(--sidebar-text);cursor:pointer;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:all .2s ease;" onmouseover="this.style.background='var(--sidebar-hover)';this.style.color='#fff';" onmouseout="this.style.background='transparent';this.style.color='var(--sidebar-text)';" title="Cerrar menú">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
     </div>
 
     <nav class="sidebar-nav">
@@ -575,10 +644,22 @@
     </div>
 </aside>
 
+<!-- BOTÓN FLOTANTE (aparece cuando sidebar está colapsado) -->
+<button type="button" class="sidebar-toggle-floating" onclick="toggleSidebar()" title="Abrir menú de navegación">
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+    </svg>
+</button>
+
 <!-- MAIN -->
 <div class="main-wrapper">
     <header class="topbar">
         <div class="topbar-left">
+            <button type="button" class="sidebar-toggle" onclick="toggleSidebar()" title="Abrir menú">
+                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
             <div class="breadcrumb">
                 <span>CRC S.A.C.</span>
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
@@ -616,5 +697,30 @@
 </div>
 
 @stack('scripts')
+
+<script>
+    function toggleSidebar() {
+        const sidebar = document.querySelector('.sidebar');
+        const mainWrapper = document.querySelector('.main-wrapper');
+        
+        sidebar.classList.toggle('collapsed');
+        mainWrapper.classList.toggle('sidebar-collapsed');
+        
+        // Guardar estado en localStorage
+        const isCollapsed = sidebar.classList.contains('collapsed');
+        localStorage.setItem('sidebarCollapsed', isCollapsed ? 'true' : 'false');
+    }
+    
+    // Restaurar estado del sidebar al cargar la página
+    document.addEventListener('DOMContentLoaded', function() {
+        const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        if (isCollapsed) {
+            const sidebar = document.querySelector('.sidebar');
+            const mainWrapper = document.querySelector('.main-wrapper');
+            sidebar.classList.add('collapsed');
+            mainWrapper.classList.add('sidebar-collapsed');
+        }
+    });
+</script>
 </body>
 </html>

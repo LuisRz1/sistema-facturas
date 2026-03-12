@@ -28,6 +28,7 @@ class Factura extends Model
         'tipo_recaudacion',
         'fecha_vencimiento',
         'fecha_emision',
+        'fecha_abono',
         'fecha_creacion',
         'fecha_actualizacion',
         'usuario_creacion',

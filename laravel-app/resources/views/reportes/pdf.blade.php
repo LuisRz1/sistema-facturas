@@ -169,80 +169,94 @@
         <p style="text-align:center;padding:40px;color:#64748b;">
             No se encontraron facturas con los filtros seleccionados.
         </p>
+    @elseif($facturasAgrupadas)
+        {{-- FORMATO AGRUPADO POR EMPRESA (cuando no hay cliente específico) --}}
+        @foreach($facturasAgrupadas as $empresa => $facturasPorEmpresa)
+            <div style="margin-bottom:32px;page-break-inside:avoid;">
+                <h2 style="font-size:14px;font-weight:900;color:#0f172a;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px;">
+                    {{ $empresa }}
+                </h2>
+                
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Nro.</th>
+                        <th>Emisión</th>
+                        <th>Factura</th>
+                        <th>Glosa</th>
+                        <th class="r">Importe</th>
+                        <th class="r">%</th>
+                        <th class="r">Recaudación</th>
+                        <th>Tipo</th>
+                        <th>F. Abono</th>
+                        <th>Estado</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach($facturasPorEmpresa as $index => $f)
+                        @php
+                            $recaudacion = $f->monto_recaudacion ?? 0;
+                            $porcentaje = $f->porcentaje_recaudacion ?? 0;
+                            $tipoRecaudacion = $f->tipo_recaudacion_actual ?? '—';
+                            $badgeClass = 'b-' . $f->estado;
+                        @endphp
+                        <tr>
+                            <td style="text-align:center;color:#64748b;">{{ $index + 1 }}</td>
+                            <td class="mono">{{ $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—' }}</td>
+                            <td class="factura-num">{{ $f->serie }}-{{ str_pad($f->numero, 8, '0', STR_PAD_LEFT) }}</td>
+                            <td style="font-size:9px;">{{ $f->glosa ? Str::limit($f->glosa, 20) : '—' }}</td>
+                            <td class="r importe">{{ $f->moneda }} {{ number_format($f->importe_total, 2) }}</td>
+                            <td class="r importe">{{ $porcentaje > 0 ? $porcentaje . '%' : '—' }}</td>
+                            <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda . ' ' . number_format($recaudacion, 2) : '—' }}</td>
+                            <td style="font-size:9px;font-weight:600;color:#7c3aed;">{{ $tipoRecaudacion }}</td>
+                            <td class="mono">{{ $f->fecha_abono ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—' }}</td>
+                            <td><span class="badge {{ $badgeClass }}">{{ str_replace('_', ' ', $f->estado) }}</span></td>
+                        </tr>
+                    @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endforeach
     @else
+        {{-- FORMATO SIMPLE (cliente específico) --}}
         <table>
             <thead>
             <tr>
+                <th>Nro.</th>
                 <th>Emisión</th>
                 <th>Factura</th>
-                <th>Glosa / Concepto</th>
-                <th class="r">Imp. Bruto</th>
-                <th class="r">Detracción</th>
-                <th class="r">Neto Caja</th>
+                <th>Glosa</th>
+                <th class="r">Importe</th>
+                <th class="r">%</th>
+                <th class="r">Recaudación</th>
+                <th>Tipo</th>
+                <th>F. Abono</th>
                 <th>Estado</th>
             </tr>
             </thead>
             <tbody>
-            @foreach($facturas as $f)
+            @foreach($facturas as $index => $f)
                 @php
-                    $detrac    = $f->monto_recaudacion ?? 0;
-                    $netoCaja  = $f->importe_total - $detrac;
-                    $moneda    = $f->moneda === 'USD' ? 'USD' : 'S/';
+                    $recaudacion = $f->monto_recaudacion ?? 0;
+                    $porcentaje = $f->porcentaje_recaudacion ?? 0;
+                    $tipoRecaudacion = $f->tipo_recaudacion_actual ?? '—';
                     $badgeClass = 'b-' . $f->estado;
                 @endphp
                 <tr>
+                    <td style="text-align:center;color:#64748b;">{{ $index + 1 }}</td>
                     <td class="mono">{{ $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—' }}</td>
                     <td class="factura-num">{{ $f->serie }}-{{ str_pad($f->numero, 8, '0', STR_PAD_LEFT) }}</td>
-                    <td style="max-width:220px;">{{ $f->glosa ?? '—' }}</td>
-                    <td class="r importe">{{ $moneda }} {{ number_format($f->importe_total, 2) }}</td>
-                    <td class="r detrac">{{ $detrac > 0 ? $moneda . ' ' . number_format($detrac, 2) : '—' }}</td>
-                    <td class="r neto">{{ $moneda }} {{ number_format($netoCaja, 2) }}</td>
+                    <td style="font-size:9px;">{{ $f->glosa ? Str::limit($f->glosa, 20) : '—' }}</td>
+                    <td class="r importe">{{ $f->moneda }} {{ number_format($f->importe_total, 2) }}</td>
+                    <td class="r importe">{{ $porcentaje > 0 ? $porcentaje . '%' : '—' }}</td>
+                    <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda . ' ' . number_format($recaudacion, 2) : '—' }}</td>
+                    <td style="font-size:9px;font-weight:600;color:#7c3aed;">{{ $tipoRecaudacion }}</td>
+                    <td class="mono">{{ $f->fecha_abono ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—' }}</td>
                     <td><span class="badge {{ $badgeClass }}">{{ str_replace('_', ' ', $f->estado) }}</span></td>
                 </tr>
             @endforeach
             </tbody>
         </table>
-
-        {{-- RESUMEN --}}
-        <div class="resumen">
-            <div class="resumen-title">Resumen de Cartera (Vista Actual)</div>
-            <div class="resumen-grid">
-                <div class="resumen-col">
-                    <div class="resumen-row">
-                        <span class="resumen-lbl">Facturas Totales</span>
-                        <span class="resumen-val val-dark">{{ $resumen['total_facturas'] }}</span>
-                    </div>
-                    <div class="resumen-row">
-                        <span class="resumen-lbl">Facturas Pendientes</span>
-                        <span class="resumen-val val-dark">{{ $resumen['pendientes'] }}</span>
-                    </div>
-                    <div class="resumen-row">
-                        <span class="resumen-lbl">Facturas Pagadas</span>
-                        <span class="resumen-val val-dark">{{ $resumen['pagadas'] }}</span>
-                    </div>
-                </div>
-                <div class="resumen-col">
-                    <div class="resumen-row">
-                        <span class="resumen-lbl">Total Bruto</span>
-                        <span class="resumen-val val-blue">S/ {{ number_format($resumen['total_bruto'], 2) }}</span>
-                    </div>
-                    <div class="resumen-row">
-                        <span class="resumen-lbl">Total Detracciones</span>
-                        <span class="resumen-val val-dark">S/ {{ number_format($resumen['total_recaudacion'], 2) }}</span>
-                    </div>
-                </div>
-                <div class="resumen-col">
-                    <div class="resumen-row">
-                        <span class="resumen-lbl">Saldo por Cobrar</span>
-                        <span class="resumen-val val-red">S/ {{ number_format($resumen['saldo_cobrar'], 2) }}</span>
-                    </div>
-                    <div class="resumen-row">
-                        <span class="resumen-lbl">Total Neto Caja</span>
-                        <span class="resumen-val val-green">S/ {{ number_format($resumen['total_neto'], 2) }}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
     @endif
 
     <div class="footer">

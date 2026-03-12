@@ -85,10 +85,10 @@
                 </svg>
                 Importar Excel
             </a>
-            <a href="#" class="btn btn-outline">
+            <button type="button" class="btn btn-outline" onclick="generarReportePDF()">
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                Exportar PDF
-            </a>
+                Exportar Reporte PDF
+            </button>
         </div>
     </div>
 
@@ -139,6 +139,37 @@
         </div>
     </div>
 
+    {{-- FILTROS DE REPORTE --}}
+    <div class="card" style="margin-bottom: 24px; padding: 20px 24px; width: fit-content;">
+        <div style="display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 6px; width: 400px;">
+                <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);">
+                    Empresa
+                </label>
+                <select class="form-input" id="filterEmpresa">
+                    <option value="">Todas las Empresas</option>
+                    @foreach($clientes as $cliente)
+                        <option value="{{ $cliente->id_cliente }}">{{ $cliente->razon_social }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 6px; width: 400px;">
+                <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted);">
+                    Estado de Factura
+                </label>
+                <select class="form-input" id="filterEstadoReporte">
+                    <option value="">Todos los Estados</option>
+                    <option value="PENDIENTE">Pendiente</option>
+                    <option value="POR_VENCER">Por Vencer</option>
+                    <option value="VENCIDA">Vencida</option>
+                    <option value="PAGADA">Pagada</option>
+                    <option value="ANULADA">Anulada</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
     {{-- TABLE CARD --}}
     <div class="card">
         <div class="card-header">
@@ -179,6 +210,10 @@
                     <th>CLIENTE</th>
                     <th>EMISIÓN / VCTO.</th>
                     <th>MONTOS</th>
+                    <th>% RECAUDACIÓN</th>
+                    <th>RECAUDACIÓN</th>
+                    <th>TIPO RECAUDACIÓN</th>
+                    <th>FECHA ABONO</th>
                     <th>ESTADO</th>
                     <th>ÚLTIMA NOTIF.</th>
                     <th style="text-align:right;">ACCIONES</th>
@@ -187,7 +222,7 @@
                 <tbody id="facturasBody">
                 @forelse($facturas as $factura)
                     @php
-                        $ultimaNotif = $factura->notificaciones->first();
+                        $ultimaNotif = $factura->notificaciones->first() ?? null;
                         $estadoClass = strtolower(str_replace('_','',$factura->estado));
                         // badge class map
                         $badgeMap = [
@@ -200,16 +235,20 @@
                         ];
                         $badgeClass = $badgeMap[$factura->estado] ?? 'badge-pendiente';
                         $puedeNotificar = in_array($factura->estado, ['PENDIENTE','POR_VENCER','VENCIDA']);
+
+                        // Datos de recaudación
+                        $porcentajeRecaudacion = $factura->porcentaje_recaudacion ?? 0;
+                        $montoRecaudacion = $factura->monto_recaudacion ?? 0;
+                        $tipoRecaudacion = $factura->tipo_recaudacion_actual;
                     @endphp
-                    <tr data-estado="{{ $factura->estado }}" data-moneda="{{ $factura->moneda }}" data-search="{{ strtolower($factura->serie.'-'.$factura->numero.' '.($factura->cliente->razon_social ?? '')) }}">
+                    <tr data-cliente="{{ $factura->id_cliente }}" data-estado="{{ $factura->estado }}" data-moneda="{{ $factura->moneda }}" data-search="{{ strtolower($factura->serie.'-'.$factura->numero.' '.($factura->razon_social ?? '')) }}">
                         <td>
                             <div class="serie-num">{{ $factura->serie }}-{{ str_pad($factura->numero, 8, '0', STR_PAD_LEFT) }}</div>
-                            <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">{{ $factura->tipo_operacion ?? '—' }}</div>
                         </td>
                         <td>
                             <div class="client-cell">
-                                <div class="client-name">{{ $factura->cliente->razon_social ?? 'Sin cliente' }}</div>
-                                <div class="client-ruc">{{ $factura->cliente->ruc ?? '—' }}</div>
+                                <div class="client-name">{{ $factura->razon_social ?? 'Sin cliente' }}</div>
+                                <div class="client-ruc">{{ $factura->ruc ?? '—' }}</div>
                             </div>
                         </td>
                         <td>
@@ -221,6 +260,18 @@
                         <td>
                             <div class="amount-main">{{ $factura->moneda }} {{ number_format($factura->importe_total, 2) }}</div>
                             <div class="amount-sub">IGV: {{ number_format($factura->monto_igv ?? 0, 2) }}</div>
+                        </td>
+                        <td style="text-align:center;font-weight:600;">
+                            {{ $porcentajeRecaudacion > 0 ? $porcentajeRecaudacion . '%' : '—' }}
+                        </td>
+                        <td style="text-align:right;font-weight:600;color:#d97706;font-family:'DM Mono',monospace;">
+                            {{ $montoRecaudacion > 0 ? $factura->moneda . ' ' . number_format($montoRecaudacion, 2) : '—' }}
+                        </td>
+                        <td style="text-align:center;font-size:10px;font-weight:600;color:#7c3aed;">
+                            {{ $tipoRecaudacion ?? '—' }}
+                        </td>
+                        <td style="text-align:center;font-family:'DM Mono',monospace;">
+                            {{ $factura->fecha_abono ? \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y') : '—' }}
                         </td>
                         <td>
                             <span class="badge {{ $badgeClass }}">{{ $factura->estado }}</span>
@@ -270,7 +321,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="7">
+                        <td colspan="11">
                             <div class="empty-state">
                                 <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                 <p style="font-weight:600;font-size:15px;color:var(--text-primary);">Sin facturas registradas</p>
@@ -290,14 +341,27 @@
                 const search = document.getElementById('searchInput').value.toLowerCase();
                 const estado = document.getElementById('filterEstado').value;
                 const moneda = document.getElementById('filterMoneda').value;
+                const empresa = document.getElementById('filterEmpresa').value;
                 const rows = document.querySelectorAll('#facturasBody tr[data-estado]');
 
                 rows.forEach(row => {
                     const matchSearch = !search || row.dataset.search.includes(search);
                     const matchEstado = !estado || row.dataset.estado === estado;
                     const matchMoneda = !moneda || row.dataset.moneda === moneda;
-                    row.style.display = (matchSearch && matchEstado && matchMoneda) ? '' : 'none';
+                    const matchEmpresa = !empresa || row.dataset.cliente === empresa;
+                    row.style.display = (matchSearch && matchEstado && matchMoneda && matchEmpresa) ? '' : 'none';
                 });
+            }
+
+            function generarReportePDF() {
+                const idCliente = document.getElementById('filterEmpresa').value;
+                const estado = document.getElementById('filterEstadoReporte').value;
+
+                let url = '{{ route("reportes.pdf") }}?';
+                if (idCliente) url += 'id_cliente=' + idCliente;
+                if (estado) url += (idCliente ? '&' : '') + 'estado=' + estado;
+
+                window.open(url, '_blank');
             }
         </script>
     @endpush
