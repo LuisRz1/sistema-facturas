@@ -5,19 +5,24 @@ namespace App\Http\Controllers;
 use App\Models\Factura;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
 class FacturaController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        // Obtener facturas con información de recaudación
-        $facturas = DB::table('factura as f')
+        $mes  = (int) $request->input('mes',  now()->month);
+        $anio = (int) $request->input('anio', now()->year);
+
+        $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('detraccion as d', 'd.id_factura', '=', 'f.id_factura')
             ->leftJoin('autodetraccion as ad', 'ad.id_factura', '=', 'f.id_factura')
             ->leftJoin('retencion as r', 'r.id_factura', '=', 'f.id_factura')
+            ->whereMonth('f.fecha_emision', $mes)
+            ->whereYear('f.fecha_emision', $anio)
             ->select([
                 'f.id_factura',
                 'f.serie',
@@ -38,19 +43,19 @@ class FacturaController extends Controller
                 'c.ruc',
                 'c.correo as cliente_correo',
                 'c.celular as cliente_celular',
-                DB::raw('CASE 
+                DB::raw('CASE
                     WHEN d.total_detraccion IS NOT NULL THEN d.total_detraccion
                     WHEN ad.total_autodetraccion IS NOT NULL THEN ad.total_autodetraccion
                     WHEN r.total_retencion IS NOT NULL THEN r.total_retencion
-                    ELSE 0 
+                    ELSE 0
                 END AS monto_recaudacion'),
-                DB::raw('CASE 
+                DB::raw('CASE
                     WHEN d.porcentaje IS NOT NULL THEN d.porcentaje
                     WHEN ad.porcentaje IS NOT NULL THEN ad.porcentaje
                     WHEN r.porcentaje IS NOT NULL THEN r.porcentaje
-                    ELSE 0 
+                    ELSE 0
                 END AS porcentaje_recaudacion'),
-                DB::raw('CASE 
+                DB::raw('CASE
                     WHEN d.total_detraccion IS NOT NULL THEN "DETRACCION"
                     WHEN ad.total_autodetraccion IS NOT NULL THEN "AUTODETRACCION"
                     WHEN r.total_retencion IS NOT NULL THEN "RETENCION"
@@ -60,8 +65,7 @@ class FacturaController extends Controller
             ->orderByDesc('f.fecha_emision')
             ->get();
 
-        // Convertir a objetos mutables para carga de relaciones
-        $facturasCollection = collect($facturas->map(function ($f) {
+        $facturasCollection = collect($query->map(function ($f) {
             return (object) array_merge((array) $f, [
                 'cliente' => (object) [
                     'id_cliente' => $f->id_cliente,
@@ -78,12 +82,27 @@ class FacturaController extends Controller
             ]);
         }));
 
-        // Obtener lista de empresas (clientes únicos)
         $clientes = DB::table('cliente')
             ->orderBy('razon_social')
             ->get(['id_cliente', 'razon_social', 'ruc']);
 
-        return view('facturas.index', ['facturas' => $facturasCollection, 'clientes' => $clientes]);
+        // Años disponibles para el selector (desde 2020 hasta año actual + 1)
+        $anios = range(2020, now()->year + 1);
+
+        $meses = [
+            1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
+            5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
+            9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre',
+        ];
+
+        return view('facturas.index', [
+            'facturas'  => $facturasCollection,
+            'clientes'  => $clientes,
+            'mesActual' => $mes,
+            'anioActual'=> $anio,
+            'meses'     => $meses,
+            'anios'     => $anios,
+        ]);
     }
 
     /**
@@ -129,14 +148,14 @@ class FacturaController extends Controller
         $factura = Factura::findOrFail($id);
 
         $validated = $request->validate([
-            'fecha_emision' => 'nullable|date',
-            'fecha_vencimiento' => 'nullable|date',
-            'fecha_abono' => 'nullable|date',
-            'glosa' => 'nullable|string',
-            'forma_pago' => 'nullable|string',
-            'estado' => 'nullable|in:PENDIENTE,POR_VENCER,VENCIDA,PAGADA,ANULADA,OBSERVADA',
-            'importe_total' => 'nullable|numeric',
-            'monto_igv' => 'nullable|numeric',
+            'fecha_emision'    => 'nullable|date',
+            'fecha_vencimiento'=> 'nullable|date',
+            'fecha_abono'      => 'nullable|date',
+            'glosa'            => 'nullable|string',
+            'forma_pago'       => 'nullable|string',
+            'estado'           => 'nullable|in:PENDIENTE,POR_VENCER,VENCIDA,PAGADA,ANULADA,OBSERVADA',
+            'importe_total'    => 'nullable|numeric',
+            'monto_igv'        => 'nullable|numeric',
             'subtotal_gravado' => 'nullable|numeric',
         ]);
 
@@ -150,43 +169,86 @@ class FacturaController extends Controller
     }
 
     /**
-     * Subir comprobante de pago
+     * Subir comprobante/imagen de factura a Cloudinary.
+     * Aplica a TODAS las facturas (pagadas, pendientes, etc.).
+     * Solo marca como PAGADA automáticamente si estaba en PENDIENTE.
      */
     public function uploadComprobante(Request $request, $id)
     {
         $request->validate([
-            'comprobante' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'comprobante' => 'required|file|mimes:jpeg,png,jpg,gif,pdf|max:5120',
         ]);
 
         $factura = Factura::findOrFail($id);
 
-        // Guardar archivo
-        if ($request->hasFile('comprobante')) {
-            // Crear directorio si no existe
-            $path = 'comprobantes/' . date('Y/m/');
-            if (!file_exists(storage_path('app/public/' . $path))) {
-                mkdir(storage_path('app/public/' . $path), 0755, true);
-            }
-
-            $file = $request->file('comprobante');
-            $filename = 'comprobante_' . $id . '_' . time() . '.' . $file->getClientOriginalExtension();
-            $file->storeAs('public/' . $path, $filename);
-
-            // Actualizar factura con ruta del comprobante y cambiar estado a PAGADA
-            $factura->update([
-                'ruta_comprobante_pago' => $path . $filename,
-                'estado' => 'PAGADA',
-                'fecha_abono' => now()->toDateString(),
-                'fecha_actualizacion' => now(),
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Comprobante guardado y factura marcada como pagada',
-                'estado' => 'PAGADA',
-            ]);
+        if (!$request->hasFile('comprobante')) {
+            return response()->json(['error' => 'No se recibió ningún archivo'], 400);
         }
 
-        return response()->json(['error' => 'No se pudo guardar el comprobante'], 400);
+        // Subir a Cloudinary
+        $cloudUrl = $this->subirACloudinary($request->file('comprobante'), $id);
+
+        if (!$cloudUrl) {
+            return response()->json(['error' => 'No se pudo subir el archivo a Cloudinary'], 500);
+        }
+
+        $updateData = [
+            'ruta_comprobante_pago' => $cloudUrl,
+            'fecha_actualizacion'   => now(),
+        ];
+
+        // Solo cambia a PAGADA si estaba PENDIENTE o POR_VENCER
+        $estadoAnterior = $factura->estado;
+        if (in_array($factura->estado, ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])) {
+            $updateData['estado']      = 'PAGADA';
+            $updateData['fecha_abono'] = now()->toDateString();
+        }
+
+        $factura->update($updateData);
+
+        $mensaje = in_array($estadoAnterior, ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])
+            ? 'Comprobante guardado y factura marcada como PAGADA'
+            : 'Imagen de factura actualizada correctamente';
+
+        return response()->json([
+            'success'  => true,
+            'message'  => $mensaje,
+            'estado'   => $factura->fresh()->estado,
+            'imageUrl' => $cloudUrl,
+        ]);
+    }
+
+    // ─── HELPERS ─────────────────────────────────────────────────────────────
+
+    /**
+     * Sube un archivo a Cloudinary y retorna la URL segura.
+     */
+    private function subirACloudinary($file, $facturaId): ?string
+    {
+        $cloudName    = env('CLOUDINARY_CLOUD_NAME', 'dq3rban3m');
+        $uploadPreset = env('CLOUDINARY_UPLOAD_PRESET', 'ml_default');
+
+        try {
+            $response = Http::attach(
+                'file',
+                fopen($file->getRealPath(), 'r'),
+                'factura_' . $facturaId . '_' . time() . '.' . $file->getClientOriginalExtension()
+            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/image/upload", [
+                'upload_preset' => $uploadPreset,
+                'folder'        => 'comprobantes_factura',
+                'public_id'     => 'factura_' . $facturaId . '_' . time(),
+            ]);
+
+            if ($response->successful()) {
+                return $response->json('secure_url');
+            }
+
+            \Log::error('Cloudinary upload error', ['response' => $response->body()]);
+            return null;
+
+        } catch (\Throwable $e) {
+            \Log::error('Cloudinary exception: ' . $e->getMessage());
+            return null;
+        }
     }
 }

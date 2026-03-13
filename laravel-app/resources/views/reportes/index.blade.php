@@ -5,56 +5,22 @@
 
 @push('styles')
     <style>
-        /* ── Filtros ── */
-        .filtros-card {
-            display: flex;
-            align-items: flex-end;
-            gap: 14px;
-            flex-wrap: wrap;
-        }
-        .filtro-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 200px; }
+        .filtros-card { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+        .filtro-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 160px; }
         .filtro-group label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
 
-        /* ── Stats rápidos ── */
-        .report-stats {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .rs-box {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 20px 22px;
-            box-shadow: var(--shadow);
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
+        .report-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .rs-box { background: var(--card-bg); border-radius: var(--radius); padding: 20px 22px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 4px; }
         .rs-label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); font-weight: 600; }
         .rs-value { font-size: 22px; font-weight: 800; font-family: 'DM Mono', monospace; }
-        .rs-box.azul   .rs-value { color: var(--accent); }
-        .rs-box.verde  .rs-value { color: var(--green); }
-        .rs-box.rojo   .rs-value { color: var(--red); }
-        .rs-box.amber  .rs-value { color: var(--amber); }
+        .rs-box.azul  .rs-value { color: var(--accent); }
+        .rs-box.verde .rs-value { color: var(--green); }
+        .rs-box.rojo  .rs-value { color: var(--red); }
+        .rs-box.amber .rs-value { color: var(--amber); }
 
-        /* ── Tabla preview ── */
-        .preview-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
+        .preview-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 
-        .badge-estado {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 20px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: .05em;
-        }
+        .badge-estado { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
         .estado-PENDIENTE  { background:#fef3c7; color:#92400e; }
         .estado-POR_VENCER { background:#ffedd5; color:#c2410c; }
         .estado-VENCIDA    { background:#fee2e2; color:#991b1b; }
@@ -62,30 +28,19 @@
         .estado-ANULADA    { background:#f1f5f9; color:#64748b; }
         .estado-OBSERVADA  { background:#ede9fe; color:#5b21b6; }
 
-        .mono { font-family: 'DM Mono', monospace; font-size: 12px; }
+        .mono       { font-family: 'DM Mono', monospace; font-size: 12px; }
         .text-right { text-align: right; }
-
         .detrac-cell { color: #d97706; font-weight: 700; }
         .neto-cell   { color: #059669; font-weight: 700; }
 
-        /* Botón PDF destacado */
         .btn-pdf {
-            background: #0f172a;
-            color: #fff;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 700;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            transition: background .15s;
-            text-decoration: none;
+            background: #0f172a; color: #fff; border: none;
+            padding: 10px 20px; border-radius: 8px; font-size: 13px;
+            font-weight: 700; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 7px;
+            transition: background .15s; text-decoration: none;
         }
         .btn-pdf:hover { background: #1e293b; color: #fff; }
-        .btn-pdf svg { flex-shrink: 0; }
     </style>
 @endpush
 
@@ -94,15 +49,37 @@
     <div class="page-header">
         <div>
             <h1 class="page-title">Reportes Financieros</h1>
-            <p class="page-desc">Filtra por cliente y estado para generar el reporte en PDF.</p>
+            <p class="page-desc">Filtra por período, cliente y estado para generar el reporte en PDF.</p>
         </div>
     </div>
 
     {{-- ── FILTROS ── --}}
-    <div class="card" style="margin-bottom:24px;">
+    <div class="card" style="margin-bottom:24px;padding:20px 24px;">
         <form id="frmFiltros" method="GET" action="{{ route('reportes.pdf') }}" target="_blank">
             <div class="filtros-card">
 
+                {{-- Mes --}}
+                <div class="filtro-group" style="max-width:160px;">
+                    <label>Mes</label>
+                    <select name="mes" class="form-input" id="selMes">
+                        <option value="">Todos</option>
+                        @foreach($meses as $num => $nombre)
+                            <option value="{{ $num }}" {{ now()->month == $num ? 'selected' : '' }}>{{ $nombre }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                {{-- Año --}}
+                <div class="filtro-group" style="max-width:110px;">
+                    <label>Año</label>
+                    <select name="anio" class="form-input" id="selAnio">
+                        @foreach($anios as $a)
+                            <option value="{{ $a }}" {{ now()->year == $a ? 'selected' : '' }}>{{ $a }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                {{-- Cliente --}}
                 <div class="filtro-group">
                     <label>Cliente</label>
                     <select name="id_cliente" class="form-input" id="selCliente">
@@ -113,7 +90,8 @@
                     </select>
                 </div>
 
-                <div class="filtro-group">
+                {{-- Estado --}}
+                <div class="filtro-group" style="max-width:180px;">
                     <label>Estado de factura</label>
                     <select name="estado" class="form-input" id="selEstado">
                         <option value="">Todos los estados</option>
@@ -127,7 +105,6 @@
                 </div>
 
                 <div style="display:flex;gap:10px;flex-shrink:0;padding-bottom:1px;">
-                    {{-- Previsualizar en página --}}
                     <button type="button" class="btn btn-outline" onclick="previsualizarReporte()">
                         <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -135,8 +112,6 @@
                         </svg>
                         Previsualizar
                     </button>
-
-                    {{-- Descargar PDF (abre en nueva pestaña lista para imprimir) --}}
                     <button type="submit" class="btn-pdf">
                         <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -148,17 +123,13 @@
         </form>
     </div>
 
-    {{-- ── PREVIEW (se carga vía AJAX) ── --}}
+    {{-- ── PREVIEW ── --}}
     <div id="previewArea" style="display:none;">
-
-        {{-- Stats --}}
         <div class="report-stats" id="statsGrid"></div>
-
-        {{-- Tabla --}}
         <div class="card">
-            <div class="preview-header">
+            <div class="preview-header" style="padding:20px 24px 0;">
                 <div>
-                    <div style="font-weight:700;font-size:15px;" id="previewTitle">Vista previa del reporte</div>
+                    <div style="font-weight:700;font-size:15px;" id="previewTitle">Vista previa</div>
                     <div style="font-size:13px;color:var(--text-muted);" id="previewSub"></div>
                 </div>
             </div>
@@ -175,8 +146,7 @@
                         <th>ESTADO</th>
                     </tr>
                     </thead>
-                    <tbody id="previewBody">
-                    </tbody>
+                    <tbody id="previewBody"></tbody>
                 </table>
             </div>
         </div>
@@ -196,7 +166,7 @@
 @push('scripts')
     <script>
         function fmt(n) {
-            return 'S/ ' + parseFloat(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return 'S/ ' + parseFloat(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
         function estadoBadge(e) {
@@ -204,14 +174,17 @@
         }
 
         async function previsualizarReporte() {
-            const cliente = document.getElementById('selCliente').value;
-            const estado  = document.getElementById('selEstado').value;
+            const mes      = document.getElementById('selMes').value;
+            const anio     = document.getElementById('selAnio').value;
+            const cliente  = document.getElementById('selCliente').value;
+            const estado   = document.getElementById('selEstado').value;
 
-            const params  = new URLSearchParams();
+            const params = new URLSearchParams();
+            if (mes)     params.append('mes', mes);
+            if (anio)    params.append('anio', anio);
             if (cliente) params.append('id_cliente', cliente);
             if (estado)  params.append('estado', estado);
 
-            // Llamamos al mismo endpoint pero esperamos JSON
             const res  = await fetch(`{{ route('reportes.json') }}?${params}`);
             const data = await res.json();
 
@@ -222,42 +195,40 @@
                 return;
             }
 
-            // Stats
             const r = data.resumen;
             document.getElementById('statsGrid').innerHTML = `
-        <div class="rs-box azul">
-            <div class="rs-label">Total Facturas</div>
-            <div class="rs-value">${r.total_facturas}</div>
-        </div>
-        <div class="rs-box amber">
-            <div class="rs-label">Total Bruto</div>
-            <div class="rs-value" style="font-size:16px;">${fmt(r.total_bruto)}</div>
-        </div>
-        <div class="rs-box rojo">
-            <div class="rs-label">Saldo por Cobrar</div>
-            <div class="rs-value" style="font-size:16px;">${fmt(r.saldo_cobrar)}</div>
-        </div>
-        <div class="rs-box verde">
-            <div class="rs-label">Total Neto Caja</div>
-            <div class="rs-value" style="font-size:16px;">${fmt(r.total_neto)}</div>
-        </div>
-    `;
+                <div class="rs-box azul">
+                    <div class="rs-label">Total Facturas</div>
+                    <div class="rs-value">${r.total_facturas}</div>
+                </div>
+                <div class="rs-box amber">
+                    <div class="rs-label">Total Bruto</div>
+                    <div class="rs-value" style="font-size:16px;">${fmt(r.total_bruto)}</div>
+                </div>
+                <div class="rs-box rojo">
+                    <div class="rs-label">Saldo por Cobrar</div>
+                    <div class="rs-value" style="font-size:16px;">${fmt(r.saldo_cobrar)}</div>
+                </div>
+                <div class="rs-box verde">
+                    <div class="rs-label">Total Neto Caja</div>
+                    <div class="rs-value" style="font-size:16px;">${fmt(r.total_neto)}</div>
+                </div>
+            `;
 
-            // Filas tabla
             const rows = data.facturas.map(f => `
-        <tr>
-            <td class="mono">${f.fecha_emision ?? '—'}</td>
-            <td class="mono" style="font-weight:700;">${f.serie}-${String(f.numero).padStart(8,'0')}</td>
-            <td style="font-size:12px;max-width:260px;">${f.glosa ?? '—'}</td>
-            <td class="mono text-right">${fmt(f.importe_total)}</td>
-            <td class="mono text-right detrac-cell">${f.monto_recaudacion > 0 ? fmt(f.monto_recaudacion) : '—'}</td>
-            <td class="mono text-right neto-cell">${fmt(f.neto_caja)}</td>
-            <td>${estadoBadge(f.estado)}</td>
-        </tr>
-    `).join('');
+                <tr>
+                    <td class="mono">${f.fecha_emision ?? '—'}</td>
+                    <td class="mono" style="font-weight:700;">${f.serie}-${String(f.numero).padStart(8,'0')}</td>
+                    <td style="font-size:12px;max-width:260px;">${f.glosa ?? '—'}</td>
+                    <td class="mono text-right">${fmt(f.importe_total)}</td>
+                    <td class="mono text-right detrac-cell">${f.monto_recaudacion > 0 ? fmt(f.monto_recaudacion) : '—'}</td>
+                    <td class="mono text-right neto-cell">${fmt(f.neto_caja)}</td>
+                    <td>${estadoBadge(f.estado)}</td>
+                </tr>
+            `).join('');
 
             document.getElementById('previewBody').innerHTML = rows;
-            document.getElementById('previewTitle').textContent = `${data.cliente_nombre}`;
+            document.getElementById('previewTitle').textContent = `${data.cliente_nombre} — ${data.periodo_label}`;
             document.getElementById('previewSub').textContent   = `${r.total_facturas} facturas · Estado: ${data.estado_label}`;
 
             document.getElementById('emptyState').style.display  = 'none';

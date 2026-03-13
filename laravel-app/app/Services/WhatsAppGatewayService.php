@@ -6,7 +6,13 @@ use Illuminate\Support\Facades\Http;
 
 class WhatsAppGatewayService
 {
-    public function enviar(string $telefono, string $mensaje): array
+    private string $gatewayUrl = 'http://localhost:3001/send-message';
+
+    /**
+     * Envía un mensaje de WhatsApp.
+     * Si se provee $imageUrl (URL pública de Cloudinary), se envía como imagen con caption.
+     */
+    public function enviar(string $telefono, string $mensaje, ?string $imageUrl = null): array
     {
         $telefono = preg_replace('/\D+/', '', $telefono ?? '');
 
@@ -14,21 +20,26 @@ class WhatsAppGatewayService
             $telefono = '51' . $telefono;
         }
 
-        $response = Http::post('http://localhost:3001/send-message', [
-            'phone' => $telefono,
+        $payload = [
+            'phone'   => $telefono,
             'message' => $mensaje,
-        ]);
+        ];
 
-        if ($response->successful()) {
-            return [
-                'ok' => true,
-                'data' => $response->json()
-            ];
+        if ($imageUrl) {
+            $payload['imageUrl'] = $imageUrl;
         }
 
-        return [
-            'ok' => false,
-            'error' => $response->body()
-        ];
+        try {
+            $response = Http::timeout(30)->post($this->gatewayUrl, $payload);
+
+            if ($response->successful()) {
+                return ['ok' => true, 'data' => $response->json()];
+            }
+
+            return ['ok' => false, 'error' => $response->body()];
+
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
     }
 }
