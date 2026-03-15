@@ -22,9 +22,7 @@ class ImportarFacturasController extends Controller
         ini_set('memory_limit', '256M');
 
         $request->validate([
-            'archivo'              => 'required|file|max:10240',
-            'tipo_recaudacion'     => 'nullable|in:DETRACCION,RETENCION,AUTODETRACCION',
-            'porcentaje_recaudacion' => 'nullable|numeric|min:0|max:100',
+            'archivo' => 'required|file|max:10240',
         ], [
             'archivo.required' => 'Selecciona un archivo Excel.',
         ]);
@@ -35,10 +33,6 @@ class ImportarFacturasController extends Controller
         if (!in_array($extension, ['xlsx', 'xls'])) {
             return back()->with('error', 'El archivo debe ser .xlsx o .xls');
         }
-
-        // ── Tipo y porcentaje de recaudación seleccionados por el usuario ──
-        $tipoRecaudacionGlobal  = $request->input('tipo_recaudacion');   // null = NINGUNA
-        $porcentajeGlobal       = (float) $request->input('porcentaje_recaudacion', 10.00);
 
         try {
             $spreadsheet = IOFactory::load($archivo->getPathname());
@@ -79,13 +73,6 @@ class ImportarFacturasController extends Controller
 
                 // Estado según tipo de comprobante
                 $estado = ($tipo === '07') ? 'PENDIENTE' : 'PAGADA';
-
-                // ── Recaudación según selección del usuario ───────────────
-                $montoRecaudacion = 0;
-
-                if ($tipoRecaudacionGlobal && $importeTotal > 0) {
-                    $montoRecaudacion = round($importeTotal * ($porcentajeGlobal / 100), 2);
-                }
 
                 // ── Glosa y fechas ─────────────────────────────────────────
                 $glosa            = $this->transformarGlosa(trim((string)($f['AG'] ?? '')));
@@ -131,7 +118,7 @@ class ImportarFacturasController extends Controller
                 }
 
                 // ── Insertar Factura ───────────────────────────────────────
-                $idFactura = DB::table('factura')->insertGetId([
+                DB::table('factura')->insert([
                     'serie'             => $serie,
                     'numero'            => $numero,
                     'tipo_operacion'    => trim((string)($f['H'] ?? '')),
@@ -144,34 +131,12 @@ class ImportarFacturasController extends Controller
                     'estado'            => $estado,
                     'glosa'             => $glosa,
                     'forma_pago'        => trim((string)($f['AH'] ?? '')),
-                    'tipo_recaudacion'  => $tipoRecaudacionGlobal,
+                    'tipo_recaudacion'  => null,
                     'fecha_vencimiento' => $fechaVencimiento,
                     'fecha_emision'     => $fechaEmision,
                     'fecha_creacion'    => now(),
                     'usuario_creacion'  => $idUsuario,
                 ]);
-
-                // ── Tabla hija según tipo de recaudación ──────────────────
-                if ($tipoRecaudacionGlobal && $montoRecaudacion > 0) {
-                    match ($tipoRecaudacionGlobal) {
-                        'DETRACCION'    => DB::table('detraccion')->insert([
-                            'id_factura'       => $idFactura,
-                            'porcentaje'       => $porcentajeGlobal,
-                            'total_detraccion' => $montoRecaudacion,
-                        ]),
-                        'RETENCION'     => DB::table('retencion')->insert([
-                            'id_factura'       => $idFactura,
-                            'porcentaje'       => $porcentajeGlobal,
-                            'total_retencion'  => $montoRecaudacion,
-                        ]),
-                        'AUTODETRACCION' => DB::table('autodetraccion')->insert([
-                            'id_factura'           => $idFactura,
-                            'porcentaje'           => $porcentajeGlobal,
-                            'total_autodetraccion' => $montoRecaudacion,
-                        ]),
-                        default => null,
-                    };
-                }
 
                 $insertadas++;
             }
@@ -187,12 +152,10 @@ class ImportarFacturasController extends Controller
         }
 
         return redirect()->route('facturas.importar')->with('resumen', [
-            'insertadas'       => $insertadas,
-            'omitidas'         => $omitidas,
-            'duplicadas'       => $duplicadas,
-            'errores'          => $errores,
-            'tipo_recaudacion' => $tipoRecaudacionGlobal ?? 'NINGUNA',
-            'porcentaje'       => $tipoRecaudacionGlobal ? $porcentajeGlobal : 0,
+            'insertadas' => $insertadas,
+            'omitidas'   => $omitidas,
+            'duplicadas' => $duplicadas,
+            'errores'    => $errores,
         ]);
     }
 
@@ -209,19 +172,15 @@ class ImportarFacturasController extends Controller
             }
             return 'Alquiler de carro Placa: N/D';
         }
-
         if (str_contains($up, 'AGUA') && str_contains($up, 'TRANSPORT')) {
             return 'Servicio de transporte de agua';
         }
-
         if (str_contains($up, 'AGUA')) {
             return 'Suministro de Agua';
         }
-
         if (str_contains($up, 'TRANSPORT')) {
             return 'Servicio de transporte';
         }
-
         if (str_contains($up, 'ALQUILER')) {
             if (preg_match('/ALQUILER\s+DE\s+([\wÁÉÍÓÚáéíóúÑñ]+)(?:\s+([\wÁÉÍÓÚáéíóúÑñ]+))?/iu', $txt, $m)) {
                 $parte = ucfirst(strtolower($m[1]));
@@ -235,20 +194,14 @@ class ImportarFacturasController extends Controller
 
     private function monto(mixed $v): float
     {
-        if (is_int($v) || is_float($v)) {
-            return abs($v);
-        }
-
+        if (is_int($v) || is_float($v)) return abs($v);
         $s = trim((string)$v);
-        if ($s === '' || $s === null) return 0.0;
-
+        if ($s === '') return 0.0;
         if (str_contains($s, ',')) {
             $s = str_replace('.', '', $s);
             $s = str_replace(',', '.', $s);
         }
-
         $s = preg_replace('/[^0-9.]/', '', $s);
-
         return abs((float)$s);
     }
 

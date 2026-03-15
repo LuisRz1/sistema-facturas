@@ -13,16 +13,16 @@ class FacturaController extends Controller
 {
     public function index(Request $request): View
     {
-        $mes  = (int) $request->input('mes',  now()->month);
-        $anio = (int) $request->input('anio', now()->year);
+        // Rango de fechas — por defecto primer día del mes actual hasta hoy
+        $fechaDesde = $request->input('fecha_desde', now()->startOfMonth()->format('Y-m-d'));
+        $fechaHasta = $request->input('fecha_hasta', now()->format('Y-m-d'));
 
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('detraccion as d', 'd.id_factura', '=', 'f.id_factura')
             ->leftJoin('autodetraccion as ad', 'ad.id_factura', '=', 'f.id_factura')
             ->leftJoin('retencion as r', 'r.id_factura', '=', 'f.id_factura')
-            ->whereMonth('f.fecha_emision', $mes)
-            ->whereYear('f.fecha_emision', $anio)
+            ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
             ->select([
                 'f.id_factura',
                 'f.serie',
@@ -68,11 +68,11 @@ class FacturaController extends Controller
         $facturasCollection = collect($query->map(function ($f) {
             return (object) array_merge((array) $f, [
                 'cliente' => (object) [
-                    'id_cliente' => $f->id_cliente,
+                    'id_cliente'   => $f->id_cliente,
                     'razon_social' => $f->razon_social,
-                    'ruc' => $f->ruc,
-                    'correo' => $f->cliente_correo,
-                    'celular' => $f->cliente_celular,
+                    'ruc'          => $f->ruc,
+                    'correo'       => $f->cliente_correo,
+                    'celular'      => $f->cliente_celular,
                 ],
                 'notificaciones' => DB::table('notificacion_factura')
                     ->where('id_factura', $f->id_factura)
@@ -86,49 +86,24 @@ class FacturaController extends Controller
             ->orderBy('razon_social')
             ->get(['id_cliente', 'razon_social', 'ruc']);
 
-        // Años disponibles para el selector (desde 2020 hasta año actual + 1)
-        $anios = range(2020, now()->year + 1);
-
-        $meses = [
-            1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril',
-            5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto',
-            9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre',
-        ];
-
         return view('facturas.index', [
-            'facturas'  => $facturasCollection,
-            'clientes'  => $clientes,
-            'mesActual' => $mes,
-            'anioActual'=> $anio,
-            'meses'     => $meses,
-            'anios'     => $anios,
+            'facturas'   => $facturasCollection,
+            'clientes'   => $clientes,
+            'fechaDesde' => $fechaDesde,
+            'fechaHasta' => $fechaHasta,
         ]);
     }
 
-    /**
-     * Obtener datos de una factura para editar (AJAX)
-     */
     public function edit($id): JsonResponse
     {
         $factura = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->select([
-                'f.id_factura',
-                'f.serie',
-                'f.numero',
-                'f.fecha_emision',
-                'f.fecha_vencimiento',
-                'f.fecha_abono',
-                'f.moneda',
-                'f.subtotal_gravado',
-                'f.monto_igv',
-                'f.importe_total',
-                'f.estado',
-                'f.glosa',
-                'f.forma_pago',
-                'f.tipo_recaudacion',
-                'c.razon_social',
-                'c.ruc',
+                'f.id_factura','f.serie','f.numero','f.fecha_emision',
+                'f.fecha_vencimiento','f.fecha_abono','f.moneda',
+                'f.subtotal_gravado','f.monto_igv','f.importe_total',
+                'f.estado','f.glosa','f.forma_pago','f.tipo_recaudacion',
+                'c.razon_social','c.ruc',
             ])
             ->where('f.id_factura', $id)
             ->first();
@@ -140,9 +115,6 @@ class FacturaController extends Controller
         return response()->json($factura);
     }
 
-    /**
-     * Actualizar datos de una factura
-     */
     public function update(Request $request, $id)
     {
         $factura = Factura::findOrFail($id);
@@ -168,11 +140,6 @@ class FacturaController extends Controller
         ]);
     }
 
-    /**
-     * Subir comprobante/imagen de factura a Cloudinary.
-     * Aplica a TODAS las facturas (pagadas, pendientes, etc.).
-     * Solo marca como PAGADA automáticamente si estaba en PENDIENTE.
-     */
     public function uploadComprobante(Request $request, $id)
     {
         $request->validate([
@@ -185,7 +152,6 @@ class FacturaController extends Controller
             return response()->json(['error' => 'No se recibió ningún archivo'], 400);
         }
 
-        // Subir a Cloudinary
         $cloudUrl = $this->subirACloudinary($request->file('comprobante'), $id);
 
         if (!$cloudUrl) {
@@ -197,7 +163,6 @@ class FacturaController extends Controller
             'fecha_actualizacion'   => now(),
         ];
 
-        // Solo cambia a PAGADA si estaba PENDIENTE o POR_VENCER
         $estadoAnterior = $factura->estado;
         if (in_array($factura->estado, ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])) {
             $updateData['estado']      = 'PAGADA';
@@ -218,11 +183,6 @@ class FacturaController extends Controller
         ]);
     }
 
-    // ─── HELPERS ─────────────────────────────────────────────────────────────
-
-    /**
-     * Sube un archivo a Cloudinary y retorna la URL segura.
-     */
     private function subirACloudinary($file, $facturaId): ?string
     {
         $cloudName    = env('CLOUDINARY_CLOUD_NAME', 'dq3rban3m');

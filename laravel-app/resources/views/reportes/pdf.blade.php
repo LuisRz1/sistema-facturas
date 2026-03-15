@@ -9,6 +9,98 @@
 
         body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; background: #fff; }
 
+        /* ── TOP BAR (no-print) ── */
+        .no-print {
+            background: #1e293b;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .no-print .hint {
+            color: #94a3b8;
+            font-size: 12px;
+            font-family: Arial, sans-serif;
+            white-space: nowrap;
+        }
+
+        .btn-print {
+            background: #1d4ed8; color: #fff; border: none;
+            padding: 8px 18px; border-radius: 6px; font-size: 12px;
+            font-weight: 700; cursor: pointer; font-family: Arial, sans-serif;
+            display: inline-flex; align-items: center; gap: 6px;
+        }
+        .btn-print:hover { background: #1e40af; }
+
+        .btn-close {
+            background: transparent; color: #64748b;
+            border: 1px solid #334155; padding: 8px 14px;
+            border-radius: 6px; font-size: 12px; cursor: pointer;
+            font-family: Arial, sans-serif;
+        }
+        .btn-close:hover { background: #334155; color: #fff; }
+
+        /* ── SEND PANEL (no-print) ── */
+        .send-bar {
+            display: none;
+            background: #0f2027;
+            border-top: 1px solid #334155;
+            padding: 12px 24px;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            font-family: Arial, sans-serif;
+        }
+        .send-bar.visible { display: flex; }
+
+        .send-bar .send-label {
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            white-space: nowrap;
+        }
+
+        .btn-wa {
+            background: #22c55e; color: #fff; border: none;
+            padding: 8px 16px; border-radius: 6px; font-size: 12px;
+            font-weight: 700; cursor: pointer; font-family: Arial, sans-serif;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: background .15s;
+        }
+        .btn-wa:hover:not(:disabled) { background: #16a34a; }
+        .btn-wa:disabled { opacity: .55; cursor: not-allowed; }
+
+        .btn-mail {
+            background: #3b82f6; color: #fff; border: none;
+            padding: 8px 16px; border-radius: 6px; font-size: 12px;
+            font-weight: 700; cursor: pointer; font-family: Arial, sans-serif;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: background .15s;
+        }
+        .btn-mail:hover:not(:disabled) { background: #2563eb; }
+        .btn-mail:disabled { opacity: .55; cursor: not-allowed; }
+
+        .contact-info {
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .send-result {
+            display: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            font-family: Arial, sans-serif;
+        }
+        .send-result.ok    { background: #14532d; color: #86efac; }
+        .send-result.error { background: #7f1d1d; color: #fca5a5; }
+
+        /* ── REPORT ── */
         .header {
             background: #0f172a; color: #fff;
             text-align: center; padding: 22px 32px 18px;
@@ -42,39 +134,51 @@
         .b-ANULADA    { background:#f1f5f9; color:#64748b; }
         .b-OBSERVADA  { background:#ede9fe; color:#5b21b6; }
 
-        .resumen { margin-top: 28px; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 20px 24px; }
-        .resumen-title { font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .7px; margin-bottom: 16px; color: #0f172a; }
-        .resumen-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-        .resumen-col { display: flex; flex-direction: column; gap: 10px; }
-        .resumen-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-        .resumen-lbl { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
-        .resumen-val { font-size: 12px; font-weight: 800; font-family: 'Courier New', monospace; }
-        .val-blue  { color: #1d4ed8; }
-        .val-red   { color: #dc2626; }
-        .val-green { color: #059669; }
-        .val-dark  { color: #0f172a; }
-
         .footer { margin-top: 24px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 14px; }
 
         @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .no-print { display: none !important; }
+            .no-print, .send-bar { display: none !important; }
             @page { size: A4 landscape; margin: 10mm; }
         }
     </style>
 </head>
 <body>
 
-<div class="no-print" style="background:#1e293b;padding:10px 24px;display:flex;align-items:center;gap:12px;">
-    <span style="color:#94a3b8;font-size:12px;">Vista previa del reporte · Para guardar como PDF usa</span>
-    <button onclick="window.print()" style="background:#1d4ed8;color:#fff;border:none;padding:7px 18px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">
-        🖨 Imprimir / Guardar PDF
-    </button>
-    <button onclick="window.close()" style="background:transparent;color:#64748b;border:1px solid #334155;padding:7px 14px;border-radius:6px;font-size:12px;cursor:pointer;">
-        Cerrar
-    </button>
+{{-- ── TOP BAR ── --}}
+<div class="no-print">
+    <span class="hint">Vista previa del reporte · Para guardar como PDF usa</span>
+    <button class="btn-print" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
+    <button class="btn-close" onclick="window.close()">Cerrar</button>
 </div>
 
+{{-- ── SEND BAR (solo si hay un cliente específico) ── --}}
+@if($idCliente)
+    <div class="send-bar visible" id="sendBar">
+        <span class="send-label">Enviar este reporte al cliente:</span>
+
+        <button class="btn-wa" id="btnWA" onclick="enviarReporte('whatsapp')"
+                @if(!$clienteCelular) disabled title="Sin número de celular registrado" @endif>
+             WhatsApp
+        </button>
+
+        <button class="btn-mail" id="btnMail" onclick="enviarReporte('correo')"
+                @if(!$clienteCorreo) disabled title="Sin correo registrado" @endif>
+             Correo
+        </button>
+
+        <span class="contact-info">
+        @if($clienteCelular) {{ $clienteCelular }}@endif
+            @if($clienteCelular && $clienteCorreo) &nbsp;·&nbsp; @endif
+            @if($clienteCorreo) {{ $clienteCorreo }}@endif
+            @if(!$clienteCelular && !$clienteCorreo)<span style="color:#ef4444;">Sin datos de contacto</span>@endif
+    </span>
+
+        <div class="send-result" id="sendResult"></div>
+    </div>
+@endif
+
+{{-- ── REPORT ── --}}
 <div class="header">
     <h1>Reporte Financiero de Gestión</h1>
     <div class="sub">
@@ -174,6 +278,50 @@
         Consorcio Rodriguez Caballero S.A.C. &nbsp;·&nbsp; Sistema de Facturación
     </div>
 </div>
+
+@if($idCliente)
+    <script>
+        const CSRF     = '{{ csrf_token() }}';
+        const ID_CLI   = '{{ $idCliente }}';
+        const ESTADO   = '{{ $estado ?? "" }}';
+        const F_DESDE  = '{{ $fechaDesde ?? "" }}';
+        const F_HASTA  = '{{ $fechaHasta ?? "" }}';
+        const RUTA_WA  = '{{ route("reportes.enviar-whatsapp") }}';
+        const RUTA_MAIL= '{{ route("reportes.enviar-correo") }}';
+
+        async function enviarReporte(canal) {
+            const btnWA   = document.getElementById('btnWA');
+            const btnMail = document.getElementById('btnMail');
+            const result  = document.getElementById('sendResult');
+
+            btnWA.disabled = btnMail.disabled = true;
+            result.style.display = 'none';
+
+            const ruta = canal === 'whatsapp' ? RUTA_WA : RUTA_MAIL;
+            const body = new URLSearchParams({
+                id_cliente:  ID_CLI,
+                estado:      ESTADO,
+                fecha_desde: F_DESDE,
+                fecha_hasta: F_HASTA,
+                _token:      CSRF,
+            });
+
+            try {
+                const res  = await fetch(ruta, { method: 'POST', body });
+                const data = await res.json();
+                result.textContent  = (data.success ? '✓ ' : '✗ ') + (data.message || data.error || 'Error desconocido');
+                result.className    = 'send-result ' + (data.success ? 'ok' : 'error');
+                result.style.display = 'block';
+            } catch(err) {
+                result.textContent  = '✗ Error de red: ' + err.message;
+                result.className    = 'send-result error';
+                result.style.display = 'block';
+            } finally {
+                btnWA.disabled = btnMail.disabled = false;
+            }
+        }
+    </script>
+@endif
 
 <script>
     window.addEventListener('load', function() {

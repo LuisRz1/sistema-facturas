@@ -31,7 +31,7 @@ Route::post('/facturas/{id}/enviar-factura-pagada-correo',
     [NotificacionController::class, 'enviarFacturaPagadaCorreo']
 )->name('facturas.enviar-factura-pagada-correo');
 
-// ── IMPORTACIÓN DE FACTURAS ───────────────────────────────────────────────
+// ── IMPORTACIÓN ───────────────────────────────────────────────────────────
 Route::get('/facturas/importar',
     [ImportarFacturasController::class, 'index']
 )->name('facturas.importar');
@@ -41,10 +41,10 @@ Route::post('/facturas/importar/procesar',
 )->name('facturas.importar.procesar');
 
 // ── CLIENTES ──────────────────────────────────────────────────────────────
-Route::get('/clientes',          [ClienteController::class, 'index']  )->name('clientes.index');
-Route::post('/clientes',         [ClienteController::class, 'store']  )->name('clientes.store');
-Route::put('/clientes/{id}',     [ClienteController::class, 'update'] )->name('clientes.update');
-Route::delete('/clientes/{id}',  [ClienteController::class, 'destroy'])->name('clientes.destroy');
+Route::get('/clientes',         [ClienteController::class, 'index']  )->name('clientes.index');
+Route::post('/clientes',        [ClienteController::class, 'store']  )->name('clientes.store');
+Route::put('/clientes/{id}',    [ClienteController::class, 'update'] )->name('clientes.update');
+Route::delete('/clientes/{id}', [ClienteController::class, 'destroy'])->name('clientes.destroy');
 
 // ── REPORTES ──────────────────────────────────────────────────────────────
 Route::get('/reportes',         [ReporteController::class, 'index'])->name('reportes.index');

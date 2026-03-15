@@ -106,9 +106,22 @@ class ReporteController extends Controller
         $estadoLabel  = $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS';
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
 
+        // Datos de contacto del cliente para los botones de envío en el PDF
+        $clienteCelular = null;
+        $clienteCorreo  = null;
+        if ($idCliente) {
+            $cli = DB::table('cliente')->where('id_cliente', $idCliente)->first();
+            if ($cli) {
+                $clienteCelular = $cli->celular;
+                $clienteCorreo  = $cli->correo;
+            }
+        }
+
         return view('reportes.pdf', compact(
             'facturas', 'facturasAgrupadas', 'resumen',
-            'clienteNombre', 'estadoLabel', 'idCliente', 'periodoLabel'
+            'clienteNombre', 'estadoLabel', 'idCliente', 'periodoLabel',
+            'fechaDesde', 'fechaHasta', 'estado',
+            'clienteCelular', 'clienteCorreo'
         ));
     }
 
@@ -150,79 +163,124 @@ class ReporteController extends Controller
             return $f;
         });
 
-        $periodoLabel  = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel   = $estado ? strtoupper($estado) : 'TODOS';
-        $totalBruto    = $facturas->sum('importe_total');
-        $totalNeto     = $facturas->sum('neto_caja');
-        $totalDetrac   = $facturas->sum('monto_recaudacion');
-        $pendientes    = $facturas->whereIn('estado', ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])->count();
-        $pagadas       = $facturas->where('estado', 'PAGADA')->count();
-        $saldoCobrar   = $facturas->whereNotIn('estado', ['PAGADA', 'ANULADA'])->sum('neto_caja');
+        $periodoLabel    = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
+        $estadoLabel     = $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS';
+        $clienteNombre   = strtoupper($cliente->razon_social);
+        $facturasAgrupadas = null;
 
-        // ── Construir detalle de facturas (máx 20 líneas para no saturar WA) ──
-        $lineasFactura = '';
-        $mostradas     = 0;
-        foreach ($facturas as $f) {
-            if ($mostradas >= 20) {
-                $lineasFactura .= "... y " . ($facturas->count() - $mostradas) . " facturas más.\n";
-                break;
-            }
-            $estado_icon = match($f->estado) {
-                'PAGADA'     => '✅',
-                'PENDIENTE'  => '🟡',
-                'POR_VENCER' => '🟠',
-                'VENCIDA'    => '🔴',
-                'ANULADA'    => '⚫',
-                default      => '⚪',
-            };
-            $lineasFactura .= "{$estado_icon} *{$f->serie}-" . str_pad($f->numero, 8, '0', STR_PAD_LEFT) . "* "
-                . "| " . ($f->fecha_emision ?? '—')
-                . " | {$f->moneda} " . number_format($f->importe_total, 2)
-                . "\n";
-            $mostradas++;
+        $resumen = [
+            'total_facturas'    => $facturas->count(),
+            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])->count(),
+            'pagadas'           => $facturas->where('estado', 'PAGADA')->count(),
+            'vencidas'          => $facturas->where('estado', 'VENCIDA')->count(),
+            'total_bruto'       => $facturas->sum('importe_total'),
+            'total_recaudacion' => $facturas->sum('monto_recaudacion'),
+            'total_neto'        => $facturas->sum('neto_caja'),
+            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA', 'ANULADA'])->sum('neto_caja'),
+        ];
+
+        // ── Generar PDF con DomPDF ────────────────────────────────────────
+        try {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reportes.pdf_doc', compact(
+                'facturas', 'facturasAgrupadas', 'resumen',
+                'clienteNombre', 'estadoLabel', 'periodoLabel'
+            ))->setPaper('a4', 'landscape');
+
+            $pdfContent = $pdf->output();
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'No se pudo generar el PDF: ' . $e->getMessage() . '. Asegúrate de instalar barryvdh/laravel-dompdf.',
+            ], 500);
         }
 
-        // ── URL del PDF ────────────────────────────────────────────────────
-        $params    = http_build_query(array_filter([
-            'id_cliente'  => $idCliente,
-            'estado'      => $estado,
-            'fecha_desde' => $fechaDesde,
-            'fecha_hasta' => $fechaHasta,
-        ]));
-        $reporteUrl = url('/reportes/pdf?' . $params);
+        // ── Subir PDF a Cloudinary ────────────────────────────────────────
+        $cloudUrl = $this->subirPdfACloudinary($pdfContent, $clienteNombre, $periodoLabel);
 
-        // ── Mensaje ────────────────────────────────────────────────────────
-        $mensaje = "📊 *REPORTE FINANCIERO — CRC S.A.C.*\n"
-            . "══════════════════════════\n"
-            . "🏢 *Empresa:* " . strtoupper($cliente->razon_social) . "\n"
-            . "📅 *Período:* {$periodoLabel}\n"
-            . "🔖 *Filtro estado:* {$estadoLabel}\n\n"
-            . "📋 *DETALLE DE FACTURAS ({$facturas->count()})*\n"
-            . "──────────────────────────\n"
-            . $lineasFactura
-            . "\n"
-            . "💰 *RESUMEN*\n"
-            . "──────────────────────────\n"
-            . "• Total bruto:       S/ " . number_format($totalBruto,  2) . "\n"
-            . "• Total recaudación: S/ " . number_format($totalDetrac, 2) . "\n"
-            . "• Total neto caja:   S/ " . number_format($totalNeto,   2) . "\n"
-            . "• Pendientes/Venc.:  *{$pendientes}* facturas\n"
-            . "• Pagadas:           *{$pagadas}* facturas\n"
-            . "• *Saldo por cobrar: S/ " . number_format($saldoCobrar, 2) . "*\n\n"
-            . "🔗 Ver reporte completo:\n"
-            . "{$reporteUrl}\n\n"
-            . "_Consorcio Rodriguez Caballero S.A.C._";
+        if (!$cloudUrl) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'No se pudo subir el PDF a Cloudinary.',
+            ], 500);
+        }
 
-        $resultado = $gateway->enviar($cliente->celular, $mensaje);
+        // ── Nombre del archivo ────────────────────────────────────────────
+        $nombreArchivo = 'Reporte_'
+            . preg_replace('/[^A-Za-z0-9_\-]/', '_', $clienteNombre)
+            . '_' . now()->format('Ymd')
+            . '.pdf';
+
+        // ── Caption corto para acompañar el documento ─────────────────────
+        $caption = "*Reporte Financiero — CRC S.A.C.*\n"
+            . "{$clienteNombre}\n"
+            . "{$periodoLabel}\n"
+            . "{$facturas->count()} facturas · Saldo por cobrar: S/ " . number_format($resumen['saldo_cobrar'], 2);
+
+        // ── Enviar documento por WhatsApp ─────────────────────────────────
+        $resultado = $gateway->enviarDocumento($cliente->celular, $cloudUrl, $nombreArchivo, $caption);
 
         return response()->json([
             'success' => $resultado['ok'],
             'message' => $resultado['ok']
-                ? "Reporte enviado por WhatsApp al {$cliente->celular}"
+                ? "PDF enviado por WhatsApp al {$cliente->celular}"
                 : 'No se pudo enviar el WhatsApp: ' . ($resultado['error'] ?? 'Error desconocido'),
         ]);
     }
 
+    /**
+     * Sube el contenido binario de un PDF a Cloudinary (recurso tipo "raw")
+     * y retorna la URL pública segura.
+     */
+    /**
+     * Sube el PDF a Cloudinary como archivo raw y retorna la URL de descarga directa.
+     * Usamos fl_attachment para forzar Content-Disposition: attachment con MIME application/pdf,
+     * lo que permite que whatsapp-web.js lo descargue y envíe como documento.
+     */
+    private function subirPdfACloudinary(string $pdfContent, string $clienteNombre, string $periodo): ?string
+    {
+        $cloudName    = env('CLOUDINARY_CLOUD_NAME', 'dq3rban3m');
+        $uploadPreset = env('CLOUDINARY_UPLOAD_PRESET', 'ml_default');
+
+        $publicId = 'reporte_'
+            . preg_replace('/[^a-z0-9_\-]/', '_', strtolower($clienteNombre))
+            . '_' . now()->format('Ymd_His');
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::attach(
+                'file',
+                $pdfContent,
+                $publicId . '.pdf'
+            )->post("https://api.cloudinary.com/v1_1/{$cloudName}/raw/upload", [
+                'upload_preset' => $uploadPreset,
+                'folder'        => 'reportes_financieros',
+                'public_id'     => $publicId,
+                'resource_type' => 'raw',
+            ]);
+
+            if ($response->successful()) {
+                $secureUrl = $response->json('secure_url');
+
+                // Añadir fl_attachment para que la URL fuerce la descarga con
+                // Content-Disposition: attachment y MIME type correcto.
+                // Esto es necesario para que MessageMedia.fromUrl() en whatsapp-web.js
+                // detecte el tipo de archivo correctamente y lo envíe como documento.
+                $downloadUrl = str_replace(
+                    '/raw/upload/',
+                    '/raw/upload/fl_attachment/',
+                    $secureUrl
+                );
+
+                return $downloadUrl;
+            }
+
+            \Log::error('Cloudinary PDF upload error', ['response' => $response->body()]);
+            return null;
+
+        } catch (\Throwable $e) {
+            \Log::error('Cloudinary PDF exception: ' . $e->getMessage());
+            return null;
+        }
+    }
     // ─────────────────────────────────────────────────────────────────────────
     // ENVÍO POR CORREO
     // ─────────────────────────────────────────────────────────────────────────

@@ -222,10 +222,10 @@
             $r = session('resumen');
             $tipoTag = strtolower($r['tipo_recaudacion'] ?? 'ninguna');
             $tagLabels = [
-                'ninguna'        => ['icon' => '—',  'label' => 'Sin recaudación'],
-                'detraccion'     => ['icon' => '🏦', 'label' => 'Detracción ' . ($r['porcentaje'] ?? 0) . '%'],
-                'retencion'      => ['icon' => '📌', 'label' => 'Retención '   . ($r['porcentaje'] ?? 0) . '%'],
-                'autodetraccion' => ['icon' => '⚡', 'label' => 'Autodetracción ' . ($r['porcentaje'] ?? 0) . '%'],
+                'ninguna'        => ['icon' => '',  'label' => 'Sin recaudación'],
+                'detraccion'     => ['icon' => '', 'label' => 'Detracción ' . ($r['porcentaje'] ?? 0) . '%'],
+                'retencion'      => ['icon' => '', 'label' => 'Retención '   . ($r['porcentaje'] ?? 0) . '%'],
+                'autodetraccion' => ['icon' => '', 'label' => 'Autodetracción ' . ($r['porcentaje'] ?? 0) . '%'],
             ];
             $tagInfo = $tagLabels[$tipoTag] ?? $tagLabels['ninguna'];
         @endphp
@@ -281,7 +281,7 @@
             @csrf
 
             {{-- ── SECCIÓN 1: TIPO DE RECAUDACIÓN ── --}}
-            <div style="margin-bottom: 6px;">
+            <div style="margin-bottom: 24px; padding: 20px 24px; width: 100%;">
                 <div class="section-label">① Tipo de recaudación a aplicar</div>
                 <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
                     Selecciona el tipo de recaudación que se asignará a <strong>todas</strong> las facturas de este archivo.
@@ -291,19 +291,19 @@
 
                 <div class="recaudacion-grid">
                     <div class="recaudacion-card rc-ninguna selected" data-value="" onclick="seleccionarTipo(this)">
-                        <span class="rc-icon">—</span>
+                        <span class="rc-icon"></span>
                         <span class="rc-label">Ninguna</span>
                     </div>
                     <div class="recaudacion-card rc-detraccion" data-value="DETRACCION" onclick="seleccionarTipo(this)">
-                        <span class="rc-icon">🏦</span>
+                        <span class="rc-icon"></span>
                         <span class="rc-label">Detracción</span>
                     </div>
                     <div class="recaudacion-card rc-retencion" data-value="RETENCION" onclick="seleccionarTipo(this)">
-                        <span class="rc-icon">📌</span>
+                        <span class="rc-icon"></span>
                         <span class="rc-label">Retención</span>
                     </div>
                     <div class="recaudacion-card rc-autodetraccion" data-value="AUTODETRACCION" onclick="seleccionarTipo(this)">
-                        <span class="rc-icon">⚡</span>
+                        <span class="rc-icon"></span>
                         <span class="rc-label">Autodetracción</span>
                     </div>
                 </div>
@@ -324,31 +324,34 @@
             <div class="divider"></div>
 
             {{-- ── SECCIÓN 2: ARCHIVO EXCEL ── --}}
-            <div class="section-label">② Archivo Excel de Nubefact</div>
-            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-                Formato aceptado: <strong>.xlsx</strong> · Exportado desde Nubefact
-            </p>
+            <div style="margin-bottom: 24px; padding: 20px 24px; width: 100%;">
+                <div class="section-label">② Archivo Excel de Nubefact</div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+                    Formato aceptado: <strong>.xlsx</strong> · Exportado desde Nubefact
+                </p>
 
-            <div class="drop-zone" id="dz" onclick="document.getElementById('fi').click()">
-                <svg width="44" height="44" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.4">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                </svg>
-                <h3>Arrastra el archivo aquí</h3>
-                <p>o haz clic para seleccionarlo</p>
-            </div>
-
-            <input type="file" id="fi" name="archivo" accept=".xlsx,.xls" style="display:none"
-                   onchange="seleccionar(this)">
-
-            <div class="file-pill" id="pill">
-                <span style="font-size:22px;">📗</span>
-                <div style="flex:1;">
-                    <div class="name" id="fname"></div>
-                    <div class="size" id="fsize"></div>
+                <div class="drop-zone" id="dz" onclick="document.getElementById('fi').click()">
+                    <svg width="44" height="44" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.4">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <h3>Arrastra el archivo aquí</h3>
+                    <p>o haz clic para seleccionarlo</p>
                 </div>
-                <button type="button" onclick="quitar()" title="Quitar">✕</button>
+
+                <input type="file" id="fi" name="archivo" accept=".xlsx,.xls" style="display:none"
+                       onchange="seleccionar(this)">
+
+                <div class="file-pill" id="pill">
+                    <span style="font-size:22px;"></span>
+                    <div style="flex:1;">
+                        <div class="name" id="fname"></div>
+                        <div class="size" id="fsize"></div>
+                    </div>
+                    <button type="button" onclick="quitar()" title="Quitar">✕</button>
+                </div>
             </div>
+
 
             @error('archivo')
             <p style="color:var(--accent-red);font-size:12px;margin-top:8px;">{{ $message }}</p>

@@ -45,22 +45,45 @@ app.get('/status', (req, res) => {
     res.json({ ok: true, listo });
 });
 
-// ─── Enviar mensaje de texto o imagen ────────────────────────────────────────
+// ─── Enviar mensaje de texto, imagen o documento PDF ─────────────────────────
 app.post('/send-message', async (req, res) => {
     try {
-        const { phone, message, imageUrl } = req.body;
+        const { phone, message, imageUrl, documentUrl, fileName } = req.body;
 
         if (!listo) {
             return res.status(503).json({ ok: false, error: 'WhatsApp no está listo' });
         }
 
-        if (!phone || !message) {
-            return res.status(400).json({ ok: false, error: 'phone y message son obligatorios' });
+        if (!phone) {
+            return res.status(400).json({ ok: false, error: 'phone es obligatorio' });
         }
 
         const chatId = `${phone}@c.us`;
 
-        // Si viene imageUrl, enviar como imagen con caption
+        // ── CASO 1: Documento PDF (reporte financiero) ────────────────────────
+        if (documentUrl) {
+            try {
+                console.log(`[DOC] Enviando PDF a ${chatId}: ${documentUrl}`);
+                const media = await MessageMedia.fromUrl(documentUrl, { unsafeMime: true });
+
+                // Asignar nombre de archivo legible al receptor
+                if (fileName) {
+                    media.filename = fileName;
+                }
+
+                const sentMessage = await client.sendMessage(chatId, media, {
+                    sendMediaAsDocument: true,   // <-- clave: envía como archivo, no como imagen
+                    caption: message || '',
+                });
+
+                return res.json({ ok: true, id: sentMessage.id._serialized, tipo: 'documento' });
+            } catch (docError) {
+                console.error('Error enviando documento:', docError.message);
+                return res.status(500).json({ ok: false, error: docError.message, tipo: 'documento' });
+            }
+        }
+
+        // ── CASO 2: Imagen (comprobante de pago) ──────────────────────────────
         if (imageUrl) {
             try {
                 const media = await MessageMedia.fromUrl(imageUrl, { unsafeMime: true });
@@ -68,14 +91,17 @@ app.post('/send-message', async (req, res) => {
                 return res.json({ ok: true, id: sentMessage.id._serialized, tipo: 'imagen' });
             } catch (imgError) {
                 console.error('Error enviando imagen, enviando solo texto:', imgError.message);
-                // Si falla la imagen, manda el texto con la URL al final
                 const textoConUrl = `${message}\n\n📎 Ver comprobante:\n${imageUrl}`;
                 const sentMessage = await client.sendMessage(chatId, textoConUrl);
                 return res.json({ ok: true, id: sentMessage.id._serialized, tipo: 'texto_fallback', warning: imgError.message });
             }
         }
 
-        // Envío de texto simple
+        // ── CASO 3: Texto simple ──────────────────────────────────────────────
+        if (!message) {
+            return res.status(400).json({ ok: false, error: 'Se requiere message, imageUrl o documentUrl' });
+        }
+
         const sentMessage = await client.sendMessage(chatId, message);
         return res.json({ ok: true, id: sentMessage.id._serialized, tipo: 'texto' });
 
