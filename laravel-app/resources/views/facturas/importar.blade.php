@@ -6,22 +6,88 @@
 @push('styles')
     <style>
         .import-wrap {
-            max-width: 560px;
+            max-width: 620px;
             margin: 0 auto;
         }
 
+        /* ── Tipo recaudación ── */
+        .recaudacion-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+
+        .recaudacion-card {
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            padding: 14px 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: all .18s;
+            background: var(--bg-secondary, #f8fafc);
+            user-select: none;
+        }
+
+        .recaudacion-card:hover {
+            border-color: #94a3b8;
+            background: #f1f5f9;
+        }
+
+        .recaudacion-card.selected {
+            border-color: var(--accent);
+            background: #dbeafe;
+        }
+
+        .recaudacion-card.selected .rc-icon { color: var(--accent); }
+        .recaudacion-card.selected .rc-label { color: var(--accent); font-weight: 800; }
+
+        .rc-icon { font-size: 22px; margin-bottom: 6px; display: block; }
+        .rc-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); display: block; }
+
+        .rc-ninguna.selected { border-color: #64748b; background: #f1f5f9; }
+        .rc-ninguna.selected .rc-label { color: #64748b; }
+
+        .rc-detraccion.selected { border-color: #d97706; background: #fef3c7; }
+        .rc-detraccion.selected .rc-icon,
+        .rc-detraccion.selected .rc-label { color: #92400e; }
+
+        .rc-retencion.selected { border-color: #7c3aed; background: #ede9fe; }
+        .rc-retencion.selected .rc-icon,
+        .rc-retencion.selected .rc-label { color: #5b21b6; }
+
+        .rc-autodetraccion.selected { border-color: #059669; background: #d1fae5; }
+        .rc-autodetraccion.selected .rc-icon,
+        .rc-autodetraccion.selected .rc-label { color: #065f46; }
+
+        .porcentaje-row {
+            display: none;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-top: 8px;
+        }
+        .porcentaje-row.show { display: flex; }
+        .porcentaje-row label { font-size: 12px; font-weight: 700; color: var(--text-muted); white-space: nowrap; text-transform: uppercase; letter-spacing: .05em; }
+        .porcentaje-row input { width: 90px; text-align: center; font-weight: 700; }
+        .porcentaje-row span  { font-size: 13px; color: var(--text-muted); }
+
+        /* ── Drop zone ── */
         .drop-zone {
-            border: 2px dashed var(--border-color);
+            border: 2px dashed var(--border-color, #e2e8f0);
             border-radius: 12px;
-            padding: 56px 32px;
+            padding: 48px 32px;
             text-align: center;
             cursor: pointer;
             transition: border-color .2s, background .2s;
-            background: var(--bg-secondary);
+            background: var(--bg-secondary, #f8fafc);
         }
         .drop-zone:hover,
         .drop-zone.over {
-            border-color: var(--accent-blue);
+            border-color: var(--accent, #1d4ed8);
             background: rgba(59,130,246,.05);
         }
         .drop-zone svg { opacity: .35; margin-bottom: 14px; }
@@ -64,7 +130,7 @@
             margin-top: 20px;
         }
         .result-box {
-            background: var(--bg-secondary);
+            background: var(--bg-secondary, #f8fafc);
             border-radius: 10px;
             padding: 18px 12px;
             text-align: center;
@@ -86,6 +152,21 @@
         .result-box.amber  .num { color: #f59e0b; }
         .result-box.azul   .num { color: #3b82f6; }
 
+        .resumen-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 14px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .tag-ninguna       { background: #f1f5f9; color: #475569; }
+        .tag-detraccion    { background: #fef3c7; color: #92400e; }
+        .tag-retencion     { background: #ede9fe; color: #5b21b6; }
+        .tag-autodetraccion{ background: #d1fae5; color: #065f46; }
+
         .errores-box {
             margin-top: 14px;
             background: rgba(239,68,68,.06);
@@ -98,6 +179,26 @@
             color: var(--accent-red);
         }
         .errores-box li { margin-bottom: 4px; list-style: none; }
+
+        .section-label {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border, #e2e8f0);
+        }
+
+        .divider { height: 1px; background: var(--border, #e2e8f0); margin: 22px 0; }
     </style>
 @endpush
 
@@ -117,7 +218,17 @@
 
     {{-- ── RESULTADO ── --}}
     @if(session('resumen'))
-        @php $r = session('resumen'); @endphp
+        @php
+            $r = session('resumen');
+            $tipoTag = strtolower($r['tipo_recaudacion'] ?? 'ninguna');
+            $tagLabels = [
+                'ninguna'        => ['icon' => '—',  'label' => 'Sin recaudación'],
+                'detraccion'     => ['icon' => '🏦', 'label' => 'Detracción ' . ($r['porcentaje'] ?? 0) . '%'],
+                'retencion'      => ['icon' => '📌', 'label' => 'Retención '   . ($r['porcentaje'] ?? 0) . '%'],
+                'autodetraccion' => ['icon' => '⚡', 'label' => 'Autodetracción ' . ($r['porcentaje'] ?? 0) . '%'],
+            ];
+            $tagInfo = $tagLabels[$tipoTag] ?? $tagLabels['ninguna'];
+        @endphp
         <div class="card import-wrap" style="margin-bottom:24px;">
             <p style="font-weight:600;font-size:15px;margin-bottom:4px;">✓ Importación completada</p>
             <p style="font-size:13px;color:var(--text-muted);margin:0;">El archivo fue procesado correctamente.</p>
@@ -134,6 +245,11 @@
                     <div class="num">{{ $r['duplicadas'] }}</div>
                     <div class="lbl">Duplicadas</div>
                 </div>
+            </div>
+            <div>
+                <span class="resumen-tag tag-{{ $tipoTag }}">
+                    {{ $tagInfo['icon'] }} Recaudación aplicada: {{ $tagInfo['label'] }}
+                </span>
             </div>
             @if(!empty($r['errores']))
                 <div class="errores-box">
@@ -160,15 +276,59 @@
 
     {{-- ── FORMULARIO ── --}}
     <div class="card import-wrap">
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">
-            Formato aceptado: <strong>.xlsx</strong> · Exportado desde Nubefact
-        </p>
-
         <form id="frm" method="POST" action="{{ route('facturas.importar.procesar') }}"
               enctype="multipart/form-data">
             @csrf
 
-            {{-- Drop zone --}}
+            {{-- ── SECCIÓN 1: TIPO DE RECAUDACIÓN ── --}}
+            <div style="margin-bottom: 6px;">
+                <div class="section-label">① Tipo de recaudación a aplicar</div>
+                <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">
+                    Selecciona el tipo de recaudación que se asignará a <strong>todas</strong> las facturas de este archivo.
+                </p>
+
+                <input type="hidden" name="tipo_recaudacion" id="tipoRecaudacionInput" value="">
+
+                <div class="recaudacion-grid">
+                    <div class="recaudacion-card rc-ninguna selected" data-value="" onclick="seleccionarTipo(this)">
+                        <span class="rc-icon">—</span>
+                        <span class="rc-label">Ninguna</span>
+                    </div>
+                    <div class="recaudacion-card rc-detraccion" data-value="DETRACCION" onclick="seleccionarTipo(this)">
+                        <span class="rc-icon">🏦</span>
+                        <span class="rc-label">Detracción</span>
+                    </div>
+                    <div class="recaudacion-card rc-retencion" data-value="RETENCION" onclick="seleccionarTipo(this)">
+                        <span class="rc-icon">📌</span>
+                        <span class="rc-label">Retención</span>
+                    </div>
+                    <div class="recaudacion-card rc-autodetraccion" data-value="AUTODETRACCION" onclick="seleccionarTipo(this)">
+                        <span class="rc-icon">⚡</span>
+                        <span class="rc-label">Autodetracción</span>
+                    </div>
+                </div>
+
+                <div class="porcentaje-row" id="porcentajeRow">
+                    <label for="porcentajeInput">Porcentaje:</label>
+                    <input type="number"
+                           name="porcentaje_recaudacion"
+                           id="porcentajeInput"
+                           class="form-input"
+                           value="10"
+                           min="0" max="100" step="0.01"
+                           placeholder="10">
+                    <span>% del importe total de cada factura</span>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+
+            {{-- ── SECCIÓN 2: ARCHIVO EXCEL ── --}}
+            <div class="section-label">② Archivo Excel de Nubefact</div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
+                Formato aceptado: <strong>.xlsx</strong> · Exportado desde Nubefact
+            </p>
+
             <div class="drop-zone" id="dz" onclick="document.getElementById('fi').click()">
                 <svg width="44" height="44" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.4">
                     <path stroke-linecap="round" stroke-linejoin="round"
@@ -181,7 +341,6 @@
             <input type="file" id="fi" name="archivo" accept=".xlsx,.xls" style="display:none"
                    onchange="seleccionar(this)">
 
-            {{-- Pill de archivo --}}
             <div class="file-pill" id="pill">
                 <span style="font-size:22px;">📗</span>
                 <div style="flex:1;">
@@ -192,6 +351,9 @@
             </div>
 
             @error('archivo')
+            <p style="color:var(--accent-red);font-size:12px;margin-top:8px;">{{ $message }}</p>
+            @enderror
+            @error('tipo_recaudacion')
             <p style="color:var(--accent-red);font-size:12px;margin-top:8px;">{{ $message }}</p>
             @enderror
 
@@ -209,7 +371,19 @@
         const pill = document.getElementById('pill');
         const btn  = document.getElementById('btnSub');
 
-        // Drag & drop
+        // ── Selección de tipo de recaudación ──────────────────────────────
+        function seleccionarTipo(card) {
+            document.querySelectorAll('.recaudacion-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+
+            const valor = card.dataset.value;
+            document.getElementById('tipoRecaudacionInput').value = valor;
+
+            const porcentajeRow = document.getElementById('porcentajeRow');
+            porcentajeRow.classList.toggle('show', valor !== '');
+        }
+
+        // ── Drag & drop ───────────────────────────────────────────────────
         dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
         dz.addEventListener('dragleave', () => dz.classList.remove('over'));
         dz.addEventListener('drop', e => {
@@ -237,10 +411,9 @@
             btn.disabled = true;
         }
 
-        // Al enviar: feedback visual sin bloquear el submit
         document.getElementById('frm').addEventListener('submit', function() {
             btn.disabled  = true;
-            btn.textContent = '⏳ Procesando…';
+            btn.textContent = ' Procesando…';
         });
     </script>
 @endpush

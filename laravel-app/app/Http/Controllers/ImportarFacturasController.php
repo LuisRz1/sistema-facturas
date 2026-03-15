@@ -11,9 +11,6 @@ use Carbon\Carbon;
 
 class ImportarFacturasController extends Controller
 {
-    // Monto mínimo para aplicar detracción o autodetracción
-    private const MINIMO_RECAUDACION = 700.00;
-
     public function index()
     {
         return view('facturas.importar');
@@ -25,7 +22,9 @@ class ImportarFacturasController extends Controller
         ini_set('memory_limit', '256M');
 
         $request->validate([
-            'archivo' => 'required|file|max:10240',
+            'archivo'              => 'required|file|max:10240',
+            'tipo_recaudacion'     => 'nullable|in:DETRACCION,RETENCION,AUTODETRACCION',
+            'porcentaje_recaudacion' => 'nullable|numeric|min:0|max:100',
         ], [
             'archivo.required' => 'Selecciona un archivo Excel.',
         ]);
@@ -37,6 +36,10 @@ class ImportarFacturasController extends Controller
             return back()->with('error', 'El archivo debe ser .xlsx o .xls');
         }
 
+        // ── Tipo y porcentaje de recaudación seleccionados por el usuario ──
+        $tipoRecaudacionGlobal  = $request->input('tipo_recaudacion');   // null = NINGUNA
+        $porcentajeGlobal       = (float) $request->input('porcentaje_recaudacion', 10.00);
+
         try {
             $spreadsheet = IOFactory::load($archivo->getPathname());
         } catch (\Throwable $e) {
@@ -44,7 +47,6 @@ class ImportarFacturasController extends Controller
         }
 
         $hoja  = $spreadsheet->getActiveSheet();
-        // $formatData = false → valores numéricos crudos (159360.0, no "159.360,00")
         $filas = $hoja->toArray(null, true, false, true);
         unset($filas[1]); // quitar cabecera
 
@@ -68,44 +70,29 @@ class ImportarFacturasController extends Controller
                 // Fila vacía
                 if (empty($f['E']) && empty($f['F'])) continue;
 
-                // ── Montos ───────────────────────────────────────────────────
-                // phpspreadsheet devuelve los valores numéricos nativos (int/float).
-                // El formato visual "159.360,00" del Excel es solo presentación;
-                // el valor almacenado ya es 159360. abs() cubre los negativos del tipo 07.
+                // ── Montos ────────────────────────────────────────────────
                 $tipo            = trim((string)($f['D'] ?? '01'));
                 $subtotalGravado = $this->monto($f['P'] ?? 0);
                 $montoIgv        = $this->monto($f['T'] ?? 0);
                 $importeTotal    = $this->monto($f['Y'] ?? 0);
+                $moneda          = trim((string)($f['N'] ?? 'PEN'));
 
-                // ENUM: PAGADA | PENDIENTE | POR_VENCER | VENCIDA | ANULADA | OBSERVADA
+                // Estado según tipo de comprobante
                 $estado = ($tipo === '07') ? 'PENDIENTE' : 'PAGADA';
 
-                // ── Detracción / Autodetracción ──────────────────────────────
-                // REGLA: solo aplica recaudación si importe_total > 700 PEN
-                $moneda      = trim((string)($f['N'] ?? 'PEN'));
-                $tieneDetrac = strtoupper(trim((string)($f['AD'] ?? ''))) === 'SI';
-                $aplicaRecaudacion = ($moneda === 'PEN' && $importeTotal > self::MINIMO_RECAUDACION);
+                // ── Recaudación según selección del usuario ───────────────
+                $montoRecaudacion = 0;
 
-                $tipoRecaudacion = null;
-                $importeDetrac   = 0;
-                $totalAutodetrac = null;
-
-                if ($aplicaRecaudacion) {
-                    if ($tieneDetrac) {
-                        $tipoRecaudacion = 'DETRACCION';
-                        $importeDetrac   = $this->monto($f['AE'] ?? 0);
-                    } else {
-                        $tipoRecaudacion = 'AUTODETRACCION';
-                        $totalAutodetrac = round($importeTotal * 0.10, 2);
-                    }
+                if ($tipoRecaudacionGlobal && $importeTotal > 0) {
+                    $montoRecaudacion = round($importeTotal * ($porcentajeGlobal / 100), 2);
                 }
 
-                // ── Glosa y fechas ───────────────────────────────────────────
+                // ── Glosa y fechas ─────────────────────────────────────────
                 $glosa            = $this->transformarGlosa(trim((string)($f['AG'] ?? '')));
                 $fechaEmision     = $this->parsearFecha($f['B'] ?? null);
                 $fechaVencimiento = $this->parsearFecha($f['C'] ?? null);
 
-                // ── Cliente: buscar o crear ──────────────────────────────────
+                // ── Cliente: buscar o crear ────────────────────────────────
                 $ruc         = trim((string)($f['J'] ?? ''));
                 $razonSocial = trim((string)($f['K'] ?? ''));
 
@@ -134,7 +121,7 @@ class ImportarFacturasController extends Controller
                     }
                 }
 
-                // ── Duplicado ────────────────────────────────────────────────
+                // ── Duplicado ──────────────────────────────────────────────
                 $serie  = trim((string)($f['E'] ?? ''));
                 $numero = (int) trim((string)($f['F'] ?? '0'));
 
@@ -143,7 +130,7 @@ class ImportarFacturasController extends Controller
                     continue;
                 }
 
-                // ── Insertar Factura ─────────────────────────────────────────
+                // ── Insertar Factura ───────────────────────────────────────
                 $idFactura = DB::table('factura')->insertGetId([
                     'serie'             => $serie,
                     'numero'            => $numero,
@@ -157,28 +144,33 @@ class ImportarFacturasController extends Controller
                     'estado'            => $estado,
                     'glosa'             => $glosa,
                     'forma_pago'        => trim((string)($f['AH'] ?? '')),
-                    'tipo_recaudacion'  => $tipoRecaudacion,   // null si total <= 700
+                    'tipo_recaudacion'  => $tipoRecaudacionGlobal,
                     'fecha_vencimiento' => $fechaVencimiento,
                     'fecha_emision'     => $fechaEmision,
                     'fecha_creacion'    => now(),
                     'usuario_creacion'  => $idUsuario,
                 ]);
 
-                // ── Tabla hija solo si aplica recaudación ────────────────────
-                if ($aplicaRecaudacion) {
-                    if ($tieneDetrac) {
-                        DB::table('detraccion')->insert([
+                // ── Tabla hija según tipo de recaudación ──────────────────
+                if ($tipoRecaudacionGlobal && $montoRecaudacion > 0) {
+                    match ($tipoRecaudacionGlobal) {
+                        'DETRACCION'    => DB::table('detraccion')->insert([
                             'id_factura'       => $idFactura,
-                            'porcentaje'       => 10.00,
-                            'total_detraccion' => $importeDetrac,
-                        ]);
-                    } else {
-                        DB::table('autodetraccion')->insert([
+                            'porcentaje'       => $porcentajeGlobal,
+                            'total_detraccion' => $montoRecaudacion,
+                        ]),
+                        'RETENCION'     => DB::table('retencion')->insert([
+                            'id_factura'       => $idFactura,
+                            'porcentaje'       => $porcentajeGlobal,
+                            'total_retencion'  => $montoRecaudacion,
+                        ]),
+                        'AUTODETRACCION' => DB::table('autodetraccion')->insert([
                             'id_factura'           => $idFactura,
-                            'porcentaje'           => 10.00,
-                            'total_autodetraccion' => $totalAutodetrac,
-                        ]);
-                    }
+                            'porcentaje'           => $porcentajeGlobal,
+                            'total_autodetraccion' => $montoRecaudacion,
+                        ]),
+                        default => null,
+                    };
                 }
 
                 $insertadas++;
@@ -195,10 +187,12 @@ class ImportarFacturasController extends Controller
         }
 
         return redirect()->route('facturas.importar')->with('resumen', [
-            'insertadas' => $insertadas,
-            'omitidas'   => $omitidas,
-            'duplicadas' => $duplicadas,
-            'errores'    => $errores,
+            'insertadas'       => $insertadas,
+            'omitidas'         => $omitidas,
+            'duplicadas'       => $duplicadas,
+            'errores'          => $errores,
+            'tipo_recaudacion' => $tipoRecaudacionGlobal ?? 'NINGUNA',
+            'porcentaje'       => $tipoRecaudacionGlobal ? $porcentajeGlobal : 0,
         ]);
     }
 
@@ -209,7 +203,6 @@ class ImportarFacturasController extends Controller
         if (empty($txt)) return '';
         $up = strtoupper($txt);
 
-        // 1. PLACA
         if (str_contains($up, 'PLACA')) {
             if (preg_match('/PLACA\s*:?\s*([A-Z0-9]{3}[-]?[A-Z0-9]{3,4})/i', $txt, $m)) {
                 return 'Alquiler de carro Placa: ' . strtoupper($m[1]);
@@ -217,22 +210,18 @@ class ImportarFacturasController extends Controller
             return 'Alquiler de carro Placa: N/D';
         }
 
-        // 2. AGUA + TRANSPORTE (ambas palabras presentes)
         if (str_contains($up, 'AGUA') && str_contains($up, 'TRANSPORT')) {
             return 'Servicio de transporte de agua';
         }
 
-        // 3. Solo AGUA
         if (str_contains($up, 'AGUA')) {
             return 'Suministro de Agua';
         }
 
-        // 4. Solo TRANSPORTE
         if (str_contains($up, 'TRANSPORT')) {
             return 'Servicio de transporte';
         }
 
-        // 5. ALQUILER DE ...
         if (str_contains($up, 'ALQUILER')) {
             if (preg_match('/ALQUILER\s+DE\s+([\wÁÉÍÓÚáéíóúÑñ]+)(?:\s+([\wÁÉÍÓÚáéíóúÑñ]+))?/iu', $txt, $m)) {
                 $parte = ucfirst(strtolower($m[1]));
@@ -241,21 +230,11 @@ class ImportarFacturasController extends Controller
             }
         }
 
-        // 6. Texto original limpio
         return trim(preg_replace('/\s+/', ' ', $txt));
     }
 
-    /**
-     * Parsea montos desde phpspreadsheet.
-     *
-     * phpspreadsheet devuelve los valores numéricos de Excel como int/float nativos,
-     * ignorando el formato visual de celda ("159.360,00" → 159360).
-     * Solo en casos donde la celda sea texto con formato europeo se aplica
-     * la conversión manual: quitar puntos de miles y cambiar coma decimal por punto.
-     */
     private function monto(mixed $v): float
     {
-        // Valor numérico nativo (caso normal con phpspreadsheet)
         if (is_int($v) || is_float($v)) {
             return abs($v);
         }
@@ -263,15 +242,11 @@ class ImportarFacturasController extends Controller
         $s = trim((string)$v);
         if ($s === '' || $s === null) return 0.0;
 
-        // Formato europeo: "159.360,00" → quitar puntos → "159360,00" → cambiar coma → "159360.00"
-        // Detectamos si tiene coma (separador decimal europeo)
         if (str_contains($s, ',')) {
-            // Quitar puntos de miles, reemplazar coma decimal por punto
             $s = str_replace('.', '', $s);
             $s = str_replace(',', '.', $s);
         }
 
-        // Quitar cualquier carácter no numérico excepto punto y signo
         $s = preg_replace('/[^0-9.]/', '', $s);
 
         return abs((float)$s);

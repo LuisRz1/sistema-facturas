@@ -47,6 +47,8 @@ Route::put('/clientes/{id}',     [ClienteController::class, 'update'] )->name('c
 Route::delete('/clientes/{id}',  [ClienteController::class, 'destroy'])->name('clientes.destroy');
 
 // ── REPORTES ──────────────────────────────────────────────────────────────
-Route::get('/reportes',      [ReporteController::class, 'index'])->name('reportes.index');
-Route::get('/reportes/json', [ReporteController::class, 'json'] )->name('reportes.json');
-Route::get('/reportes/pdf',  [ReporteController::class, 'pdf']  )->name('reportes.pdf');
+Route::get('/reportes',         [ReporteController::class, 'index'])->name('reportes.index');
+Route::get('/reportes/json',    [ReporteController::class, 'json'] )->name('reportes.json');
+Route::get('/reportes/pdf',     [ReporteController::class, 'pdf']  )->name('reportes.pdf');
+Route::post('/reportes/enviar-whatsapp', [ReporteController::class, 'enviarReporteWhatsApp'])->name('reportes.enviar-whatsapp');
+Route::post('/reportes/enviar-correo',   [ReporteController::class, 'enviarReporteCorreo']  )->name('reportes.enviar-correo');

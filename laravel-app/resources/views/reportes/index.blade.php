@@ -41,6 +41,68 @@
             transition: background .15s; text-decoration: none;
         }
         .btn-pdf:hover { background: #1e293b; color: #fff; }
+
+        /* ── Botones de envío ── */
+        .send-panel {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 10px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+        .send-panel.show { display: flex; }
+
+        .send-panel .send-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #15803d;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            white-space: nowrap;
+        }
+
+        .btn-send-wa {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 9px 16px; border-radius: 8px; font-size: 13px;
+            font-weight: 700; border: none; cursor: pointer;
+            background: #22c55e; color: #fff;
+            transition: all .15s;
+        }
+        .btn-send-wa:hover:not(:disabled) { background: #16a34a; transform: translateY(-1px); }
+        .btn-send-wa:disabled { opacity: .6; cursor: not-allowed; }
+
+        .btn-send-mail {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 9px 16px; border-radius: 8px; font-size: 13px;
+            font-weight: 700; border: none; cursor: pointer;
+            background: #3b82f6; color: #fff;
+            transition: all .15s;
+        }
+        .btn-send-mail:hover:not(:disabled) { background: #2563eb; transform: translateY(-1px); }
+        .btn-send-mail:disabled { opacity: .6; cursor: not-allowed; }
+
+        .send-info {
+            font-size: 12px;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .send-result {
+            display: none;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        .send-result.ok    { background: #d1fae5; color: #065f46; }
+        .send-result.error { background: #fee2e2; color: #991b1b; }
     </style>
 @endpush
 
@@ -49,7 +111,7 @@
     <div class="page-header">
         <div>
             <h1 class="page-title">Reportes Financieros</h1>
-            <p class="page-desc">Filtra por período, cliente y estado para generar el reporte en PDF.</p>
+            <p class="page-desc">Filtra por período, cliente y estado para generar el reporte en PDF o enviarlo directamente al cliente.</p>
         </div>
     </div>
 
@@ -82,10 +144,14 @@
                 {{-- Cliente --}}
                 <div class="filtro-group">
                     <label>Cliente</label>
-                    <select name="id_cliente" class="form-input" id="selCliente">
+                    <select name="id_cliente" class="form-input" id="selCliente" onchange="onClienteChange()">
                         <option value="">Todos los clientes</option>
                         @foreach($clientes as $c)
-                            <option value="{{ $c->id_cliente }}">{{ $c->razon_social }}</option>
+                            <option value="{{ $c->id_cliente }}"
+                                    data-celular="{{ $c->celular }}"
+                                    data-correo="{{ $c->correo }}">
+                                {{ $c->razon_social }}
+                            </option>
                         @endforeach
                     </select>
                 </div>
@@ -121,6 +187,29 @@
                 </div>
             </div>
         </form>
+
+        {{-- ── PANEL DE ENVÍO (solo cuando hay un cliente seleccionado) ── --}}
+        <div class="send-panel" id="sendPanel">
+            <span class="send-label">📤 Enviar reporte al cliente:</span>
+
+            <button type="button" class="btn-send-wa" id="btnEnviarWA" onclick="enviarReporte('whatsapp')">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                </svg>
+                WhatsApp
+            </button>
+
+            <button type="button" class="btn-send-mail" id="btnEnviarMail" onclick="enviarReporte('correo')">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+                Correo
+            </button>
+
+            <span class="send-info" id="sendContactInfo"></span>
+        </div>
+
+        <div class="send-result" id="sendResult"></div>
     </div>
 
     {{-- ── PREVIEW ── --}}
@@ -165,14 +254,101 @@
 
 @push('scripts')
     <script>
+        // ── Utilidades ────────────────────────────────────────────────────
         function fmt(n) {
-            return 'S/ ' + parseFloat(n || 0).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return 'S/ ' + parseFloat(n || 0).toLocaleString('es-PE', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
         }
 
         function estadoBadge(e) {
             return `<span class="badge-estado estado-${e}">${e.replace('_',' ')}</span>`;
         }
 
+        // ── Detectar cambio de cliente ────────────────────────────────────
+        function onClienteChange() {
+            const sel  = document.getElementById('selCliente');
+            const opt  = sel.options[sel.selectedIndex];
+            const panel = document.getElementById('sendPanel');
+            const info  = document.getElementById('sendContactInfo');
+
+            if (!sel.value) {
+                panel.classList.remove('show');
+                return;
+            }
+
+            const celular = opt.dataset.celular || '';
+            const correo  = opt.dataset.correo  || '';
+
+            let infoHtml = '';
+            if (celular) infoHtml += `📱 ${celular}`;
+            if (celular && correo) infoHtml += ' &nbsp;·&nbsp; ';
+            if (correo)  infoHtml += `✉ ${correo}`;
+            if (!celular && !correo) infoHtml = '<span style="color:#ef4444;">Sin datos de contacto</span>';
+
+            info.innerHTML = infoHtml;
+            panel.classList.add('show');
+            hideSendResult();
+        }
+
+        function hideSendResult() {
+            const el = document.getElementById('sendResult');
+            el.style.display = 'none';
+            el.className = 'send-result';
+        }
+
+        function showSendResult(ok, msg) {
+            const el = document.getElementById('sendResult');
+            el.textContent = (ok ? '✓ ' : '✗ ') + msg;
+            el.className = 'send-result ' + (ok ? 'ok' : 'error');
+            el.style.display = 'block';
+        }
+
+        // ── Enviar reporte (WhatsApp o Correo) ────────────────────────────
+        async function enviarReporte(canal) {
+            const idCliente = document.getElementById('selCliente').value;
+            const estado    = document.getElementById('selEstado').value;
+            const mes       = document.getElementById('selMes').value;
+            const anio      = document.getElementById('selAnio').value;
+
+            if (!idCliente) {
+                showSendResult(false, 'Selecciona un cliente específico primero.');
+                return;
+            }
+
+            const btnWA   = document.getElementById('btnEnviarWA');
+            const btnMail = document.getElementById('btnEnviarMail');
+            btnWA.disabled   = true;
+            btnMail.disabled = true;
+
+            hideSendResult();
+
+            const ruta = canal === 'whatsapp'
+                ? '{{ route("reportes.enviar-whatsapp") }}'
+                : '{{ route("reportes.enviar-correo") }}';
+
+            const body = new URLSearchParams({
+                id_cliente: idCliente,
+                estado:     estado,
+                mes:        mes,
+                anio:       anio,
+                _token:     '{{ csrf_token() }}',
+            });
+
+            try {
+                const res  = await fetch(ruta, { method: 'POST', body });
+                const data = await res.json();
+                showSendResult(data.success, data.message || data.error || 'Error desconocido');
+            } catch (err) {
+                showSendResult(false, 'Error de red: ' + err.message);
+            } finally {
+                btnWA.disabled   = false;
+                btnMail.disabled = false;
+            }
+        }
+
+        // ── Previsualizar reporte ─────────────────────────────────────────
         async function previsualizarReporte() {
             const mes      = document.getElementById('selMes').value;
             const anio     = document.getElementById('selAnio').value;
@@ -191,7 +367,8 @@
             if (!data.facturas.length) {
                 document.getElementById('previewArea').style.display  = 'none';
                 document.getElementById('emptyState').style.display   = 'block';
-                document.getElementById('emptyState').querySelector('p').textContent = 'Sin resultados para los filtros seleccionados.';
+                document.getElementById('emptyState').querySelector('p').textContent =
+                    'Sin resultados para los filtros seleccionados.';
                 return;
             }
 
@@ -228,8 +405,10 @@
             `).join('');
 
             document.getElementById('previewBody').innerHTML = rows;
-            document.getElementById('previewTitle').textContent = `${data.cliente_nombre} — ${data.periodo_label}`;
-            document.getElementById('previewSub').textContent   = `${r.total_facturas} facturas · Estado: ${data.estado_label}`;
+            document.getElementById('previewTitle').textContent =
+                `${data.cliente_nombre} — ${data.periodo_label}`;
+            document.getElementById('previewSub').textContent =
+                `${r.total_facturas} facturas · Estado: ${data.estado_label}`;
 
             document.getElementById('emptyState').style.display  = 'none';
             document.getElementById('previewArea').style.display = 'block';
