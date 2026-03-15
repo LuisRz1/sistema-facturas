@@ -603,6 +603,13 @@
     <nav class="sidebar-nav">
         <div class="nav-label">Principal</div>
 
+        <a href="{{ route('dashboard') }}" class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            Panel Principal
+        </a>
+
         <a href="{{ route('facturas.index') }}" class="nav-item {{ request()->routeIs('facturas.*') ? 'active' : '' }}">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -702,15 +709,15 @@
     function toggleSidebar() {
         const sidebar = document.querySelector('.sidebar');
         const mainWrapper = document.querySelector('.main-wrapper');
-        
+
         sidebar.classList.toggle('collapsed');
         mainWrapper.classList.toggle('sidebar-collapsed');
-        
+
         // Guardar estado en localStorage
         const isCollapsed = sidebar.classList.contains('collapsed');
         localStorage.setItem('sidebarCollapsed', isCollapsed ? 'true' : 'false');
     }
-    
+
     // Restaurar estado del sidebar al cargar la página
     document.addEventListener('DOMContentLoaded', function() {
         const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';

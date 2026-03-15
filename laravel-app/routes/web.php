@@ -1,13 +1,17 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FacturaController;
 use App\Http\Controllers\ClienteController;
 use App\Http\Controllers\NotificacionController;
 use App\Http\Controllers\ImportarFacturasController;
 use App\Http\Controllers\ReporteController;
 
-Route::redirect('/', '/facturas');
+Route::redirect('/', '/dashboard');
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────
+Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
 // ── FACTURAS ──────────────────────────────────────────────────────────────
 Route::get('/facturas', [FacturaController::class, 'index'])->name('facturas.index');
