@@ -44,7 +44,7 @@ class ImportarFacturasController extends Controller
         $filas = $hoja->toArray(null, true, false, true);
         unset($filas[1]); // quitar cabecera
 
-        $idUsuario  = Auth::id() ?? 1;
+        $idUsuario  = Auth::id();
         $insertadas = 0;
         $omitidas   = 0;
         $duplicadas = 0;

@@ -642,11 +642,27 @@
 
     <div class="sidebar-footer">
         <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:#1e293b;">
-            <div style="width:30px;height:30px;border-radius:50%;background:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;">A</div>
-            <div>
-                <div style="font-size:12px;font-weight:600;color:#f1f5f9;">Admin</div>
-                <div style="font-size:10px;color:#64748b;">Gerente Financiero</div>
+            <div style="width:30px;height:30px;border-radius:50%;background:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;">
+                {{ strtoupper(substr(Auth::user()->nombre ?? 'A', 0, 1)) }}
             </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    {{ Auth::user()->nombre ?? 'Admin' }} {{ Auth::user()->apellido ?? '' }}
+                </div>
+                <div style="font-size:10px;color:#64748b;">{{ Auth::user()->nombre_usuario ?? '' }}</div>
+            </div>
+            <form method="POST" action="{{ route('logout') }}" style="flex-shrink:0;">
+                @csrf
+                <button type="submit"
+                        title="Cerrar sesión"
+                        style="background:none;border:none;cursor:pointer;color:#64748b;padding:4px;border-radius:4px;display:flex;align-items:center;"
+                        onmouseover="this.style.color='#ef4444'"
+                        onmouseout="this.style.color='#64748b'">
+                    <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                </button>
+            </form>
         </div>
     </div>
 </aside>
@@ -674,12 +690,26 @@
             </div>
         </div>
         <div class="topbar-right">
-            <div class="topbar-user">
-                <div class="user-avatar">A</div>
-                <div class="user-info">
-                    <strong>Admin</strong>
-                    <span>Gerente Financiero</span>
+            <div class="topbar-right">
+                <div class="topbar-user">
+                    <div class="user-avatar">
+                        {{ strtoupper(substr(Auth::user()->nombre ?? 'A', 0, 1)) }}
+                    </div>
+                    <div class="user-info">
+                        <strong>{{ Auth::user()->nombre ?? 'Admin' }}</strong>
+                        <span>{{ Auth::user()->nombre_usuario ?? '' }}</span>
+                    </div>
                 </div>
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="btn btn-ghost btn-sm" title="Cerrar sesión"
+                            style="color:var(--text-muted);">
+                        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                        </svg>
+                        Salir
+                    </button>
+                </form>
             </div>
         </div>
     </header>
