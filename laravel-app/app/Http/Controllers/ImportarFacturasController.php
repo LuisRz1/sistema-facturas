@@ -34,6 +34,11 @@ class ImportarFacturasController extends Controller
             return back()->with('error', 'El archivo debe ser .xlsx o .xls');
         }
 
+        // ── Parámetros de recaudación del formulario ──────────────────────
+        // tipoRecaudacion: DETRACCION | RETENCION | AUTODETRACCION | '' (ninguna)
+        $tipoRecaudacion = $request->input('tipo_recaudacion', '');
+        $porcentajeForm  = (float) $request->input('porcentaje_recaudacion', 10);
+
         try {
             $spreadsheet = IOFactory::load($archivo->getPathname());
         } catch (\Throwable $e) {
@@ -70,6 +75,11 @@ class ImportarFacturasController extends Controller
                 $montoIgv        = $this->monto($f['T'] ?? 0);
                 $importeTotal    = $this->monto($f['Y'] ?? 0);
                 $moneda          = trim((string)($f['N'] ?? 'PEN'));
+
+                // ── Columna AE: monto de recaudación del Excel ───────────────
+                // Se toma directamente, sin cálculos.
+                // El porcentaje se guarda siempre como 10 (valor fijo referencial).
+                $montoRecaudacionExcel = $this->monto($f['AE'] ?? 0);
 
                 // Estado según tipo de comprobante
                 $estado = ($tipo === '07') ? 'PENDIENTE' : 'PAGADA';
@@ -118,7 +128,7 @@ class ImportarFacturasController extends Controller
                 }
 
                 // ── Insertar Factura ───────────────────────────────────────
-                DB::table('factura')->insert([
+                $idFactura = DB::table('factura')->insertGetId([
                     'serie'             => $serie,
                     'numero'            => $numero,
                     'tipo_operacion'    => trim((string)($f['H'] ?? '')),
@@ -131,13 +141,40 @@ class ImportarFacturasController extends Controller
                     'estado'            => $estado,
                     'glosa'             => $glosa,
                     'forma_pago'        => trim((string)($f['AH'] ?? '')),
-                    'tipo_recaudacion'  => null,
+                    'tipo_recaudacion'  => $tipoRecaudacion ?: null,
                     'fecha_vencimiento' => $fechaVencimiento,
                     'fecha_emision'     => $fechaEmision,
                     'fecha_creacion'    => now(),
                     'usuario_creacion'  => $idUsuario,
                 ]);
 
+                // ── Insertar en tabla de recaudación ───────────────────────
+                // Lee el valor directo de columna AE del Excel.
+                // Si AE = 0 o vacío, no inserta nada (esa factura no tiene
+                // recaudación). Sin cálculos propios: lo que dice el Excel.
+                // Solo inserta si el Excel tiene un monto en columna AE.
+                // Nada se calcula: porcentaje viene de columna AC, monto de AE.
+                if (!empty($tipoRecaudacion) && $montoRecaudacionExcel > 0) {
+                    if ($tipoRecaudacion === 'DETRACCION') {
+                        DB::table('detraccion')->insert([
+                            'id_factura'       => $idFactura,
+                            'porcentaje'       => $porcentajeForm,
+                            'total_detraccion' => $montoRecaudacionExcel,
+                        ]);
+                    } elseif ($tipoRecaudacion === 'RETENCION') {
+                        DB::table('retencion')->insert([
+                            'id_factura'      => $idFactura,
+                            'porcentaje'      => $porcentajeForm,
+                            'total_retencion' => $montoRecaudacionExcel,
+                        ]);
+                    } elseif ($tipoRecaudacion === 'AUTODETRACCION') {
+                        DB::table('autodetraccion')->insert([
+                            'id_factura'           => $idFactura,
+                            'porcentaje'           => $porcentajeForm,
+                            'total_autodetraccion' => $montoRecaudacionExcel,
+                        ]);
+                    }
+                }
                 $insertadas++;
             }
 
@@ -152,10 +189,12 @@ class ImportarFacturasController extends Controller
         }
 
         return redirect()->route('facturas.importar')->with('resumen', [
-            'insertadas' => $insertadas,
-            'omitidas'   => $omitidas,
-            'duplicadas' => $duplicadas,
-            'errores'    => $errores,
+            'insertadas'       => $insertadas,
+            'omitidas'         => $omitidas,
+            'duplicadas'       => $duplicadas,
+            'errores'          => $errores,
+            'tipo_recaudacion' => $tipoRecaudacion,
+
         ]);
     }
 
