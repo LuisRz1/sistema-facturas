@@ -35,9 +35,27 @@ class Factura extends Model
         'usuario_creacion',
     ];
 
+    // ── Relaciones ─────────────────────────────────────────────────────────
+
     public function cliente(): BelongsTo
     {
         return $this->belongsTo(Cliente::class, 'id_cliente', 'id_cliente');
+    }
+
+    /**
+     * El usuario principal responsable de la factura.
+     */
+    public function usuario(): BelongsTo
+    {
+        return $this->belongsTo(Usuario::class, 'id_usuario', 'id_usuario');
+    }
+
+    /**
+     * El usuario que creó el registro de la factura.
+     */
+    public function usuarioCreacion(): BelongsTo
+    {
+        return $this->belongsTo(Usuario::class, 'usuario_creacion', 'id_usuario');
     }
 
     public function notificaciones(): HasMany

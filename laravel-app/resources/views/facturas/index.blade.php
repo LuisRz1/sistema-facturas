@@ -154,7 +154,7 @@
                 <tr>
                     <th>FACTURA</th><th>CLIENTE</th><th>EMISIÓN / VCTO.</th><th>MONTOS</th>
                     <th>% RECAUD.</th><th>RECAUDACIÓN</th><th>TIPO</th><th>F. ABONO</th>
-                    <th>COMPROBANTE</th><th>ESTADO</th><th>NOTIFICACIONES</th>
+                    <th>COMPROBANTE</th><th>ESTADO</th><th>NOTIFICACIONES</th><th>CREADO POR</th>
                     <th style="text-align:right;">ACCIONES</th>
                 </tr>
                 </thead>
@@ -176,8 +176,8 @@
                         data-search="{{ strtolower($factura->serie.'-'.$factura->numero.' '.($factura->razon_social ?? '')) }}">
                         <td><div class="serie-num">{{ $factura->serie }}-{{ str_pad($factura->numero,8,'0',STR_PAD_LEFT) }}</div></td>
                         <td>
-                            <div class="client-cell">
-                                <div class="client-name">{{ $factura->razon_social ?? 'Sin cliente' }}</div>
+                            <div class="client-cell" onclick="abrirModalEditarCliente('{{ $factura->id_factura }}')" style="cursor:pointer;border-radius:6px;padding:4px;transition:background .15s;" onmouseover="this.style.background='var(--main-bg)'" onmouseout="this.style.background=''">
+                                <div class="client-name" title="Haz clic para editar">{{ $factura->razon_social ?? 'Sin cliente' }}</div>
                                 <div class="client-ruc">{{ $factura->ruc ?? '—' }}</div>
                             </div>
                         </td>
@@ -230,6 +230,13 @@
                                     @endif
                                 </div>
                             </div>
+                        </td>
+                        <td style="font-size:12px;color:var(--text-muted);">
+                            @if($factura->usuario_nombre)
+                                <div style="font-weight:600;color:var(--text-primary);">{{ $factura->usuario_nombre }} {{ $factura->usuario_apellido }}</div>
+                            @else
+                                <span>—</span>
+                            @endif
                         </td>
                         <td>
                             <div class="actions-cell" style="justify-content:flex-end;flex-wrap:wrap;gap:4px;">
@@ -355,6 +362,30 @@
         </div>
     </div>
 
+    <!-- MODAL EDITAR CLIENTE -->
+    <div class="modal-overlay" id="modalEditarClienteOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Editar Cliente</h2><p>Actualiza los datos del cliente</p>
+                <button onclick="cerrarModalEditarCliente()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <form id="formEditarCliente" onsubmit="guardarCliente(event)">
+                @csrf @method('PUT')
+                <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                    <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Razón Social</label><input type="text" name="razon_social" id="editRazonSocial" class="form-input" required></div>
+                    <div class="form-group"><label class="form-label">RUC</label><input type="text" name="ruc" id="editRuc" class="form-input" maxlength="11" required></div>
+                    <div class="form-group"><label class="form-label">Celular</label><input type="text" name="celular" id="editCelular" class="form-input" maxlength="15"></div>
+                    <div class="form-group"><label class="form-label">Correo</label><input type="email" name="correo" id="editCorreo" class="form-input"></div>
+                    <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Dirección Fiscal</label><input type="text" name="direccion_fiscal" id="editDireccionFiscal" class="form-input"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" onclick="cerrarModalEditarCliente()" class="btn btn-ghost">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     @push('scripts')
         <script>
             let facturaActualId = null;
@@ -455,8 +486,44 @@
                 window.open('{{ route("reportes.deuda-general") }}?' + params.toString(), '_blank');
             }
 
+            function abrirModalEditarCliente(id) {
+                facturaActualId = id;
+                document.getElementById('modalEditarClienteOverlay').classList.add('open');
+                fetch(`/facturas/${id}/cliente`).then(r=>r.json()).then(c=>{
+                    document.getElementById('editRazonSocial').value = c.razon_social || '';
+                    document.getElementById('editRuc').value = c.ruc || '';
+                    document.getElementById('editCelular').value = c.celular || '';
+                    document.getElementById('editCorreo').value = c.correo || '';
+                    document.getElementById('editDireccionFiscal').value = c.direccion_fiscal || '';
+                }).catch(err=>alert('Error al cargar cliente: '+err.message));
+            }
+
+            function cerrarModalEditarCliente() {
+                document.getElementById('modalEditarClienteOverlay').classList.remove('open');
+            }
+
+            function guardarCliente(event) {
+                event.preventDefault();
+                const datos = {
+                    razon_social: document.getElementById('editRazonSocial').value,
+                    ruc: document.getElementById('editRuc').value,
+                    celular: document.getElementById('editCelular').value,
+                    correo: document.getElementById('editCorreo').value,
+                    direccion_fiscal: document.getElementById('editDireccionFiscal').value
+                };
+                fetch(`/facturas/${facturaActualId}/cliente`,{
+                    method:'PUT',
+                    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':document.querySelector('meta[name="csrf-token"]').content},
+                    body:JSON.stringify(datos)
+                })
+                    .then(r=>{if(!r.ok)throw new Error(`Error ${r.status}`);return r.json();})
+                    .then(data=>{if(data.success){cerrarModalEditarCliente();location.reload();}else alert('Error: '+(data.message||'No se pudo guardar'));})
+                    .catch(err=>alert('Error al guardar: '+err.message));
+            }
+
             document.getElementById('modalEditarOverlay')?.addEventListener('click',e=>{if(e.target===e.currentTarget)cerrarModalEditar();});
             document.getElementById('modalComprobanteOverlay')?.addEventListener('click',e=>{if(e.target===e.currentTarget)cerrarModalComprobante();});
+            document.getElementById('modalEditarClienteOverlay')?.addEventListener('click',e=>{if(e.target===e.currentTarget)cerrarModalEditarCliente();});
         </script>
     @endpush
 

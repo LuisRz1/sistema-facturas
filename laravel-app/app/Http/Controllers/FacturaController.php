@@ -19,6 +19,7 @@ class FacturaController extends Controller
 
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
+            ->leftJoin('usuario as u', 'u.id_usuario', '=', 'f.usuario_creacion')
             ->leftJoin('detraccion as d', 'd.id_factura', '=', 'f.id_factura')
             ->leftJoin('autodetraccion as ad', 'ad.id_factura', '=', 'f.id_factura')
             ->leftJoin('retencion as r', 'r.id_factura', '=', 'f.id_factura')
@@ -38,11 +39,14 @@ class FacturaController extends Controller
                 'f.glosa',
                 'f.forma_pago',
                 'f.ruta_comprobante_pago',
+                'f.usuario_creacion',
                 'c.id_cliente',
                 'c.razon_social',
                 'c.ruc',
                 'c.correo as cliente_correo',
                 'c.celular as cliente_celular',
+                'u.nombre as usuario_nombre',
+                'u.apellido as usuario_apellido',
                 DB::raw('CASE
                     WHEN d.total_detraccion IS NOT NULL THEN d.total_detraccion
                     WHEN ad.total_autodetraccion IS NOT NULL THEN ad.total_autodetraccion
@@ -144,6 +148,72 @@ class FacturaController extends Controller
             'success' => true,
             'message' => 'Factura actualizada correctamente',
             'factura' => $factura,
+        ]);
+    }
+
+    /**
+     * Obtener datos del cliente para editar en modal.
+     */
+    public function obtenerCliente($id_factura): JsonResponse
+    {
+        $cliente = DB::table('factura as f')
+            ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
+            ->select([
+                'c.id_cliente',
+                'c.razon_social',
+                'c.ruc',
+                'c.celular',
+                'c.direccion_fiscal',
+                'c.correo',
+                'c.estado_contacto',
+            ])
+            ->where('f.id_factura', $id_factura)
+            ->first();
+
+        if (!$cliente) {
+            return response()->json(['error' => 'Cliente no encontrado'], 404);
+        }
+
+        return response()->json($cliente);
+    }
+
+    /**
+     * Actualizar cliente desde la factura.
+     */
+    public function actualizarCliente(Request $request, $id_factura): JsonResponse
+    {
+        $factura = Factura::with('cliente')->findOrFail($id_factura);
+        $cliente = $factura->cliente;
+
+        $validated = $request->validate([
+            'razon_social'    => 'required|string|max:200',
+            'ruc'             => 'required|string|size:11|unique:cliente,ruc,' . $cliente->id_cliente . ',id_cliente',
+            'celular'         => 'nullable|string|max:15',
+            'direccion_fiscal'=> 'nullable|string|max:250',
+            'correo'          => 'nullable|email|max:150',
+        ]);
+
+        $validated['fecha_actualizacion'] = now();
+
+        // Calcular estado de contacto
+        $tieneCelular = !empty($validated['celular']);
+        $tieneCorreo  = !empty($validated['correo']);
+        $tieneDireccion = !empty($validated['direccion_fiscal']);
+
+        if ($tieneCelular && $tieneCorreo && $tieneDireccion) {
+            $validated['estado_contacto'] = 'COMPLETO';
+        } elseif ($tieneCelular || $tieneCorreo) {
+            $validated['estado_contacto'] = 'INCOMPLETO';
+        } else {
+            $validated['estado_contacto'] = 'SIN_DATOS';
+        }
+
+        $cliente->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cliente actualizado correctamente',
+            'cliente' => $cliente,
         ]);
     }
 

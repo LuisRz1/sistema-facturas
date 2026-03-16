@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Usuario extends Authenticatable
 {
@@ -24,6 +26,24 @@ class Usuario extends Authenticatable
     ];
 
     protected $hidden = ['clave_usuario'];
+
+    // ── Relaciones ─────────────────────────────────────────────────────────
+
+    /**
+     * Un usuario puede haber creado muchas facturas.
+     */
+    public function facturasCreadas(): HasMany
+    {
+        return $this->hasMany(Factura::class, 'usuario_creacion', 'id_usuario');
+    }
+
+    /**
+     * Un usuario puede haber creado muchos clientes.
+     */
+    public function clientesCreados(): HasMany
+    {
+        return $this->hasMany(Cliente::class, 'usuario_creacion', 'id_usuario');
+    }
 
     // ── Mapeo de campos para Laravel Auth ─────────────────────────────────
 
@@ -49,7 +69,7 @@ class Usuario extends Authenticatable
     }
 
     /**
-     * Nombre completo del usuario.
+     * Obtiene el nombre completo del usuario.
      */
     public function getNombreCompletoAttribute(): string
     {
