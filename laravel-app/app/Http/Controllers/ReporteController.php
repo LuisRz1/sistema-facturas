@@ -211,10 +211,10 @@ class ReporteController extends Controller
             . '.pdf';
 
         // ── Caption corto para acompañar el documento ─────────────────────
-        $caption = "*Reporte Financiero — CRC S.A.C.*\n"
-            . "{$clienteNombre}\n"
-            . "{$periodoLabel}\n"
-            . "{$facturas->count()} facturas · Saldo por cobrar: S/ " . number_format($resumen['saldo_cobrar'], 2);
+        $caption = "📊 *Reporte Financiero — CRC S.A.C.*\n"
+            . "🏢 {$clienteNombre}\n"
+            . "📅 {$periodoLabel}\n"
+            . "📋 {$facturas->count()} facturas · Saldo por cobrar: S/ " . number_format($resumen['saldo_cobrar'], 2);
 
         // ── Enviar documento por WhatsApp ─────────────────────────────────
         $resultado = $gateway->enviarDocumento($cliente->celular, $cloudUrl, $nombreArchivo, $caption);
@@ -348,10 +348,11 @@ class ReporteController extends Controller
         $asunto = "Reporte Financiero — {$clienteNombre} — {$periodoLabel}";
 
         try {
+            // ✅ Laravel 12 / Symfony Mailer: html() reemplaza setBody($html, 'text/html')
             Mail::send([], [], function ($mail) use ($cliente, $asunto, $htmlReporte) {
                 $mail->to($cliente->correo)
                     ->subject($asunto)
-                    ->setBody($htmlReporte, 'text/html');
+                    ->html($htmlReporte);
             });
 
             return response()->json([
@@ -437,4 +438,87 @@ class ReporteController extends Controller
         if ($hasta) return 'Hasta ' . \Carbon\Carbon::parse($hasta)->format('d/m/Y');
         return 'Todos los períodos';
     }
+    // ─────────────────────────────────────────────────────────────────────────
+    // REPORTE DEUDA GENERAL (todas las empresas con saldo pendiente)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function deudaGeneral(Request $request)
+    {
+        $fechaDesde = $request->input('fecha_desde');
+        $fechaHasta = $request->input('fecha_hasta');
+
+        $query = DB::table('factura as f')
+            ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
+            ->leftJoin('detraccion as d', 'd.id_factura', '=', 'f.id_factura')
+            ->leftJoin('autodetraccion as ad', 'ad.id_factura', '=', 'f.id_factura')
+            ->leftJoin('retencion as r', 'r.id_factura', '=', 'f.id_factura')
+            ->whereIn('f.estado', ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])
+            ->select([
+                'c.id_cliente',
+                'c.razon_social',
+                'c.ruc',
+                'f.moneda',
+                'f.estado',
+                'f.importe_total',
+                DB::raw('CASE
+                    WHEN d.total_detraccion IS NOT NULL THEN d.total_detraccion
+                    WHEN ad.total_autodetraccion IS NOT NULL THEN ad.total_autodetraccion
+                    WHEN r.total_retencion IS NOT NULL THEN r.total_retencion
+                    ELSE 0
+                END AS monto_recaudacion'),
+            ]);
+
+        if ($fechaDesde) $query->where('f.fecha_emision', '>=', $fechaDesde);
+        if ($fechaHasta) $query->where('f.fecha_emision', '<=', $fechaHasta);
+
+        $facturas = $query->get();
+
+        // Agrupar por cliente, separar soles y dólares
+        $clientes = [];
+        foreach ($facturas as $f) {
+            $id = $f->id_cliente;
+            if (!isset($clientes[$id])) {
+                $clientes[$id] = [
+                    'razon_social'  => $f->razon_social,
+                    'ruc'           => $f->ruc,
+                    'deuda_pen'     => 0,
+                    'deuda_usd'     => 0,
+                    'recaudacion_pen'=> 0,
+                    'recaudacion_usd'=> 0,
+                    'facturas'      => 0,
+                    'estados'       => [],
+                ];
+            }
+            $clientes[$id]['facturas']++;
+            $neto = $f->importe_total - ($f->monto_recaudacion ?? 0);
+            if ($f->moneda === 'USD') {
+                $clientes[$id]['deuda_usd']        += $f->importe_total;
+                $clientes[$id]['recaudacion_usd']  += $f->monto_recaudacion ?? 0;
+            } else {
+                $clientes[$id]['deuda_pen']        += $f->importe_total;
+                $clientes[$id]['recaudacion_pen']  += $f->monto_recaudacion ?? 0;
+            }
+            if (!in_array($f->estado, $clientes[$id]['estados'])) {
+                $clientes[$id]['estados'][] = $f->estado;
+            }
+        }
+
+        // Ordenar por deuda PEN desc
+        uasort($clientes, fn($a, $b) => $b['deuda_pen'] <=> $a['deuda_pen']);
+
+        $totalPen = array_sum(array_column($clientes, 'deuda_pen'));
+        $totalUsd = array_sum(array_column($clientes, 'deuda_usd'));
+        $totalRecaudacionPen = array_sum(array_column($clientes, 'recaudacion_pen'));
+        $totalRecaudacionUsd = array_sum(array_column($clientes, 'recaudacion_usd'));
+
+        $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
+
+        return view('reportes.deuda_general', compact(
+            'clientes', 'totalPen', 'totalUsd',
+            'totalRecaudacionPen', 'totalRecaudacionUsd',
+            'periodoLabel', 'fechaDesde', 'fechaHasta'
+        ));
+    }
+
+
 }

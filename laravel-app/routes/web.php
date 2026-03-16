@@ -65,6 +65,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/reportes',         [ReporteController::class, 'index'])->name('reportes.index');
     Route::get('/reportes/json',    [ReporteController::class, 'json'] )->name('reportes.json');
     Route::get('/reportes/pdf',     [ReporteController::class, 'pdf']  )->name('reportes.pdf');
+    Route::get('/reportes/deuda-general',  [ReporteController::class, 'deudaGeneral'])->name('reportes.deuda-general');
     Route::post('/reportes/enviar-whatsapp',
         [ReporteController::class, 'enviarReporteWhatsApp']
     )->name('reportes.enviar-whatsapp');

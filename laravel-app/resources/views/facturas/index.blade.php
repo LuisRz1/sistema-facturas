@@ -51,6 +51,13 @@
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 Exportar Reporte PDF
             </button>
+            <button type="button" class="btn btn-outline" onclick="generarReporteDeuda()"
+                    style="border-color:#dc2626;color:#dc2626;"
+                    onmouseover="this.style.background='#fee2e2'"
+                    onmouseout="this.style.background=''">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Reporte Deuda General
+            </button>
         </div>
     </div>
 
@@ -425,6 +432,15 @@
                 if(desde)    params.append('fecha_desde',desde);
                 if(hasta)    params.append('fecha_hasta',hasta);
                 window.open('{{ route("reportes.pdf") }}?'+params.toString(),'_blank');
+            }
+
+            function generarReporteDeuda() {
+                const desde = document.getElementById('inputDesde').value;
+                const hasta  = document.getElementById('inputHasta').value;
+                const params = new URLSearchParams();
+                if (desde) params.append('fecha_desde', desde);
+                if (hasta)  params.append('fecha_hasta', hasta);
+                window.open('{{ route("reportes.deuda-general") }}?' + params.toString(), '_blank');
             }
 
             document.getElementById('modalEditarOverlay')?.addEventListener('click',e=>{if(e.target===e.currentTarget)cerrarModalEditar();});

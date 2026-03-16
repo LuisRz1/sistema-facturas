@@ -109,9 +109,6 @@ class NotificacionController extends Controller
 
     // ─── ENVÍO DE FACTURA PAGADA ──────────────────────────────────────────────
 
-    /**
-     * Envía el comprobante de pago (imagen Cloudinary) más el mensaje de confirmación por WhatsApp.
-     */
     public function enviarFacturaPagadaWhatsApp(int $id, WhatsAppGatewayService $gateway): RedirectResponse
     {
         $factura = Factura::with('cliente')->findOrFail($id);
@@ -140,7 +137,6 @@ class NotificacionController extends Controller
             . "Gracias por su confianza en nuestros servicios.\n\n"
             . "Atentamente,\nSistema de Facturación";
 
-        // Adjuntar imagen del comprobante si está disponible
         $mediaUrl = $factura->ruta_comprobante_pago ?: null;
 
         $resultado = $gateway->enviar($factura->cliente->celular, $mensaje, $mediaUrl);
@@ -166,9 +162,6 @@ class NotificacionController extends Controller
         );
     }
 
-    /**
-     * Envía confirmación de pago por Correo (incluye link al comprobante si está disponible).
-     */
     public function enviarFacturaPagadaCorreo(int $id): RedirectResponse
     {
         $factura = Factura::with('cliente')->findOrFail($id);
@@ -203,11 +196,8 @@ class NotificacionController extends Controller
         $mensaje .= "\nGracias por su confianza en nuestros servicios.\n\nAtentamente,\nSistema de Facturación";
 
         try {
-            Mail::send([], [], function ($mail) use ($factura, $asunto, $mensaje) {
-                $mail->to($factura->cliente->correo)
-                    ->subject($asunto)
-                    ->setBody($mensaje);
-            });
+            // ✅ Laravel 12 / Symfony Mailer: usar Mail::raw() para texto plano
+            Mail::raw($mensaje, fn($m) => $m->to($factura->cliente->correo)->subject($asunto));
 
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
