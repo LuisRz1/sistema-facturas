@@ -74,11 +74,18 @@ class FacturaController extends Controller
                     'correo'       => $f->cliente_correo,
                     'celular'      => $f->cliente_celular,
                 ],
-                'notificaciones' => DB::table('notificacion_factura')
+                // Última notificación por WhatsApp
+                'ultima_notif_wa' => DB::table('notificacion_factura')
                     ->where('id_factura', $f->id_factura)
+                    ->where('canal', 'WHATSAPP')
                     ->orderByDesc('id_notificacion')
-                    ->limit(1)
-                    ->get(),
+                    ->first(),
+                // Última notificación por Correo
+                'ultima_notif_correo' => DB::table('notificacion_factura')
+                    ->where('id_factura', $f->id_factura)
+                    ->where('canal', 'CORREO')
+                    ->orderByDesc('id_notificacion')
+                    ->first(),
             ]);
         }));
 

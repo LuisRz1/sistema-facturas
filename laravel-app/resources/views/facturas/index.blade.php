@@ -154,14 +154,15 @@
                 <tr>
                     <th>FACTURA</th><th>CLIENTE</th><th>EMISIÓN / VCTO.</th><th>MONTOS</th>
                     <th>% RECAUD.</th><th>RECAUDACIÓN</th><th>TIPO</th><th>F. ABONO</th>
-                    <th>COMPROBANTE</th><th>ESTADO</th><th>ÚLTIMA NOTIF.</th>
+                    <th>COMPROBANTE</th><th>ESTADO</th><th>NOTIFICACIONES</th>
                     <th style="text-align:right;">ACCIONES</th>
                 </tr>
                 </thead>
                 <tbody id="facturasBody">
                 @forelse($facturas as $factura)
                     @php
-                        $ultimaNotif = $factura->notificaciones->first() ?? null;
+                        $ultimaNotifWa     = $factura->ultima_notif_wa     ?? null;
+                        $ultimaNotifCorreo = $factura->ultima_notif_correo ?? null;
                         $badgeMap = ['PENDIENTE'=>'badge-pendiente','POR_VENCER'=>'badge-por_vencer','VENCIDA'=>'badge-vencida','PAGADA'=>'badge-pagada','ANULADA'=>'badge-anulada','OBSERVADA'=>'badge-pendiente'];
                         $badgeClass          = $badgeMap[$factura->estado] ?? 'badge-pendiente';
                         $puedeNotificarDeuda = in_array($factura->estado,['PENDIENTE','POR_VENCER','VENCIDA']);
@@ -208,15 +209,26 @@
                         <td><span class="badge {{ $badgeClass }}">{{ $factura->estado }}</span></td>
                         <td>
                             <div class="notify-cell">
-                                @if($ultimaNotif)
-                                    <div><span class="badge {{ $ultimaNotif->estado_envio==='ENVIADO'?'badge-enviado':'badge-error' }}">{{ $ultimaNotif->estado_envio }}</span></div>
-                                    <div class="notify-meta">
-                                        <span class="tag {{ $ultimaNotif->canal==='WHATSAPP'?'tag-wa':'tag-mail' }}">{{ $ultimaNotif->canal }}</span>
-                                        &nbsp;{{ \Carbon\Carbon::parse($ultimaNotif->fecha_creacion)->format('d/m/Y H:i') }}
-                                    </div>
-                                @else
-                                    <span style="color:var(--text-muted);font-size:12px;">Sin notificaciones</span>
-                                @endif
+                                {{-- WhatsApp --}}
+                                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                                    <span class="tag tag-wa" style="flex-shrink:0;">WA</span>
+                                    @if($ultimaNotifWa)
+                                        <span class="badge {{ $ultimaNotifWa->estado_envio==='ENVIADO'?'badge-enviado':'badge-error' }}" style="font-size:9px;padding:2px 6px;">{{ $ultimaNotifWa->estado_envio }}</span>
+                                        <span class="notify-meta">{{ \Carbon\Carbon::parse($ultimaNotifWa->fecha_creacion)->format('d/m/Y H:i') }}</span>
+                                    @else
+                                        <span style="color:var(--text-muted);font-size:11px;">Sin envíos</span>
+                                    @endif
+                                </div>
+                                {{-- Correo --}}
+                                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:3px;">
+                                    <span class="tag tag-mail" style="flex-shrink:0;">✉</span>
+                                    @if($ultimaNotifCorreo)
+                                        <span class="badge {{ $ultimaNotifCorreo->estado_envio==='ENVIADO'?'badge-enviado':'badge-error' }}" style="font-size:9px;padding:2px 6px;">{{ $ultimaNotifCorreo->estado_envio }}</span>
+                                        <span class="notify-meta">{{ \Carbon\Carbon::parse($ultimaNotifCorreo->fecha_creacion)->format('d/m/Y H:i') }}</span>
+                                    @else
+                                        <span style="color:var(--text-muted);font-size:11px;">Sin envíos</span>
+                                    @endif
+                                </div>
                             </div>
                         </td>
                         <td>
