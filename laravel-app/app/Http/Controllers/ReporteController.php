@@ -57,12 +57,12 @@ class ReporteController extends Controller
             'periodo_label'   => $periodoLabel,
             'resumen' => [
                 'total_facturas'    => $facturas->count(),
-                'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])->count(),
+                'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'])->count(),
                 'pagadas'           => $facturas->where('estado', 'PAGADA')->count(),
                 'total_bruto'       => $facturas->sum('importe_total'),
                 'total_recaudacion' => $facturas->sum('monto_recaudacion'),
                 'total_neto'        => $facturas->sum('neto_caja'),
-                'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA', 'ANULADA'])->sum('neto_caja'),
+                'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA'])->sum('monto_pendiente'),
             ],
         ]);
     }
@@ -88,34 +88,30 @@ class ReporteController extends Controller
 
         $resumen = [
             'total_facturas'    => $facturas->count(),
-            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])->count(),
+            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'])->count(),
             'pagadas'           => $facturas->where('estado', 'PAGADA')->count(),
-            'vencidas'          => $facturas->where('estado', 'VENCIDA')->count(),
+            'vencidas'          => $facturas->where('estado', 'VENCIDO')->count(),
             'total_bruto'       => $facturas->sum('importe_total'),
             'total_recaudacion' => $facturas->sum('monto_recaudacion'),
             'total_neto'        => $facturas->sum('neto_caja'),
-            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA', 'ANULADA'])->sum('neto_caja'),
+            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA'])->sum('monto_pendiente'),
         ];
 
-        $clienteNombre = 'TODOS LOS CLIENTES';
-        if ($idCliente) {
-            $cli = DB::table('cliente')->where('id_cliente', $idCliente)->first();
-            if ($cli) $clienteNombre = strtoupper($cli->razon_social);
-        }
-
-        $estadoLabel  = $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS';
-        $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-
-        // Datos de contacto del cliente para los botones de envío en el PDF
+        $clienteNombre  = 'TODOS LOS CLIENTES';
         $clienteCelular = null;
         $clienteCorreo  = null;
+
         if ($idCliente) {
             $cli = DB::table('cliente')->where('id_cliente', $idCliente)->first();
             if ($cli) {
+                $clienteNombre  = strtoupper($cli->razon_social);
                 $clienteCelular = $cli->celular;
                 $clienteCorreo  = $cli->correo;
             }
         }
+
+        $estadoLabel  = $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS';
+        $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
 
         return view('reportes.pdf', compact(
             'facturas', 'facturasAgrupadas', 'resumen',
@@ -156,30 +152,28 @@ class ReporteController extends Controller
             ], 422);
         }
 
-        // ── Obtener facturas ──────────────────────────────────────────────
         $facturas = $this->queryFacturas($idCliente, $estado, $fechaDesde, $fechaHasta)->get();
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja = $f->importe_total - ($f->monto_recaudacion ?? 0);
             return $f;
         });
 
-        $periodoLabel    = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel     = $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS';
-        $clienteNombre   = strtoupper($cliente->razon_social);
+        $periodoLabel      = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
+        $estadoLabel       = $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS';
+        $clienteNombre     = strtoupper($cliente->razon_social);
         $facturasAgrupadas = null;
 
         $resumen = [
             'total_facturas'    => $facturas->count(),
-            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])->count(),
+            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'])->count(),
             'pagadas'           => $facturas->where('estado', 'PAGADA')->count(),
-            'vencidas'          => $facturas->where('estado', 'VENCIDA')->count(),
+            'vencidas'          => $facturas->where('estado', 'VENCIDO')->count(),
             'total_bruto'       => $facturas->sum('importe_total'),
             'total_recaudacion' => $facturas->sum('monto_recaudacion'),
             'total_neto'        => $facturas->sum('neto_caja'),
-            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA', 'ANULADA'])->sum('neto_caja'),
+            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA'])->sum('monto_pendiente'),
         ];
 
-        // ── Generar PDF con DomPDF ────────────────────────────────────────
         try {
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reportes.pdf_doc', compact(
                 'facturas', 'facturasAgrupadas', 'resumen',
@@ -190,33 +184,25 @@ class ReporteController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
-                'error'   => 'No se pudo generar el PDF: ' . $e->getMessage() . '. Asegúrate de instalar barryvdh/laravel-dompdf.',
+                'error'   => 'No se pudo generar el PDF: ' . $e->getMessage(),
             ], 500);
         }
 
-        // ── Subir PDF a Cloudinary ────────────────────────────────────────
         $cloudUrl = $this->subirPdfACloudinary($pdfContent, $clienteNombre, $periodoLabel);
 
         if (!$cloudUrl) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'No se pudo subir el PDF a Cloudinary.',
-            ], 500);
+            return response()->json(['success' => false, 'error' => 'No se pudo subir el PDF a Cloudinary.'], 500);
         }
 
-        // ── Nombre del archivo ────────────────────────────────────────────
         $nombreArchivo = 'Reporte_'
             . preg_replace('/[^A-Za-z0-9_\-]/', '_', $clienteNombre)
-            . '_' . now()->format('Ymd')
-            . '.pdf';
+            . '_' . now()->format('Ymd') . '.pdf';
 
-        // ── Caption corto para acompañar el documento ─────────────────────
         $caption = "📊 *Reporte Financiero — CRC S.A.C.*\n"
             . "🏢 {$clienteNombre}\n"
             . "📅 {$periodoLabel}\n"
             . "📋 {$facturas->count()} facturas · Saldo por cobrar: S/ " . number_format($resumen['saldo_cobrar'], 2);
 
-        // ── Enviar documento por WhatsApp ─────────────────────────────────
         $resultado = $gateway->enviarDocumento($cliente->celular, $cloudUrl, $nombreArchivo, $caption);
 
         return response()->json([
@@ -227,15 +213,6 @@ class ReporteController extends Controller
         ]);
     }
 
-    /**
-     * Sube el contenido binario de un PDF a Cloudinary (recurso tipo "raw")
-     * y retorna la URL pública segura.
-     */
-    /**
-     * Sube el PDF a Cloudinary como archivo raw y retorna la URL de descarga directa.
-     * Usamos fl_attachment para forzar Content-Disposition: attachment con MIME application/pdf,
-     * lo que permite que whatsapp-web.js lo descargue y envíe como documento.
-     */
     private function subirPdfACloudinary(string $pdfContent, string $clienteNombre, string $periodo): ?string
     {
         $cloudName    = env('CLOUDINARY_CLOUD_NAME', 'dq3rban3m');
@@ -247,9 +224,7 @@ class ReporteController extends Controller
 
         try {
             $response = \Illuminate\Support\Facades\Http::attach(
-                'file',
-                $pdfContent,
-                $publicId . '.pdf'
+                'file', $pdfContent, $publicId . '.pdf'
             )->post("https://api.cloudinary.com/v1_1/{$cloudName}/raw/upload", [
                 'upload_preset' => $uploadPreset,
                 'folder'        => 'reportes_financieros',
@@ -259,28 +234,17 @@ class ReporteController extends Controller
 
             if ($response->successful()) {
                 $secureUrl = $response->json('secure_url');
-
-                // Añadir fl_attachment para que la URL fuerce la descarga con
-                // Content-Disposition: attachment y MIME type correcto.
-                // Esto es necesario para que MessageMedia.fromUrl() en whatsapp-web.js
-                // detecte el tipo de archivo correctamente y lo envíe como documento.
-                $downloadUrl = str_replace(
-                    '/raw/upload/',
-                    '/raw/upload/fl_attachment/',
-                    $secureUrl
-                );
-
-                return $downloadUrl;
+                return str_replace('/raw/upload/', '/raw/upload/fl_attachment/', $secureUrl);
             }
 
             \Log::error('Cloudinary PDF upload error', ['response' => $response->body()]);
             return null;
-
         } catch (\Throwable $e) {
             \Log::error('Cloudinary PDF exception: ' . $e->getMessage());
             return null;
         }
     }
+
     // ─────────────────────────────────────────────────────────────────────────
     // ENVÍO POR CORREO
     // ─────────────────────────────────────────────────────────────────────────
@@ -293,23 +257,13 @@ class ReporteController extends Controller
         $fechaHasta = $request->input('fecha_hasta');
 
         if (!$idCliente) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'Debes seleccionar un cliente específico para enviar el reporte.',
-            ], 422);
+            return response()->json(['success' => false, 'error' => 'Debes seleccionar un cliente específico.'], 422);
         }
 
         $cliente = DB::table('cliente')->where('id_cliente', $idCliente)->first();
 
-        if (!$cliente) {
-            return response()->json(['success' => false, 'error' => 'Cliente no encontrado.'], 404);
-        }
-
-        if (!$cliente->correo) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'El cliente no tiene correo electrónico registrado.',
-            ], 422);
+        if (!$cliente || !$cliente->correo) {
+            return response()->json(['success' => false, 'error' => 'El cliente no tiene correo registrado.'], 422);
         }
 
         $facturas = $this->queryFacturas($idCliente, $estado, $fechaDesde, $fechaHasta)->get();
@@ -325,45 +279,33 @@ class ReporteController extends Controller
 
         $resumen = [
             'total_facturas'    => $facturas->count(),
-            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])->count(),
+            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'])->count(),
             'pagadas'           => $facturas->where('estado', 'PAGADA')->count(),
-            'vencidas'          => $facturas->where('estado', 'VENCIDA')->count(),
+            'vencidas'          => $facturas->where('estado', 'VENCIDO')->count(),
             'total_bruto'       => $facturas->sum('importe_total'),
             'total_recaudacion' => $facturas->sum('monto_recaudacion'),
             'total_neto'        => $facturas->sum('neto_caja'),
-            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA', 'ANULADA'])->sum('neto_caja'),
+            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA'])->sum('monto_pendiente'),
         ];
 
-        // Renderizar el HTML del reporte para enviarlo como cuerpo del correo
         $htmlReporte = view('reportes.pdf', compact(
             'facturas', 'facturasAgrupadas', 'resumen',
             'clienteNombre', 'estadoLabel', 'idCliente', 'periodoLabel'
         ))->render();
 
-        // Quitar botones de impresión (no tienen sentido en email)
         $htmlReporte = preg_replace('/<div class="no-print".*?<\/div>/s', '', $htmlReporte);
-        // Quitar el script de autoprint
         $htmlReporte = preg_replace('/<script>[\s\S]*?window\.print[\s\S]*?<\/script>/', '', $htmlReporte);
 
         $asunto = "Reporte Financiero — {$clienteNombre} — {$periodoLabel}";
 
         try {
-            // ✅ Laravel 12 / Symfony Mailer: html() reemplaza setBody($html, 'text/html')
             Mail::send([], [], function ($mail) use ($cliente, $asunto, $htmlReporte) {
-                $mail->to($cliente->correo)
-                    ->subject($asunto)
-                    ->html($htmlReporte);
+                $mail->to($cliente->correo)->subject($asunto)->html($htmlReporte);
             });
 
-            return response()->json([
-                'success' => true,
-                'message' => "Reporte enviado por correo a {$cliente->correo}",
-            ]);
+            return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$cliente->correo}"]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No se pudo enviar el correo: ' . $e->getMessage(),
-            ]);
+            return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
         }
     }
 
@@ -375,9 +317,7 @@ class ReporteController extends Controller
     {
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
-            ->leftJoin('detraccion as d', 'd.id_factura', '=', 'f.id_factura')
-            ->leftJoin('autodetraccion as ad', 'ad.id_factura', '=', 'f.id_factura')
-            ->leftJoin('retencion as r', 'r.id_factura', '=', 'f.id_factura')
+            ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
             ->select([
                 'f.id_factura',
                 'f.serie',
@@ -390,30 +330,16 @@ class ReporteController extends Controller
                 'f.importe_total',
                 'f.subtotal_gravado',
                 'f.monto_igv',
+                'f.monto_abonado',
+                'f.monto_pendiente',
                 'f.tipo_recaudacion',
                 'f.estado',
                 'f.forma_pago',
                 'c.id_cliente',
                 'c.razon_social',
                 'c.ruc',
-                DB::raw('CASE
-                    WHEN d.total_detraccion IS NOT NULL THEN d.total_detraccion
-                    WHEN ad.total_autodetraccion IS NOT NULL THEN ad.total_autodetraccion
-                    WHEN r.total_retencion IS NOT NULL THEN r.total_retencion
-                    ELSE 0
-                END AS monto_recaudacion'),
-                DB::raw('CASE
-                    WHEN d.porcentaje IS NOT NULL THEN d.porcentaje
-                    WHEN ad.porcentaje IS NOT NULL THEN ad.porcentaje
-                    WHEN r.porcentaje IS NOT NULL THEN r.porcentaje
-                    ELSE 0
-                END AS porcentaje_recaudacion'),
-                DB::raw('CASE
-                    WHEN d.total_detraccion IS NOT NULL THEN "DETRACCION"
-                    WHEN ad.total_autodetraccion IS NOT NULL THEN "AUTODETRACCION"
-                    WHEN r.total_retencion IS NOT NULL THEN "RETENCION"
-                    ELSE NULL
-                END AS tipo_recaudacion_actual'),
+                DB::raw('COALESCE(rec.total_recaudacion, 0) AS monto_recaudacion'),
+                DB::raw('COALESCE(rec.porcentaje, 0) AS porcentaje_recaudacion'),
             ])
             ->orderBy('c.razon_social')
             ->orderBy('f.fecha_emision')
@@ -438,8 +364,9 @@ class ReporteController extends Controller
         if ($hasta) return 'Hasta ' . \Carbon\Carbon::parse($hasta)->format('d/m/Y');
         return 'Todos los períodos';
     }
+
     // ─────────────────────────────────────────────────────────────────────────
-    // REPORTE DEUDA GENERAL (todas las empresas con saldo pendiente)
+    // REPORTE DEUDA GENERAL
     // ─────────────────────────────────────────────────────────────────────────
 
     public function deudaGeneral(Request $request)
@@ -449,10 +376,8 @@ class ReporteController extends Controller
 
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
-            ->leftJoin('detraccion as d', 'd.id_factura', '=', 'f.id_factura')
-            ->leftJoin('autodetraccion as ad', 'ad.id_factura', '=', 'f.id_factura')
-            ->leftJoin('retencion as r', 'r.id_factura', '=', 'f.id_factura')
-            ->whereIn('f.estado', ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])
+            ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
+            ->whereIn('f.estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'])
             ->select([
                 'c.id_cliente',
                 'c.razon_social',
@@ -460,12 +385,8 @@ class ReporteController extends Controller
                 'f.moneda',
                 'f.estado',
                 'f.importe_total',
-                DB::raw('CASE
-                    WHEN d.total_detraccion IS NOT NULL THEN d.total_detraccion
-                    WHEN ad.total_autodetraccion IS NOT NULL THEN ad.total_autodetraccion
-                    WHEN r.total_retencion IS NOT NULL THEN r.total_retencion
-                    ELSE 0
-                END AS monto_recaudacion'),
+                'f.monto_pendiente',
+                DB::raw('COALESCE(rec.total_recaudacion, 0) AS monto_recaudacion'),
             ]);
 
         if ($fechaDesde) $query->where('f.fecha_emision', '>=', $fechaDesde);
@@ -473,52 +394,54 @@ class ReporteController extends Controller
 
         $facturas = $query->get();
 
-        // Agrupar por cliente, separar soles y dólares
         $clientes = [];
         foreach ($facturas as $f) {
             $id = $f->id_cliente;
             if (!isset($clientes[$id])) {
                 $clientes[$id] = [
-                    'razon_social'  => $f->razon_social,
-                    'ruc'           => $f->ruc,
-                    'deuda_pen'     => 0,
-                    'deuda_usd'     => 0,
-                    'recaudacion_pen'=> 0,
-                    'recaudacion_usd'=> 0,
-                    'facturas'      => 0,
-                    'estados'       => [],
+                    'razon_social'    => $f->razon_social,
+                    'ruc'             => $f->ruc,
+                    'deuda_pen'       => 0,
+                    'deuda_usd'       => 0,
+                    'recaudacion_pen' => 0,
+                    'recaudacion_usd' => 0,
+                    'pendiente_pen'   => 0,
+                    'pendiente_usd'   => 0,
+                    'facturas'        => 0,
+                    'estados'         => [],
                 ];
             }
             $clientes[$id]['facturas']++;
-            $neto = $f->importe_total - ($f->monto_recaudacion ?? 0);
             if ($f->moneda === 'USD') {
                 $clientes[$id]['deuda_usd']        += $f->importe_total;
-                $clientes[$id]['recaudacion_usd']  += $f->monto_recaudacion ?? 0;
+                $clientes[$id]['recaudacion_usd']  += $f->monto_recaudacion;
+                $clientes[$id]['pendiente_usd']    += $f->monto_pendiente;
             } else {
                 $clientes[$id]['deuda_pen']        += $f->importe_total;
-                $clientes[$id]['recaudacion_pen']  += $f->monto_recaudacion ?? 0;
+                $clientes[$id]['recaudacion_pen']  += $f->monto_recaudacion;
+                $clientes[$id]['pendiente_pen']    += $f->monto_pendiente;
             }
             if (!in_array($f->estado, $clientes[$id]['estados'])) {
                 $clientes[$id]['estados'][] = $f->estado;
             }
         }
 
-        // Ordenar por deuda PEN desc
-        uasort($clientes, fn($a, $b) => $b['deuda_pen'] <=> $a['deuda_pen']);
+        uasort($clientes, fn($a, $b) => $b['pendiente_pen'] <=> $a['pendiente_pen']);
 
-        $totalPen = array_sum(array_column($clientes, 'deuda_pen'));
-        $totalUsd = array_sum(array_column($clientes, 'deuda_usd'));
+        $totalPen            = array_sum(array_column($clientes, 'deuda_pen'));
+        $totalUsd            = array_sum(array_column($clientes, 'deuda_usd'));
         $totalRecaudacionPen = array_sum(array_column($clientes, 'recaudacion_pen'));
         $totalRecaudacionUsd = array_sum(array_column($clientes, 'recaudacion_usd'));
+        $totalPendientePen   = array_sum(array_column($clientes, 'pendiente_pen'));
+        $totalPendienteUsd   = array_sum(array_column($clientes, 'pendiente_usd'));
 
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
 
         return view('reportes.deuda_general', compact(
             'clientes', 'totalPen', 'totalUsd',
             'totalRecaudacionPen', 'totalRecaudacionUsd',
+            'totalPendientePen', 'totalPendienteUsd',
             'periodoLabel', 'fechaDesde', 'fechaHasta'
         ));
     }
-
-
 }

@@ -13,16 +13,13 @@ class FacturaController extends Controller
 {
     public function index(Request $request): View
     {
-        // Rango de fechas — por defecto primer día del mes actual hasta hoy
         $fechaDesde = $request->input('fecha_desde', now()->startOfMonth()->format('Y-m-d'));
         $fechaHasta = $request->input('fecha_hasta', now()->format('Y-m-d'));
 
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('usuario as u', 'u.id_usuario', '=', 'f.usuario_creacion')
-            ->leftJoin('detraccion as d', 'd.id_factura', '=', 'f.id_factura')
-            ->leftJoin('autodetraccion as ad', 'ad.id_factura', '=', 'f.id_factura')
-            ->leftJoin('retencion as r', 'r.id_factura', '=', 'f.id_factura')
+            ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
             ->select([
                 'f.id_factura',
@@ -30,15 +27,15 @@ class FacturaController extends Controller
                 'f.numero',
                 'f.fecha_emision',
                 'f.fecha_vencimiento',
-                'f.fecha_abono',
                 'f.moneda',
                 'f.importe_total',
                 'f.monto_igv',
+                'f.monto_abonado',
+                'f.monto_pendiente',
                 'f.estado',
                 'f.tipo_recaudacion',
                 'f.glosa',
                 'f.forma_pago',
-                'f.ruta_comprobante_pago',
                 'f.usuario_creacion',
                 'c.id_cliente',
                 'c.razon_social',
@@ -47,26 +44,11 @@ class FacturaController extends Controller
                 'c.celular as cliente_celular',
                 'u.nombre as usuario_nombre',
                 'u.apellido as usuario_apellido',
-                DB::raw('CASE
-                    WHEN d.total_detraccion IS NOT NULL THEN d.total_detraccion
-                    WHEN ad.total_autodetraccion IS NOT NULL THEN ad.total_autodetraccion
-                    WHEN r.total_retencion IS NOT NULL THEN r.total_retencion
-                    ELSE 0
-                END AS monto_recaudacion'),
-                DB::raw('CASE
-                    WHEN d.porcentaje IS NOT NULL THEN d.porcentaje
-                    WHEN ad.porcentaje IS NOT NULL THEN ad.porcentaje
-                    WHEN r.porcentaje IS NOT NULL THEN r.porcentaje
-                    ELSE 0
-                END AS porcentaje_recaudacion'),
-                DB::raw('CASE
-                    WHEN d.total_detraccion IS NOT NULL THEN "DETRACCION"
-                    WHEN ad.total_autodetraccion IS NOT NULL THEN "AUTODETRACCION"
-                    WHEN r.total_retencion IS NOT NULL THEN "RETENCION"
-                    ELSE NULL
-                END AS tipo_recaudacion_actual'),
+                'rec.total_recaudacion as monto_recaudacion',
+                'rec.porcentaje as porcentaje_recaudacion',
             ])
             ->orderByDesc('f.fecha_emision')
+            ->orderByDesc('f.numero')
             ->get();
 
         $facturasCollection = collect($query->map(function ($f) {
@@ -78,13 +60,11 @@ class FacturaController extends Controller
                     'correo'       => $f->cliente_correo,
                     'celular'      => $f->cliente_celular,
                 ],
-                // Última notificación por WhatsApp
                 'ultima_notif_wa' => DB::table('notificacion_factura')
                     ->where('id_factura', $f->id_factura)
                     ->where('canal', 'WHATSAPP')
                     ->orderByDesc('id_notificacion')
                     ->first(),
-                // Última notificación por Correo
                 'ultima_notif_correo' => DB::table('notificacion_factura')
                     ->where('id_factura', $f->id_factura)
                     ->where('canal', 'CORREO')
@@ -97,9 +77,16 @@ class FacturaController extends Controller
             ->orderBy('razon_social')
             ->get(['id_cliente', 'razon_social', 'ruc']);
 
+        // Lista de usuarios con celular para enviar reporte
+        $usuarios = DB::table('usuario')
+            ->whereNotNull('celular')
+            ->orderBy('nombre')
+            ->get(['id_usuario', 'nombre', 'apellido', 'celular', 'correo']);
+
         return view('facturas.index', [
             'facturas'   => $facturasCollection,
             'clientes'   => $clientes,
+            'usuarios'   => $usuarios,
             'fechaDesde' => $fechaDesde,
             'fechaHasta' => $fechaHasta,
         ]);
@@ -109,12 +96,15 @@ class FacturaController extends Controller
     {
         $factura = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
+            ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
             ->select([
                 'f.id_factura','f.serie','f.numero','f.fecha_emision',
-                'f.fecha_vencimiento','f.fecha_abono','f.moneda',
+                'f.fecha_vencimiento','f.moneda',
                 'f.subtotal_gravado','f.monto_igv','f.importe_total',
+                'f.monto_abonado','f.monto_pendiente',
                 'f.estado','f.glosa','f.forma_pago','f.tipo_recaudacion',
                 'c.razon_social','c.ruc',
+                'rec.total_recaudacion','rec.porcentaje',
             ])
             ->where('f.id_factura', $id)
             ->first();
@@ -133,10 +123,9 @@ class FacturaController extends Controller
         $validated = $request->validate([
             'fecha_emision'    => 'nullable|date',
             'fecha_vencimiento'=> 'nullable|date',
-            'fecha_abono'      => 'nullable|date',
             'glosa'            => 'nullable|string',
             'forma_pago'       => 'nullable|string',
-            'estado'           => 'nullable|in:PENDIENTE,POR_VENCER,VENCIDA,PAGADA,ANULADA,OBSERVADA',
+            'estado'           => 'nullable|in:PENDIENTE,VENCIDO,PAGADA,PAGO PARCIAL,POR VALIDAR DETRACCION',
             'importe_total'    => 'nullable|numeric',
             'monto_igv'        => 'nullable|numeric',
             'subtotal_gravado' => 'nullable|numeric',
@@ -148,6 +137,194 @@ class FacturaController extends Controller
             'success' => true,
             'message' => 'Factura actualizada correctamente',
             'factura' => $factura,
+        ]);
+    }
+
+    /**
+     * Procesar pago / abono de una factura.
+     * Actualiza monto_abonado, recaudación, y determina el nuevo estado.
+     */
+    public function procesarPago(Request $request, $id): JsonResponse
+    {
+        $factura = Factura::findOrFail($id);
+
+        $validated = $request->validate([
+            'monto_abonado'         => 'required|numeric|min:0',
+            'total_recaudacion'     => 'nullable|numeric|min:0',
+            'porcentaje_recaudacion'=> 'nullable|numeric|min:0|max:100',
+            'tipo_recaudacion'      => 'nullable|string|in:DETRACCION,AUTODETRACCION,RETENCION',
+            'validar_detraccion'    => 'nullable|boolean',
+        ]);
+
+        $montoAbonado      = (float) $validated['monto_abonado'];
+        $totalRecaudacion  = (float) ($validated['total_recaudacion'] ?? 0);
+        $tipoRecaudacion   = $validated['tipo_recaudacion'] ?? $factura->tipo_recaudacion;
+        $porcentaje        = $validated['porcentaje_recaudacion'] ?? null;
+        $importeTotal      = (float) $factura->importe_total;
+
+        // Actualizar o crear recaudación si aplica
+        if ($tipoRecaudacion && $totalRecaudacion > 0) {
+            DB::table('recaudacion')->updateOrInsert(
+                ['id_factura' => $id],
+                [
+                    'porcentaje'        => $porcentaje ?? 0,
+                    'total_recaudacion' => $totalRecaudacion,
+                ]
+            );
+        } elseif (!$tipoRecaudacion || $totalRecaudacion == 0) {
+            DB::table('recaudacion')->where('id_factura', $id)->delete();
+            $totalRecaudacion = 0;
+        }
+
+        // Calcular monto pendiente
+        $montoPendiente = max(0, $importeTotal - $montoAbonado - $totalRecaudacion);
+
+        // Determinar nuevo estado
+        $estado = $this->calcularEstado($factura, $montoAbonado, $montoPendiente, $tipoRecaudacion, $validated['validar_detraccion'] ?? false);
+
+        // Actualizar factura (sin fecha_abono — no existe en el esquema actual)
+        $updateData = [
+            'monto_abonado'      => $montoAbonado,
+            'monto_pendiente'    => $montoPendiente,
+            'tipo_recaudacion'   => $tipoRecaudacion,
+            'estado'             => $estado,
+            'fecha_actualizacion'=> now(),
+        ];
+
+        $factura->update($updateData);
+
+        return response()->json([
+            'success'         => true,
+            'estado'          => $estado,
+            'monto_abonado'   => $montoAbonado,
+            'monto_pendiente' => $montoPendiente,
+            'message'         => 'Pago procesado correctamente',
+        ]);
+    }
+
+    /**
+     * Calcular el estado de la factura según los montos.
+     */
+    private function calcularEstado(Factura $factura, float $montoAbonado, float $montoPendiente, ?string $tipoRecaudacion, bool $validarDetraccion): string
+    {
+        // Si es detracción y aún no se ha validado (importada como POR VALIDAR DETRACCION y sin validación explícita)
+        if (
+            $tipoRecaudacion === 'DETRACCION' &&
+            !$validarDetraccion &&
+            $montoAbonado == 0 &&
+            in_array($factura->estado, ['POR VALIDAR DETRACCION', 'PENDIENTE'])
+        ) {
+            return 'POR VALIDAR DETRACCION';
+        }
+
+        // Si no hay abono
+        if ($montoAbonado == 0) {
+            // Verificar si está vencida
+            if ($factura->fecha_vencimiento && $factura->fecha_vencimiento < now()->toDateString()) {
+                return 'VENCIDO';
+            }
+            return 'PENDIENTE';
+        }
+
+        // Con abono
+        if ($montoPendiente <= 0) {
+            return 'PAGADA';
+        }
+
+        return 'PAGO PARCIAL';
+    }
+
+    /**
+     * Enviar reporte de vencidos/pendientes a un usuario por WhatsApp.
+     */
+    public function enviarReporteVencidosUsuario(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'id_usuario'   => 'required|integer|exists:usuario,id_usuario',
+            'tipo'         => 'required|in:vencidos,pendientes,todos',
+            'fecha_desde'  => 'nullable|date',
+            'fecha_hasta'  => 'nullable|date',
+        ]);
+
+        $usuario = DB::table('usuario')->where('id_usuario', $validated['id_usuario'])->first();
+
+        if (!$usuario || !$usuario->celular) {
+            return response()->json(['success' => false, 'error' => 'El usuario no tiene celular registrado.'], 422);
+        }
+
+        // Construir query según tipo
+        $query = DB::table('factura as f')
+            ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
+            ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura');
+
+        if ($validated['tipo'] === 'vencidos') {
+            $query->whereIn('f.estado', ['VENCIDO']);
+        } elseif ($validated['tipo'] === 'pendientes') {
+            $query->whereIn('f.estado', ['PENDIENTE', 'POR VALIDAR DETRACCION', 'PAGO PARCIAL']);
+        } else {
+            $query->whereIn('f.estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION']);
+        }
+
+        if (!empty($validated['fecha_desde'])) {
+            $query->where('f.fecha_emision', '>=', $validated['fecha_desde']);
+        }
+        if (!empty($validated['fecha_hasta'])) {
+            $query->where('f.fecha_emision', '<=', $validated['fecha_hasta']);
+        }
+
+        $facturas = $query->select([
+            'f.serie', 'f.numero', 'f.importe_total', 'f.monto_pendiente',
+            'f.estado', 'f.fecha_vencimiento', 'f.moneda',
+            'c.razon_social',
+            'rec.total_recaudacion',
+        ])->orderByDesc('f.fecha_vencimiento')->get();
+
+        if ($facturas->isEmpty()) {
+            return response()->json(['success' => false, 'error' => 'No hay facturas para enviar con los filtros seleccionados.'], 422);
+        }
+
+        // Construir mensaje
+        $tipoLabel = match($validated['tipo']) {
+            'vencidos'   => 'VENCIDAS',
+            'pendientes' => 'PENDIENTES',
+            default      => 'PENDIENTES/VENCIDAS',
+        };
+
+        $totalDeuda = $facturas->sum('monto_pendiente');
+        $totalFacturas = $facturas->count();
+
+        $mensaje = "📊 *REPORTE DE FACTURAS {$tipoLabel}*\n";
+        $mensaje .= "Consorcio Rodriguez Caballero S.A.C.\n";
+        $mensaje .= "📅 Generado: " . now()->format('d/m/Y H:i') . "\n\n";
+        $mensaje .= "━━━━━━━━━━━━━━━━━━\n";
+
+        $lineCount = 0;
+        foreach ($facturas->take(15) as $f) {
+            $vcto = $f->fecha_vencimiento ? "Vcto: {$f->fecha_vencimiento}" : "Sin vcto";
+            $pendiente = number_format($f->monto_pendiente ?? $f->importe_total, 2);
+            $mensaje .= "🔸 *{$f->serie}-" . str_pad($f->numero, 8, '0', STR_PAD_LEFT) . "*\n";
+            $mensaje .= "   {$f->razon_social}\n";
+            $mensaje .= "   Pendiente: {$f->moneda} {$pendiente} | {$vcto}\n";
+            $lineCount++;
+        }
+
+        if ($totalFacturas > 15) {
+            $mensaje .= "... y " . ($totalFacturas - 15) . " facturas más\n";
+        }
+
+        $mensaje .= "━━━━━━━━━━━━━━━━━━\n";
+        $mensaje .= "📌 *TOTAL: {$totalFacturas} facturas*\n";
+        $mensaje .= "💰 *Deuda total: S/ " . number_format($totalDeuda, 2) . "*";
+
+        // Enviar por WhatsApp
+        $gateway = app(\App\Services\WhatsAppGatewayService::class);
+        $resultado = $gateway->enviar($usuario->celular, $mensaje);
+
+        return response()->json([
+            'success' => $resultado['ok'],
+            'message' => $resultado['ok']
+                ? "Reporte enviado a {$usuario->nombre} ({$usuario->celular})"
+                : 'No se pudo enviar: ' . ($resultado['error'] ?? 'Error desconocido'),
         ]);
     }
 
@@ -165,7 +342,7 @@ class FacturaController extends Controller
                 'c.celular',
                 'c.direccion_fiscal',
                 'c.correo',
-                'c.estado_contacto',
+                'c.estado_contado',
             ])
             ->where('f.id_factura', $id_factura)
             ->first();
@@ -195,17 +372,16 @@ class FacturaController extends Controller
 
         $validated['fecha_actualizacion'] = now();
 
-        // Calcular estado de contacto
-        $tieneCelular = !empty($validated['celular']);
-        $tieneCorreo  = !empty($validated['correo']);
+        $tieneCelular   = !empty($validated['celular']);
+        $tieneCorreo    = !empty($validated['correo']);
         $tieneDireccion = !empty($validated['direccion_fiscal']);
 
         if ($tieneCelular && $tieneCorreo && $tieneDireccion) {
-            $validated['estado_contacto'] = 'COMPLETO';
+            $validated['estado_contado'] = 'COMPLETO';
         } elseif ($tieneCelular || $tieneCorreo) {
-            $validated['estado_contacto'] = 'INCOMPLETO';
+            $validated['estado_contado'] = 'INCOMPLETO';
         } else {
-            $validated['estado_contacto'] = 'SIN_DATOS';
+            $validated['estado_contado'] = 'SIN_DATOS';
         }
 
         $cliente->update($validated);
@@ -219,45 +395,11 @@ class FacturaController extends Controller
 
     public function uploadComprobante(Request $request, $id)
     {
-        $request->validate([
-            'comprobante' => 'required|file|mimes:jpeg,png,jpg,gif,pdf|max:5120',
-        ]);
-
-        $factura = Factura::findOrFail($id);
-
-        if (!$request->hasFile('comprobante')) {
-            return response()->json(['error' => 'No se recibió ningún archivo'], 400);
-        }
-
-        $cloudUrl = $this->subirACloudinary($request->file('comprobante'), $id);
-
-        if (!$cloudUrl) {
-            return response()->json(['error' => 'No se pudo subir el archivo a Cloudinary'], 500);
-        }
-
-        $updateData = [
-            'ruta_comprobante_pago' => $cloudUrl,
-            'fecha_actualizacion'   => now(),
-        ];
-
-        $estadoAnterior = $factura->estado;
-        if (in_array($factura->estado, ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])) {
-            $updateData['estado']      = 'PAGADA';
-            $updateData['fecha_abono'] = now()->toDateString();
-        }
-
-        $factura->update($updateData);
-
-        $mensaje = in_array($estadoAnterior, ['PENDIENTE', 'POR_VENCER', 'VENCIDA'])
-            ? 'Comprobante guardado y factura marcada como PAGADA'
-            : 'Imagen de factura actualizada correctamente';
-
+        // ruta_comprobante_pago no existe en el esquema actual — devolver éxito si se desea agregar luego
         return response()->json([
-            'success'  => true,
-            'message'  => $mensaje,
-            'estado'   => $factura->fresh()->estado,
-            'imageUrl' => $cloudUrl,
-        ]);
+            'success' => false,
+            'message' => 'La columna ruta_comprobante_pago no existe en la base de datos. Agrega la columna con una migración para usar esta funcionalidad.',
+        ], 422);
     }
 
     private function subirACloudinary($file, $facturaId): ?string
@@ -282,7 +424,6 @@ class FacturaController extends Controller
 
             \Log::error('Cloudinary upload error', ['response' => $response->body()]);
             return null;
-
         } catch (\Throwable $e) {
             \Log::error('Cloudinary exception: ' . $e->getMessage());
             return null;

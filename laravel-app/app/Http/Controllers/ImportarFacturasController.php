@@ -22,9 +22,12 @@ class ImportarFacturasController extends Controller
         ini_set('memory_limit', '256M');
 
         $request->validate([
-            'archivo' => 'required|file|max:10240',
+            'archivo'         => 'required|file|max:10240',
+            'tipo_recaudacion'=> 'required|in:DETRACCION,RETENCION,NINGUNA',
         ], [
-            'archivo.required' => 'Selecciona un archivo Excel.',
+            'archivo.required'          => 'Selecciona un archivo Excel.',
+            'tipo_recaudacion.required' => 'Selecciona el tipo de recaudación del archivo.',
+            'tipo_recaudacion.in'       => 'Tipo de recaudación inválido.',
         ]);
 
         $archivo   = $request->file('archivo');
@@ -34,10 +37,11 @@ class ImportarFacturasController extends Controller
             return back()->with('error', 'El archivo debe ser .xlsx o .xls');
         }
 
-        // ── Parámetros de recaudación del formulario ──────────────────────
-        // tipoRecaudacion: DETRACCION | RETENCION | AUTODETRACCION | '' (ninguna)
-        $tipoRecaudacion = $request->input('tipo_recaudacion', '');
-        $porcentajeForm  = (float) $request->input('porcentaje_recaudacion', 10);
+        // Tipo de recaudación indicado por el usuario para TODAS las filas del archivo
+        $tipoRecaudacion = $request->input('tipo_recaudacion');
+        if ($tipoRecaudacion === 'NINGUNA') {
+            $tipoRecaudacion = null;
+        }
 
         try {
             $spreadsheet = IOFactory::load($archivo->getPathname());
@@ -54,6 +58,7 @@ class ImportarFacturasController extends Controller
         $omitidas   = 0;
         $duplicadas = 0;
         $errores    = [];
+        $numFila    = null;
 
         DB::beginTransaction();
 
@@ -69,20 +74,27 @@ class ImportarFacturasController extends Controller
                 // Fila vacía
                 if (empty($f['E']) && empty($f['F'])) continue;
 
-                // ── Montos ────────────────────────────────────────────────
-                $tipo            = trim((string)($f['D'] ?? '01'));
+                // ── Montos base ───────────────────────────────────────────
                 $subtotalGravado = $this->monto($f['P'] ?? 0);
                 $montoIgv        = $this->monto($f['T'] ?? 0);
                 $importeTotal    = $this->monto($f['Y'] ?? 0);
                 $moneda          = trim((string)($f['N'] ?? 'PEN'));
 
-                // ── Columna AE: monto de recaudación del Excel ───────────────
-                // Se toma directamente, sin cálculos.
-                // El porcentaje se guarda siempre como 10 (valor fijo referencial).
-                $montoRecaudacionExcel = $this->monto($f['AE'] ?? 0);
+                // ── Monto de recaudación del Excel (columna AE) ───────────
+                // El porcentaje viene de la columna AC
+                $montoRecaudacion  = $this->monto($f['AE'] ?? 0);
+                $porcentajeExcel   = $this->monto($f['AC'] ?? 0);
 
-                // Estado según tipo de comprobante
-                $estado = ($tipo === '07') ? 'PENDIENTE' : 'PAGADA';
+                // Si el tipo seleccionado es NINGUNA o el monto es 0, no hay recaudación
+                if (!$tipoRecaudacion || $montoRecaudacion <= 0) {
+                    $montoRecaudacion = 0;
+                    $porcentajeExcel  = 0;
+                }
+
+                // ── Estado inicial ─────────────────────────────────────────
+                // DETRACCION → POR VALIDAR DETRACCION (pendiente de confirmar)
+                // RETENCION / sin recaudación → PENDIENTE
+                $estado = ($tipoRecaudacion === 'DETRACCION') ? 'POR VALIDAR DETRACCION' : 'PENDIENTE';
 
                 // ── Glosa y fechas ─────────────────────────────────────────
                 $glosa            = $this->transformarGlosa(trim((string)($f['AG'] ?? '')));
@@ -101,15 +113,16 @@ class ImportarFacturasController extends Controller
 
                 $cliente = DB::table('cliente')->where('ruc', $ruc)->first();
                 if (!$cliente) {
+                    // Crear cliente. La columna en BD es estado_contado (sin 'a' al final)
                     $idCliente = DB::table('cliente')->insertGetId([
-                        'ruc'              => $ruc,
-                        'razon_social'     => $razonSocial,
-                        'estado_contacto'  => 'SIN_DATOS',
-                        'fecha_creacion'   => now(),
-                        'usuario_creacion' => $idUsuario,
+                        'ruc'                 => $ruc,
+                        'razon_social'        => $razonSocial,
+                        'estado_contado'      => 'SIN_DATOS',
+                        'fecha_creacion'      => now(),
                     ]);
                 } else {
                     $idCliente = $cliente->id_cliente;
+                    // Actualizar razón social si cambió
                     if (!empty($razonSocial) && $cliente->razon_social !== $razonSocial) {
                         DB::table('cliente')->where('id_cliente', $idCliente)->update([
                             'razon_social'        => $razonSocial,
@@ -127,6 +140,10 @@ class ImportarFacturasController extends Controller
                     continue;
                 }
 
+                // ── Monto pendiente inicial ────────────────────────────────
+                // El cliente debe abonar el importe menos lo que ya retiene el banco (recaudación)
+                $montoPendiente = max(0, $importeTotal - $montoRecaudacion);
+
                 // ── Insertar Factura ───────────────────────────────────────
                 $idFactura = DB::table('factura')->insertGetId([
                     'serie'             => $serie,
@@ -141,40 +158,24 @@ class ImportarFacturasController extends Controller
                     'estado'            => $estado,
                     'glosa'             => $glosa,
                     'forma_pago'        => trim((string)($f['AH'] ?? '')),
-                    'tipo_recaudacion'  => $tipoRecaudacion ?: null,
+                    'tipo_recaudacion'  => $tipoRecaudacion,
                     'fecha_vencimiento' => $fechaVencimiento,
                     'fecha_emision'     => $fechaEmision,
                     'fecha_creacion'    => now(),
                     'usuario_creacion'  => $idUsuario,
+                    'monto_abonado'     => 0.00,
+                    'monto_pendiente'   => $montoPendiente,
                 ]);
 
-                // ── Insertar en tabla de recaudación ───────────────────────
-                // Lee el valor directo de columna AE del Excel.
-                // Si AE = 0 o vacío, no inserta nada (esa factura no tiene
-                // recaudación). Sin cálculos propios: lo que dice el Excel.
-                // Solo inserta si el Excel tiene un monto en columna AE.
-                // Nada se calcula: porcentaje viene de columna AC, monto de AE.
-                if (!empty($tipoRecaudacion) && $montoRecaudacionExcel > 0) {
-                    if ($tipoRecaudacion === 'DETRACCION') {
-                        DB::table('detraccion')->insert([
-                            'id_factura'       => $idFactura,
-                            'porcentaje'       => $porcentajeForm,
-                            'total_detraccion' => $montoRecaudacionExcel,
-                        ]);
-                    } elseif ($tipoRecaudacion === 'RETENCION') {
-                        DB::table('retencion')->insert([
-                            'id_factura'      => $idFactura,
-                            'porcentaje'      => $porcentajeForm,
-                            'total_retencion' => $montoRecaudacionExcel,
-                        ]);
-                    } elseif ($tipoRecaudacion === 'AUTODETRACCION') {
-                        DB::table('autodetraccion')->insert([
-                            'id_factura'           => $idFactura,
-                            'porcentaje'           => $porcentajeForm,
-                            'total_autodetraccion' => $montoRecaudacionExcel,
-                        ]);
-                    }
+                // ── Insertar recaudación si aplica ─────────────────────────
+                if ($tipoRecaudacion && $montoRecaudacion > 0) {
+                    DB::table('recaudacion')->insert([
+                        'id_factura'        => $idFactura,
+                        'porcentaje'        => $porcentajeExcel,
+                        'total_recaudacion' => $montoRecaudacion,
+                    ]);
                 }
+
                 $insertadas++;
             }
 
@@ -185,7 +186,7 @@ class ImportarFacturasController extends Controller
             return back()->with('error',
                 'Error en fila ' . ($numFila ?? '?') . ': ' . $e->getMessage() .
                 ' [' . basename($e->getFile()) . ':' . $e->getLine() . ']'
-            );
+            )->withInput();
         }
 
         return redirect()->route('facturas.importar')->with('resumen', [
@@ -193,12 +194,13 @@ class ImportarFacturasController extends Controller
             'omitidas'         => $omitidas,
             'duplicadas'       => $duplicadas,
             'errores'          => $errores,
-            'tipo_recaudacion' => $tipoRecaudacion,
-
+            'tipo_recaudacion' => $tipoRecaudacion ?? 'NINGUNA',
         ]);
     }
 
-    // ── HELPERS ──────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // HELPERS
+    // ─────────────────────────────────────────────────────────────────────────
 
     private function transformarGlosa(string $txt): string
     {

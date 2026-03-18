@@ -25,13 +25,20 @@ Route::middleware('auth')->group(function () {
 
     // ── FACTURAS ───────────────────────────────────────────────────────
     Route::get('/facturas', [FacturaController::class, 'index'])->name('facturas.index');
-    Route::get('/facturas/{id}/edit',  [FacturaController::class, 'edit']  )->name('facturas.edit');
-    Route::put('/facturas/{id}',       [FacturaController::class, 'update'])->name('facturas.update');
-    Route::get('/facturas/{id}/cliente', [FacturaController::class, 'obtenerCliente'])->name('facturas.obtener-cliente');
-    Route::put('/facturas/{id}/cliente', [FacturaController::class, 'actualizarCliente'])->name('facturas.actualizar-cliente');
+    Route::get('/facturas/{id}/edit',    [FacturaController::class, 'edit']              )->name('facturas.edit');
+    Route::put('/facturas/{id}',         [FacturaController::class, 'update']            )->name('facturas.update');
+    Route::post('/facturas/{id}/pago',   [FacturaController::class, 'procesarPago']      )->name('facturas.procesar-pago');
+    Route::get('/facturas/{id}/cliente', [FacturaController::class, 'obtenerCliente']    )->name('facturas.obtener-cliente');
+    Route::put('/facturas/{id}/cliente', [FacturaController::class, 'actualizarCliente'] )->name('facturas.actualizar-cliente');
+
     Route::post('/facturas/{id}/upload-comprobante',
         [FacturaController::class, 'uploadComprobante']
     )->name('facturas.upload-comprobante');
+
+    // Reporte vencidos/pendientes a usuario por WhatsApp
+    Route::post('/facturas/reporte-vencidos-usuario',
+        [FacturaController::class, 'enviarReporteVencidosUsuario']
+    )->name('facturas.reporte-vencidos-usuario');
 
     Route::post('/facturas/{id}/enviar-whatsapp-manual',
         [NotificacionController::class, 'enviarWhatsAppManual']
@@ -65,23 +72,22 @@ Route::middleware('auth')->group(function () {
     Route::delete('/clientes/{id}', [ClienteController::class, 'destroy'])->name('clientes.destroy');
 
     // ── USUARIOS ───────────────────────────────────────────────────────
-    Route::get('/usuarios',         [UsuarioController::class, 'index']  )->name('usuarios.index');
-    Route::get('/usuarios/crear',   [UsuarioController::class, 'create'] )->name('usuarios.create');
-    Route::post('/usuarios',        [UsuarioController::class, 'store']  )->name('usuarios.store');
+    Route::get('/usuarios',             [UsuarioController::class, 'index']  )->name('usuarios.index');
+    Route::get('/usuarios/crear',       [UsuarioController::class, 'create'] )->name('usuarios.create');
+    Route::post('/usuarios',            [UsuarioController::class, 'store']  )->name('usuarios.store');
     Route::get('/usuarios/{id}/editar', [UsuarioController::class, 'edit']   )->name('usuarios.edit');
-    Route::put('/usuarios/{id}',    [UsuarioController::class, 'update'] )->name('usuarios.update');
-    Route::delete('/usuarios/{id}', [UsuarioController::class, 'destroy'])->name('usuarios.destroy');
+    Route::put('/usuarios/{id}',        [UsuarioController::class, 'update'] )->name('usuarios.update');
+    Route::delete('/usuarios/{id}',     [UsuarioController::class, 'destroy'])->name('usuarios.destroy');
 
     // ── REPORTES ───────────────────────────────────────────────────────
-    Route::get('/reportes',         [ReporteController::class, 'index'])->name('reportes.index');
-    Route::get('/reportes/json',    [ReporteController::class, 'json'] )->name('reportes.json');
-    Route::get('/reportes/pdf',     [ReporteController::class, 'pdf']  )->name('reportes.pdf');
-    Route::get('/reportes/deuda-general',  [ReporteController::class, 'deudaGeneral'])->name('reportes.deuda-general');
+    Route::get('/reportes',              [ReporteController::class, 'index'])->name('reportes.index');
+    Route::get('/reportes/json',         [ReporteController::class, 'json'] )->name('reportes.json');
+    Route::get('/reportes/pdf',          [ReporteController::class, 'pdf']  )->name('reportes.pdf');
+    Route::get('/reportes/deuda-general',[ReporteController::class, 'deudaGeneral'])->name('reportes.deuda-general');
     Route::post('/reportes/enviar-whatsapp',
         [ReporteController::class, 'enviarReporteWhatsApp']
     )->name('reportes.enviar-whatsapp');
     Route::post('/reportes/enviar-correo',
         [ReporteController::class, 'enviarReporteCorreo']
     )->name('reportes.enviar-correo');
-
 });
