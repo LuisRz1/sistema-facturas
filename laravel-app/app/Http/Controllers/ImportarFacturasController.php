@@ -22,31 +22,27 @@ class ImportarFacturasController extends Controller
         ini_set('memory_limit', '256M');
 
         $request->validate([
-            'archivo'         => 'required|file|max:10240',
-            'tipo_recaudacion'=> 'required|in:DETRACCION,RETENCION,NINGUNA',
+            'archivo'          => 'required|file|max:10240',
+            'tipo_recaudacion' => 'required|in:DETRACCION,RETENCION',
         ], [
             'archivo.required'          => 'Selecciona un archivo Excel.',
-            'tipo_recaudacion.required' => 'Selecciona el tipo de recaudación del archivo.',
-            'tipo_recaudacion.in'       => 'Tipo de recaudación inválido.',
+            'tipo_recaudacion.required' => 'Selecciona el tipo de recaudación (Detracción o Retención).',
+            'tipo_recaudacion.in'       => 'Tipo de recaudación inválido. Debe ser DETRACCION o RETENCION.',
         ]);
 
         $archivo   = $request->file('archivo');
         $extension = strtolower($archivo->getClientOriginalExtension());
 
         if (!in_array($extension, ['xlsx', 'xls'])) {
-            return back()->with('error', 'El archivo debe ser .xlsx o .xls');
+            return back()->with('error', 'El archivo debe ser .xlsx o .xls')->withInput();
         }
 
-        // Tipo de recaudación indicado por el usuario para TODAS las filas del archivo
         $tipoRecaudacion = $request->input('tipo_recaudacion');
-        if ($tipoRecaudacion === 'NINGUNA') {
-            $tipoRecaudacion = null;
-        }
 
         try {
             $spreadsheet = IOFactory::load($archivo->getPathname());
         } catch (\Throwable $e) {
-            return back()->with('error', 'No se pudo leer el Excel: ' . $e->getMessage());
+            return back()->with('error', 'No se pudo leer el Excel: ' . $e->getMessage())->withInput();
         }
 
         $hoja  = $spreadsheet->getActiveSheet();
@@ -75,26 +71,39 @@ class ImportarFacturasController extends Controller
                 if (empty($f['E']) && empty($f['F'])) continue;
 
                 // ── Montos base ───────────────────────────────────────────
-                $subtotalGravado = $this->monto($f['P'] ?? 0);
-                $montoIgv        = $this->monto($f['T'] ?? 0);
-                $importeTotal    = $this->monto($f['Y'] ?? 0);
-                $moneda          = trim((string)($f['N'] ?? 'PEN'));
+                $subtotalGravado  = $this->monto($f['P'] ?? 0);
+                $montoIgv         = $this->monto($f['T'] ?? 0);
+                $importeTotal     = $this->monto($f['Y'] ?? 0);
+                $moneda           = trim((string)($f['N'] ?? 'PEN'));
 
-                // ── Monto de recaudación del Excel (columna AE) ───────────
-                // El porcentaje viene de la columna AC
-                $montoRecaudacion  = $this->monto($f['AE'] ?? 0);
-                $porcentajeExcel   = $this->monto($f['AC'] ?? 0);
+                // Monto recaudación (columna AE) y porcentaje (columna AC)
+                $montoRecaudacion = $this->monto($f['AE'] ?? 0);
+                $porcentajeExcel  = $this->monto($f['AC'] ?? 0);
 
-                // Si el tipo seleccionado es NINGUNA o el monto es 0, no hay recaudación
-                if (!$tipoRecaudacion || $montoRecaudacion <= 0) {
-                    $montoRecaudacion = 0;
-                    $porcentajeExcel  = 0;
+                // Si no hay monto en AE, no hay recaudación para esta fila
+                if ($montoRecaudacion <= 0) {
+                    $porcentajeExcel = 0;
                 }
 
+                // ── Verificar si esta fila tiene el tipo de recaudación ─────
+                // Lee columna AI: si dice "SI", "DETRACCION", etc → aplica tipo
+                // Si está vacía/NO → sin recaudación
+                $indicadorExcel = strtoupper(trim((string)($f['AI'] ?? '')));
+                $tieneIndicador = (strpos($indicadorExcel, 'SI') !== false || 
+                                  strpos($indicadorExcel, 'DETRACCION') !== false ||
+                                  strpos($indicadorExcel, 'RETENCION') !== false);
+
+                // Aplicar tipo de recaudación SOLO si el indicador está presente
+                $tipoRecaudacionFila = ($tieneIndicador && $montoRecaudacion > 0) 
+                    ? $tipoRecaudacion 
+                    : null;
+
                 // ── Estado inicial ─────────────────────────────────────────
-                // DETRACCION → POR VALIDAR DETRACCION (pendiente de confirmar)
-                // RETENCION / sin recaudación → PENDIENTE
-                $estado = ($tipoRecaudacion === 'DETRACCION') ? 'POR VALIDAR DETRACCION' : 'PENDIENTE';
+                // Si tiene el indicador Y es DETRACCION Y hay monto → POR VALIDAR DETRACCION
+                // Si no tiene indicador o no es detracción → PENDIENTE
+                $estado = ($tipoRecaudacionFila === 'DETRACCION' && $montoRecaudacion > 0)
+                    ? 'POR VALIDAR DETRACCION'
+                    : 'PENDIENTE';
 
                 // ── Glosa y fechas ─────────────────────────────────────────
                 $glosa            = $this->transformarGlosa(trim((string)($f['AG'] ?? '')));
@@ -113,16 +122,14 @@ class ImportarFacturasController extends Controller
 
                 $cliente = DB::table('cliente')->where('ruc', $ruc)->first();
                 if (!$cliente) {
-                    // Crear cliente. La columna en BD es estado_contado (sin 'a' al final)
                     $idCliente = DB::table('cliente')->insertGetId([
-                        'ruc'                 => $ruc,
-                        'razon_social'        => $razonSocial,
-                        'estado_contado'      => 'SIN_DATOS',
-                        'fecha_creacion'      => now(),
+                        'ruc'                => $ruc,
+                        'razon_social'       => $razonSocial,
+                        'estado_contado'     => 'SIN_DATOS',  // columna correcta en BD
+                        'fecha_creacion'     => now(),
                     ]);
                 } else {
                     $idCliente = $cliente->id_cliente;
-                    // Actualizar razón social si cambió
                     if (!empty($razonSocial) && $cliente->razon_social !== $razonSocial) {
                         DB::table('cliente')->where('id_cliente', $idCliente)->update([
                             'razon_social'        => $razonSocial,
@@ -141,7 +148,6 @@ class ImportarFacturasController extends Controller
                 }
 
                 // ── Monto pendiente inicial ────────────────────────────────
-                // El cliente debe abonar el importe menos lo que ya retiene el banco (recaudación)
                 $montoPendiente = max(0, $importeTotal - $montoRecaudacion);
 
                 // ── Insertar Factura ───────────────────────────────────────
@@ -158,7 +164,7 @@ class ImportarFacturasController extends Controller
                     'estado'            => $estado,
                     'glosa'             => $glosa,
                     'forma_pago'        => trim((string)($f['AH'] ?? '')),
-                    'tipo_recaudacion'  => $tipoRecaudacion,
+                    'tipo_recaudacion'  => $tipoRecaudacionFila,
                     'fecha_vencimiento' => $fechaVencimiento,
                     'fecha_emision'     => $fechaEmision,
                     'fecha_creacion'    => now(),
@@ -168,7 +174,7 @@ class ImportarFacturasController extends Controller
                 ]);
 
                 // ── Insertar recaudación si aplica ─────────────────────────
-                if ($tipoRecaudacion && $montoRecaudacion > 0) {
+                if ($montoRecaudacion > 0 && $tipoRecaudacionFila !== null) {
                     DB::table('recaudacion')->insert([
                         'id_factura'        => $idFactura,
                         'porcentaje'        => $porcentajeExcel,
@@ -194,13 +200,11 @@ class ImportarFacturasController extends Controller
             'omitidas'         => $omitidas,
             'duplicadas'       => $duplicadas,
             'errores'          => $errores,
-            'tipo_recaudacion' => $tipoRecaudacion ?? 'NINGUNA',
+            'tipo_recaudacion' => $tipoRecaudacion,
         ]);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // HELPERS
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── HELPERS ──────────────────────────────────────────────────────────────
 
     private function transformarGlosa(string $txt): string
     {
@@ -213,15 +217,9 @@ class ImportarFacturasController extends Controller
             }
             return 'Alquiler de carro Placa: N/D';
         }
-        if (str_contains($up, 'AGUA') && str_contains($up, 'TRANSPORT')) {
-            return 'Servicio de transporte de agua';
-        }
-        if (str_contains($up, 'AGUA')) {
-            return 'Suministro de Agua';
-        }
-        if (str_contains($up, 'TRANSPORT')) {
-            return 'Servicio de transporte';
-        }
+        if (str_contains($up, 'AGUA') && str_contains($up, 'TRANSPORT')) return 'Servicio de transporte de agua';
+        if (str_contains($up, 'AGUA'))      return 'Suministro de Agua';
+        if (str_contains($up, 'TRANSPORT')) return 'Servicio de transporte';
         if (str_contains($up, 'ALQUILER')) {
             if (preg_match('/ALQUILER\s+DE\s+([\wÁÉÍÓÚáéíóúÑñ]+)(?:\s+([\wÁÉÍÓÚáéíóúÑñ]+))?/iu', $txt, $m)) {
                 $parte = ucfirst(strtolower($m[1]));

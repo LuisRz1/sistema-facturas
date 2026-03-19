@@ -71,30 +71,48 @@ class ReporteController extends Controller
     public function pdf(Request $request)
     {
         $idCliente  = $request->input('id_cliente');
-        $estado     = $request->input('estado');
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
 
-        $facturas = $this->queryFacturas($idCliente, $estado, $fechaDesde, $fechaHasta)->get();
+        // Acepta estado simple (legacy) o array estados[]
+        $estadosParam = $request->input('estados', []);
+        $estadoSimple = $request->input('estado');
+
+        if ($estadoSimple) {
+            $estadosFiltro = [$estadoSimple];
+        } elseif (!empty($estadosParam)) {
+            $estadosFiltro = (array) $estadosParam;
+        } else {
+            $estadosFiltro = ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION'];
+        }
+
+        // Acepta usuario_id simple (legacy) o array usuario_ids[]
+        $usuarioIdsParam = $request->input('usuario_ids', []);
+        $usuarioIdSimple = $request->input('usuario_id');
+        $usuarioIds = $usuarioIdSimple
+            ? [$usuarioIdSimple]
+            : (array) $usuarioIdsParam;
+
+        $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
+            ->whereIn('f.estado', $estadosFiltro)
+            ->get();
+
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja = $f->importe_total - ($f->monto_recaudacion ?? 0);
             return $f;
         });
 
-        $facturasAgrupadas = null;
-        if (!$idCliente) {
-            $facturasAgrupadas = $facturas->groupBy('razon_social')->sortKeys();
-        }
+        $facturasAgrupadas = $facturas->groupBy('razon_social')->sortKeys();
 
         $resumen = [
             'total_facturas'    => $facturas->count(),
-            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'])->count(),
-            'pagadas'           => $facturas->where('estado', 'PAGADA')->count(),
-            'vencidas'          => $facturas->where('estado', 'VENCIDO')->count(),
+            'pendientes'        => $facturas->count(),
+            'pagadas'           => 0,
+            'vencidas'          => $facturas->where('estado','VENCIDO')->count(),
             'total_bruto'       => $facturas->sum('importe_total'),
             'total_recaudacion' => $facturas->sum('monto_recaudacion'),
             'total_neto'        => $facturas->sum('neto_caja'),
-            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA'])->sum('monto_pendiente'),
+            'saldo_cobrar'      => $facturas->sum('monto_pendiente'),
         ];
 
         $clienteNombre  = 'TODOS LOS CLIENTES';
@@ -110,14 +128,26 @@ class ReporteController extends Controller
             }
         }
 
-        $estadoLabel  = $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS';
+        // Usuarios destino (puede ser uno o varios)
+        $usuariosDestino = [];
+        if (!empty($usuarioIds)) {
+            $usuariosDestino = DB::table('usuario')
+                ->whereIn('id_usuario', $usuarioIds)
+                ->get()
+                ->all();
+        }
+
+        $estadoLabel  = count($estadosFiltro) === 4
+            ? 'TODOS LOS PENDIENTES'
+            : implode(' · ', $estadosFiltro);
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
 
         return view('reportes.pdf', compact(
-            'facturas', 'facturasAgrupadas', 'resumen',
-            'clienteNombre', 'estadoLabel', 'idCliente', 'periodoLabel',
-            'fechaDesde', 'fechaHasta', 'estado',
-            'clienteCelular', 'clienteCorreo'
+            'facturas','facturasAgrupadas','resumen',
+            'clienteNombre','estadoLabel','idCliente','periodoLabel',
+            'fechaDesde','fechaHasta',
+            'clienteCelular','clienteCorreo',
+            'usuariosDestino'
         ));
     }
 
@@ -128,99 +158,105 @@ class ReporteController extends Controller
     public function enviarReporteWhatsApp(Request $request, WhatsAppGatewayService $gateway)
     {
         $idCliente  = $request->input('id_cliente');
+        $usuarioId  = $request->input('usuario_id');  // nuevo: usuario destino
         $estado     = $request->input('estado');
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
 
-        if (!$idCliente) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'Debes seleccionar un cliente específico para enviar el reporte.',
-            ], 422);
+        // Resolver destinatario: usuario o cliente
+        $celular    = null;
+        $nombre     = null;
+
+        if ($usuarioId) {
+            $dest = DB::table('usuario')->where('id_usuario', $usuarioId)->first();
+            if (!$dest || !$dest->celular) {
+                return response()->json(['success'=>false,'error'=>'El usuario no tiene celular registrado.'], 422);
+            }
+            $celular = $dest->celular;
+            $nombre  = $dest->nombre . ' ' . $dest->apellido;
+        } elseif ($idCliente) {
+            $cliente = DB::table('cliente')->where('id_cliente', $idCliente)->first();
+            if (!$cliente || !$cliente->celular) {
+                return response()->json(['success'=>false,'error'=>'El cliente no tiene celular registrado.'], 422);
+            }
+            $celular = $cliente->celular;
+            $nombre  = $cliente->razon_social;
+        } else {
+            return response()->json(['success'=>false,'error'=>'Debes seleccionar un cliente o usuario destino.'], 422);
         }
 
-        $cliente = DB::table('cliente')->where('id_cliente', $idCliente)->first();
+        $estadosFiltro = $estado
+            ? [$estado]
+            : ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION'];
 
-        if (!$cliente) {
-            return response()->json(['success' => false, 'error' => 'Cliente no encontrado.'], 404);
-        }
+        $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
+            ->whereIn('f.estado', $estadosFiltro)
+            ->get();
 
-        if (!$cliente->celular) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'El cliente no tiene número de celular/WhatsApp registrado.',
-            ], 422);
-        }
-
-        $facturas = $this->queryFacturas($idCliente, $estado, $fechaDesde, $fechaHasta)->get();
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja = $f->importe_total - ($f->monto_recaudacion ?? 0);
             return $f;
         });
 
-        $periodoLabel      = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel       = $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS';
-        $clienteNombre     = strtoupper($cliente->razon_social);
+        $periodoLabel  = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
+        $estadoLabel   = $estado ? strtoupper($estado) : 'TODOS LOS PENDIENTES';
+        $clienteNombre = $nombre ?? 'TODOS LOS CLIENTES';
         $facturasAgrupadas = null;
 
         $resumen = [
             'total_facturas'    => $facturas->count(),
-            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'])->count(),
-            'pagadas'           => $facturas->where('estado', 'PAGADA')->count(),
-            'vencidas'          => $facturas->where('estado', 'VENCIDO')->count(),
+            'pendientes'        => $facturas->count(),
+            'pagadas'           => 0,
+            'vencidas'          => $facturas->where('estado','VENCIDO')->count(),
             'total_bruto'       => $facturas->sum('importe_total'),
             'total_recaudacion' => $facturas->sum('monto_recaudacion'),
             'total_neto'        => $facturas->sum('neto_caja'),
-            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA'])->sum('monto_pendiente'),
+            'saldo_cobrar'      => $facturas->sum('monto_pendiente'),
         ];
 
         try {
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reportes.pdf_doc', compact(
-                'facturas', 'facturasAgrupadas', 'resumen',
-                'clienteNombre', 'estadoLabel', 'periodoLabel'
-            ))->setPaper('a4', 'landscape');
-
+                'facturas','facturasAgrupadas','resumen',
+                'clienteNombre','estadoLabel','periodoLabel'
+            ))->setPaper('a4','landscape');
             $pdfContent = $pdf->output();
         } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'error'   => 'No se pudo generar el PDF: ' . $e->getMessage(),
-            ], 500);
+            return response()->json(['success'=>false,'error'=>'No se pudo generar el PDF: '.$e->getMessage()], 500);
         }
 
-        $cloudUrl = $this->subirPdfACloudinary($pdfContent, $clienteNombre, $periodoLabel);
-
+        $cloudUrl = $this->subirPdfACloudinary($pdfContent, $estadoLabel, $periodoLabel);
         if (!$cloudUrl) {
-            return response()->json(['success' => false, 'error' => 'No se pudo subir el PDF a Cloudinary.'], 500);
+            return response()->json(['success'=>false,'error'=>'No se pudo subir el PDF a Cloudinary.'], 500);
         }
 
-        $nombreArchivo = 'Reporte_'
-            . preg_replace('/[^A-Za-z0-9_\-]/', '_', $clienteNombre)
-            . '_' . now()->format('Ymd') . '.pdf';
+        // Nombre del archivo: Reporte_[TIPO]_[ESTADO]_[PERIODO].pdf
+        $partes = ['Reporte'];
+        $partes[] = preg_replace('/[^A-Za-z0-9]/', '_', $estadoLabel);
+        if ($fechaDesde || $fechaHasta) {
+            if ($fechaDesde) $partes[] = str_replace('-','', $fechaDesde);
+            if ($fechaHasta) $partes[] = 'al_'.str_replace('-','', $fechaHasta);
+        }
+        $nombreArchivo = implode('_', $partes) . '.pdf';
 
-        $caption = "📊 *Reporte Financiero — CRC S.A.C.*\n"
-            . "🏢 {$clienteNombre}\n"
-            . "📅 {$periodoLabel}\n"
-            . "📋 {$facturas->count()} facturas · Saldo por cobrar: S/ " . number_format($resumen['saldo_cobrar'], 2);
+        $caption = "*Reporte Financiero — CRC S.A.C.*\n{$periodoLabel}\n{$facturas->count()} facturas · Saldo: S/ ".number_format($resumen['saldo_cobrar'],2);
 
-        $resultado = $gateway->enviarDocumento($cliente->celular, $cloudUrl, $nombreArchivo, $caption);
+        $resultado = $gateway->enviarDocumento($celular, $cloudUrl, $nombreArchivo, $caption);
 
         return response()->json([
             'success' => $resultado['ok'],
             'message' => $resultado['ok']
-                ? "PDF enviado por WhatsApp al {$cliente->celular}"
-                : 'No se pudo enviar el WhatsApp: ' . ($resultado['error'] ?? 'Error desconocido'),
+                ? "PDF enviado por WhatsApp a {$nombre} ({$celular})"
+                : 'No se pudo enviar: '.($resultado['error'] ?? 'Error desconocido'),
         ]);
     }
 
-    private function subirPdfACloudinary(string $pdfContent, string $clienteNombre, string $periodo): ?string
+    private function subirPdfACloudinary(string $pdfContent, string $estadoLabel, string $periodo): ?string
     {
         $cloudName    = env('CLOUDINARY_CLOUD_NAME', 'dq3rban3m');
         $uploadPreset = env('CLOUDINARY_UPLOAD_PRESET', 'ml_default');
 
-        $publicId = 'reporte_'
-            . preg_replace('/[^a-z0-9_\-]/', '_', strtolower($clienteNombre))
-            . '_' . now()->format('Ymd_His');
+        $slug = preg_replace('/[^a-z0-9_\-]/', '_', strtolower($estadoLabel));
+        $publicId = 'reporte_' . $slug . '_' . now()->format('Ymd_His');
 
         try {
             $response = \Illuminate\Support\Facades\Http::attach(
@@ -252,60 +288,82 @@ class ReporteController extends Controller
     public function enviarReporteCorreo(Request $request)
     {
         $idCliente  = $request->input('id_cliente');
+        $usuarioId  = $request->input('usuario_id');
         $estado     = $request->input('estado');
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
 
-        if (!$idCliente) {
-            return response()->json(['success' => false, 'error' => 'Debes seleccionar un cliente específico.'], 422);
+        $correo  = null;
+        $nombre  = null;
+
+        if ($usuarioId) {
+            $dest = DB::table('usuario')->where('id_usuario', $usuarioId)->first();
+            if (!$dest || !$dest->correo) {
+                return response()->json(['success'=>false,'error'=>'El usuario no tiene correo registrado.'], 422);
+            }
+            $correo = $dest->correo;
+            $nombre = $dest->nombre . ' ' . $dest->apellido;
+        } elseif ($idCliente) {
+            $cliente = DB::table('cliente')->where('id_cliente', $idCliente)->first();
+            if (!$cliente || !$cliente->correo) {
+                return response()->json(['success'=>false,'error'=>'El cliente no tiene correo registrado.'], 422);
+            }
+            $correo = $cliente->correo;
+            $nombre = $cliente->razon_social;
+        } else {
+            return response()->json(['success'=>false,'error'=>'Debes seleccionar un cliente o usuario destino.'], 422);
         }
 
-        $cliente = DB::table('cliente')->where('id_cliente', $idCliente)->first();
+        $estadosFiltro = $estado
+            ? [$estado]
+            : ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION'];
 
-        if (!$cliente || !$cliente->correo) {
-            return response()->json(['success' => false, 'error' => 'El cliente no tiene correo registrado.'], 422);
-        }
+        $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
+            ->whereIn('f.estado', $estadosFiltro)
+            ->get();
 
-        $facturas = $this->queryFacturas($idCliente, $estado, $fechaDesde, $fechaHasta)->get();
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja = $f->importe_total - ($f->monto_recaudacion ?? 0);
             return $f;
         });
 
-        $facturasAgrupadas = null;
-        $periodoLabel  = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel   = $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS';
-        $clienteNombre = strtoupper($cliente->razon_social);
+        $facturasAgrupadas = $facturas->groupBy('razon_social')->sortKeys();
+        $periodoLabel      = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
+        $estadoLabel       = $estado ? strtoupper($estado) : 'TODOS LOS PENDIENTES';
+        $clienteNombre     = strtoupper($nombre ?? 'TODOS LOS CLIENTES');
+        $idCliente         = $idCliente ?? null;
+        $usuarioDestino    = null;
 
         $resumen = [
             'total_facturas'    => $facturas->count(),
-            'pendientes'        => $facturas->whereIn('estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'])->count(),
-            'pagadas'           => $facturas->where('estado', 'PAGADA')->count(),
-            'vencidas'          => $facturas->where('estado', 'VENCIDO')->count(),
+            'pendientes'        => $facturas->count(),
+            'pagadas'           => 0,
+            'vencidas'          => $facturas->where('estado','VENCIDO')->count(),
             'total_bruto'       => $facturas->sum('importe_total'),
             'total_recaudacion' => $facturas->sum('monto_recaudacion'),
             'total_neto'        => $facturas->sum('neto_caja'),
-            'saldo_cobrar'      => $facturas->whereNotIn('estado', ['PAGADA'])->sum('monto_pendiente'),
+            'saldo_cobrar'      => $facturas->sum('monto_pendiente'),
         ];
 
         $htmlReporte = view('reportes.pdf', compact(
-            'facturas', 'facturasAgrupadas', 'resumen',
-            'clienteNombre', 'estadoLabel', 'idCliente', 'periodoLabel'
+            'facturas','facturasAgrupadas','resumen',
+            'clienteNombre','estadoLabel','idCliente','periodoLabel',
+            'usuarioDestino'
         ))->render();
 
-        $htmlReporte = preg_replace('/<div class="no-print".*?<\/div>/s', '', $htmlReporte);
-        $htmlReporte = preg_replace('/<script>[\s\S]*?window\.print[\s\S]*?<\/script>/', '', $htmlReporte);
+        $htmlReporte = preg_replace('/<div class="no-print".*?<\/div>/s','',$htmlReporte);
+        $htmlReporte = preg_replace('/<div class="send-bar.*?<\/div>/s','',$htmlReporte);
+        $htmlReporte = preg_replace('/<script>[\s\S]*?window\.print[\s\S]*?<\/script>/','', $htmlReporte);
 
         $asunto = "Reporte Financiero — {$clienteNombre} — {$periodoLabel}";
 
         try {
-            Mail::send([], [], function ($mail) use ($cliente, $asunto, $htmlReporte) {
-                $mail->to($cliente->correo)->subject($asunto)->html($htmlReporte);
+            Mail::send([], [], function($mail) use ($correo, $asunto, $htmlReporte) {
+                $mail->to($correo)->subject($asunto)->html($htmlReporte);
             });
-
-            return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$cliente->correo}"]);
+            return response()->json(['success'=>true,'message'=>"Reporte enviado por correo a {$correo}"]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
+            return response()->json(['success'=>false,'message'=>'No se pudo enviar el correo: '.$e->getMessage()]);
         }
     }
 
@@ -374,18 +432,32 @@ class ReporteController extends Controller
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
 
+        // Acepta estado simple (legacy) o array estados[]
+        $estadosParam = $request->input('estados', []);
+        $estadoSimple = $request->input('estado');
+
+        if ($estadoSimple) {
+            $estadosFiltro = [$estadoSimple];
+        } elseif (!empty($estadosParam)) {
+            $estadosFiltro = (array) $estadosParam;
+        } else {
+            $estadosFiltro = ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION'];
+        }
+
+        // Usuarios destino
+        $usuarioIdsParam = $request->input('usuario_ids', []);
+        $usuarioIdSimple = $request->input('usuario_id');
+        $usuarioIds = $usuarioIdSimple
+            ? [$usuarioIdSimple]
+            : (array) $usuarioIdsParam;
+
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
-            ->whereIn('f.estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'])
+            ->whereIn('f.estado', $estadosFiltro)
             ->select([
-                'c.id_cliente',
-                'c.razon_social',
-                'c.ruc',
-                'f.moneda',
-                'f.estado',
-                'f.importe_total',
-                'f.monto_pendiente',
+                'c.id_cliente','c.razon_social','c.ruc',
+                'f.moneda','f.estado','f.importe_total','f.monto_pendiente',
                 DB::raw('COALESCE(rec.total_recaudacion, 0) AS monto_recaudacion'),
             ]);
 
@@ -399,27 +471,22 @@ class ReporteController extends Controller
             $id = $f->id_cliente;
             if (!isset($clientes[$id])) {
                 $clientes[$id] = [
-                    'razon_social'    => $f->razon_social,
-                    'ruc'             => $f->ruc,
-                    'deuda_pen'       => 0,
-                    'deuda_usd'       => 0,
-                    'recaudacion_pen' => 0,
-                    'recaudacion_usd' => 0,
-                    'pendiente_pen'   => 0,
-                    'pendiente_usd'   => 0,
-                    'facturas'        => 0,
-                    'estados'         => [],
+                    'razon_social'=>$f->razon_social,'ruc'=>$f->ruc,
+                    'deuda_pen'=>0,'deuda_usd'=>0,
+                    'recaudacion_pen'=>0,'recaudacion_usd'=>0,
+                    'pendiente_pen'=>0,'pendiente_usd'=>0,
+                    'facturas'=>0,'estados'=>[],
                 ];
             }
             $clientes[$id]['facturas']++;
             if ($f->moneda === 'USD') {
-                $clientes[$id]['deuda_usd']        += $f->importe_total;
-                $clientes[$id]['recaudacion_usd']  += $f->monto_recaudacion;
-                $clientes[$id]['pendiente_usd']    += $f->monto_pendiente;
+                $clientes[$id]['deuda_usd']       += $f->importe_total;
+                $clientes[$id]['recaudacion_usd'] += $f->monto_recaudacion;
+                $clientes[$id]['pendiente_usd']   += $f->monto_pendiente;
             } else {
-                $clientes[$id]['deuda_pen']        += $f->importe_total;
-                $clientes[$id]['recaudacion_pen']  += $f->monto_recaudacion;
-                $clientes[$id]['pendiente_pen']    += $f->monto_pendiente;
+                $clientes[$id]['deuda_pen']       += $f->importe_total;
+                $clientes[$id]['recaudacion_pen'] += $f->monto_recaudacion;
+                $clientes[$id]['pendiente_pen']   += $f->monto_pendiente;
             }
             if (!in_array($f->estado, $clientes[$id]['estados'])) {
                 $clientes[$id]['estados'][] = $f->estado;
@@ -435,13 +502,25 @@ class ReporteController extends Controller
         $totalPendientePen   = array_sum(array_column($clientes, 'pendiente_pen'));
         $totalPendienteUsd   = array_sum(array_column($clientes, 'pendiente_usd'));
 
+        $estadoLabel  = count($estadosFiltro) === 4
+            ? 'TODOS LOS PENDIENTES'
+            : implode(' · ', $estadosFiltro);
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
 
+        $usuariosDestino = [];
+        if (!empty($usuarioIds)) {
+            $usuariosDestino = DB::table('usuario')
+                ->whereIn('id_usuario', $usuarioIds)
+                ->get()
+                ->all();
+        }
+
         return view('reportes.deuda_general', compact(
-            'clientes', 'totalPen', 'totalUsd',
-            'totalRecaudacionPen', 'totalRecaudacionUsd',
-            'totalPendientePen', 'totalPendienteUsd',
-            'periodoLabel', 'fechaDesde', 'fechaHasta'
+            'clientes','totalPen','totalUsd',
+            'totalRecaudacionPen','totalRecaudacionUsd',
+            'totalPendientePen','totalPendienteUsd',
+            'periodoLabel','fechaDesde','fechaHasta',
+            'estadoLabel','usuariosDestino'
         ));
     }
 }

@@ -29,10 +29,13 @@ class Factura extends Model
         'fecha_vencimiento',
         'fecha_emision',
         'fecha_abono',
+        'cuenta_pago',
         'ruta_comprobante_pago',
         'fecha_creacion',
         'fecha_actualizacion',
         'usuario_creacion',
+        'monto_abonado',
+        'monto_pendiente',
     ];
 
     // ── Relaciones ─────────────────────────────────────────────────────────

@@ -27,6 +27,7 @@ class FacturaController extends Controller
                 'f.numero',
                 'f.fecha_emision',
                 'f.fecha_vencimiento',
+                'f.fecha_abono',
                 'f.moneda',
                 'f.importe_total',
                 'f.monto_igv',
@@ -36,6 +37,7 @@ class FacturaController extends Controller
                 'f.tipo_recaudacion',
                 'f.glosa',
                 'f.forma_pago',
+                'f.cuenta_pago',
                 'f.usuario_creacion',
                 'c.id_cliente',
                 'c.razon_social',
@@ -129,8 +131,23 @@ class FacturaController extends Controller
             'importe_total'    => 'nullable|numeric',
             'monto_igv'        => 'nullable|numeric',
             'subtotal_gravado' => 'nullable|numeric',
+            'monto_abonado'    => 'nullable|numeric|min:0',
+            'monto_pendiente'  => 'nullable|numeric|min:0',
         ]);
 
+        // Si se actualiza monto_abonado, recalcular monto_pendiente
+        if ($request->filled('monto_abonado')) {
+            $montoAbonado = floatval($validated['monto_abonado']);
+            $importeTotal = floatval($validated['importe_total'] ?? $factura->importe_total);
+            $validated['monto_pendiente'] = max(0, $importeTotal - $montoAbonado);
+            
+            // Actualizar fecha_abono si se registra un abono
+            if ($montoAbonado > 0 && !$factura->fecha_abono) {
+                $validated['fecha_abono'] = now()->toDateString();
+            }
+        }
+
+        $validated['fecha_actualizacion'] = now();
         $factura->update($validated);
 
         return response()->json([
@@ -154,13 +171,23 @@ class FacturaController extends Controller
             'porcentaje_recaudacion'=> 'nullable|numeric|min:0|max:100',
             'tipo_recaudacion'      => 'nullable|string|in:DETRACCION,AUTODETRACCION,RETENCION',
             'validar_detraccion'    => 'nullable|boolean',
+            'fecha_abono'           => 'nullable|date',
+            'cuenta_pago'           => 'nullable|string|max:255',
         ]);
 
         $montoAbonado      = (float) $validated['monto_abonado'];
         $totalRecaudacion  = (float) ($validated['total_recaudacion'] ?? 0);
         $tipoRecaudacion   = $validated['tipo_recaudacion'] ?? $factura->tipo_recaudacion;
         $porcentaje        = $validated['porcentaje_recaudacion'] ?? null;
+        $fechaAbono        = $validated['fecha_abono'] ?? null;
+        $cuentaPago        = $validated['cuenta_pago'] ?? null;
         $importeTotal      = (float) $factura->importe_total;
+
+        // AUTODETRACCION: monto_abonado = importe_total - total_recaudacion
+        // (el cliente paga la diferencia, la autodetracción cubre el resto)
+        if ($tipoRecaudacion === 'AUTODETRACCION' && $totalRecaudacion > 0) {
+            $montoAbonado = max(0, $importeTotal - $totalRecaudacion);
+        }
 
         // Actualizar o crear recaudación si aplica
         if ($tipoRecaudacion && $totalRecaudacion > 0) {
@@ -171,7 +198,8 @@ class FacturaController extends Controller
                     'total_recaudacion' => $totalRecaudacion,
                 ]
             );
-        } elseif (!$tipoRecaudacion || $totalRecaudacion == 0) {
+        } elseif (!$tipoRecaudacion && $totalRecaudacion == 0) {
+            // Solo borrar recaudación si explícitamente se quitó el tipo
             DB::table('recaudacion')->where('id_factura', $id)->delete();
             $totalRecaudacion = 0;
         }
@@ -182,12 +210,14 @@ class FacturaController extends Controller
         // Determinar nuevo estado
         $estado = $this->calcularEstado($factura, $montoAbonado, $montoPendiente, $tipoRecaudacion, $validated['validar_detraccion'] ?? false);
 
-        // Actualizar factura (sin fecha_abono — no existe en el esquema actual)
+        // Actualizar factura
         $updateData = [
             'monto_abonado'      => $montoAbonado,
             'monto_pendiente'    => $montoPendiente,
             'tipo_recaudacion'   => $tipoRecaudacion,
             'estado'             => $estado,
+            'fecha_abono'        => $fechaAbono,
+            'cuenta_pago'        => $cuentaPago,
             'fecha_actualizacion'=> now(),
         ];
 
@@ -207,7 +237,13 @@ class FacturaController extends Controller
      */
     private function calcularEstado(Factura $factura, float $montoAbonado, float $montoPendiente, ?string $tipoRecaudacion, bool $validarDetraccion): string
     {
-        // Si es detracción y aún no se ha validado (importada como POR VALIDAR DETRACCION y sin validación explícita)
+        // AUTODETRACCION: la recaudación actúa como abono total.
+        // importe_total = monto_abonado + total_recaudacion → pendiente = 0 → PAGADA
+        if ($tipoRecaudacion === 'AUTODETRACCION' && $montoPendiente <= 0) {
+            return 'PAGADA';
+        }
+
+        // DETRACCION sin validar: mantener en POR VALIDAR DETRACCION
         if (
             $tipoRecaudacion === 'DETRACCION' &&
             !$validarDetraccion &&
@@ -217,9 +253,8 @@ class FacturaController extends Controller
             return 'POR VALIDAR DETRACCION';
         }
 
-        // Si no hay abono
+        // Sin abono → PENDIENTE o VENCIDO
         if ($montoAbonado == 0) {
-            // Verificar si está vencida
             if ($factura->fecha_vencimiento && $factura->fecha_vencimiento < now()->toDateString()) {
                 return 'VENCIDO';
             }
@@ -293,16 +328,16 @@ class FacturaController extends Controller
         $totalDeuda = $facturas->sum('monto_pendiente');
         $totalFacturas = $facturas->count();
 
-        $mensaje = "📊 *REPORTE DE FACTURAS {$tipoLabel}*\n";
+        $mensaje = "*REPORTE DE FACTURAS {$tipoLabel}*\n";
         $mensaje .= "Consorcio Rodriguez Caballero S.A.C.\n";
-        $mensaje .= "📅 Generado: " . now()->format('d/m/Y H:i') . "\n\n";
+        $mensaje .= "Generado: " . now()->format('d/m/Y H:i') . "\n\n";
         $mensaje .= "━━━━━━━━━━━━━━━━━━\n";
 
         $lineCount = 0;
         foreach ($facturas->take(15) as $f) {
             $vcto = $f->fecha_vencimiento ? "Vcto: {$f->fecha_vencimiento}" : "Sin vcto";
             $pendiente = number_format($f->monto_pendiente ?? $f->importe_total, 2);
-            $mensaje .= "🔸 *{$f->serie}-" . str_pad($f->numero, 8, '0', STR_PAD_LEFT) . "*\n";
+            $mensaje .= "*{$f->serie}-" . str_pad($f->numero, 8, '0', STR_PAD_LEFT) . "*\n";
             $mensaje .= "   {$f->razon_social}\n";
             $mensaje .= "   Pendiente: {$f->moneda} {$pendiente} | {$vcto}\n";
             $lineCount++;
@@ -313,8 +348,8 @@ class FacturaController extends Controller
         }
 
         $mensaje .= "━━━━━━━━━━━━━━━━━━\n";
-        $mensaje .= "📌 *TOTAL: {$totalFacturas} facturas*\n";
-        $mensaje .= "💰 *Deuda total: S/ " . number_format($totalDeuda, 2) . "*";
+        $mensaje .= "*TOTAL: {$totalFacturas} facturas*\n";
+        $mensaje .= "*Deuda total: S/ " . number_format($totalDeuda, 2) . "*";
 
         // Enviar por WhatsApp
         $gateway = app(\App\Services\WhatsAppGatewayService::class);

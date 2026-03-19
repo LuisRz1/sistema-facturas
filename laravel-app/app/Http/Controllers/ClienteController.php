@@ -26,7 +26,7 @@ class ClienteController extends Controller
         ]);
 
         $data['fecha_creacion'] = now();
-        $data['estado_contacto'] = $this->calcularEstadoContacto($data);
+        $data['estado_contado'] = $this->calcularEstadoContacto($data); // columna correcta en BD
 
         Cliente::create($data);
 
@@ -47,7 +47,7 @@ class ClienteController extends Controller
         ]);
 
         $data['fecha_actualizacion'] = now();
-        $data['estado_contacto'] = $this->calcularEstadoContacto($data);
+        $data['estado_contado']      = $this->calcularEstadoContacto($data); // columna correcta en BD
 
         $cliente->update($data);
 
@@ -66,18 +66,12 @@ class ClienteController extends Controller
 
     private function calcularEstadoContacto(array $data): string
     {
-        $tieneCelular = !empty($data['celular']);
-        $tieneCorreo  = !empty($data['correo']);
+        $tieneCelular   = !empty($data['celular']);
+        $tieneCorreo    = !empty($data['correo']);
         $tieneDireccion = !empty($data['direccion_fiscal']);
 
-        if ($tieneCelular && $tieneCorreo && $tieneDireccion) {
-            return 'COMPLETO';
-        }
-
-        if ($tieneCelular || $tieneCorreo) {
-            return 'INCOMPLETO';
-        }
-
+        if ($tieneCelular && $tieneCorreo && $tieneDireccion) return 'COMPLETO';
+        if ($tieneCelular || $tieneCorreo)                    return 'INCOMPLETO';
         return 'SIN_DATOS';
     }
 }

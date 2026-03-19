@@ -4,93 +4,210 @@
 
 @push('styles')
     <style>
+        /* ═════════════════════════════════════════════════════════════════ */
+        /* VARIABLES DORADAS */
+        /* ═════════════════════════════════════════════════════════════════ */
+        :root {
+            --gold: #f5c842;
+            --gold-h: #e8b820;
+            --gold-l: #fffbeb;
+            --gold-b: #fce8a8;
+            --gold-m: #fdd457;
+            --gold-d: #ca9d1f;
+            --gold-xd: #7a5d0f;
+            --bg: #fdf8ec;
+        }
+
+        /* ═════════════════════════════════════════════════════════════════ */
+        /* KEYFRAMES E ANIMACIONES */
+        /* ═════════════════════════════════════════════════════════════════ */
+        @keyframes fadeDown {
+            from { opacity:0; transform:translateY(-12px); }
+            to { opacity:1; transform:translateY(0); }
+        }
+        @keyframes slideUp {
+            from { opacity:0; transform:translateY(16px); }
+            to { opacity:1; transform:translateY(0); }
+        }
+        @keyframes rowIn {
+            from { opacity:0; transform:translateX(-8px); }
+            to { opacity:1; transform:translateX(0); }
+        }
+        @keyframes chipPop {
+            0% { opacity:0; transform:scale(0.85); }
+            100% { opacity:1; transform:scale(1); }
+        }
+
+        /* ═════════════════════════════════════════════════════════════════ */
+        /* ESTILOS GENERALES */
+        /* ═════════════════════════════════════════════════════════════════ */
+        .page-header { animation:fadeDown .5s ease-out; }
+
         /* ── FILTROS ── */
-        .filter-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-        .filter-row .search-input-wrap { max-width:280px; }
-        .filter-row .form-select { width:auto; min-width:160px; height:40px; }
+        .filter-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; animation:slideUp .55s ease-out .15s both; }
+        .filter-row .search-input-wrap { max-width:280px; border:1.5px solid var(--gold-b); border-radius:10px; padding:8px 12px; background:#fff; display:flex; align-items:center; gap:8px; }
+        .filter-row .search-input-wrap svg { color:var(--gold); flex-shrink:0; }
+        .filter-row .form-input { border:none; background:transparent; outline:none; flex:1; font-size:13px; }
+        .filter-row .form-select { width:auto; min-width:160px; height:40px; border:1.5px solid var(--gold-b); border-radius:10px; background:#fff; color:var(--text-primary); font-size:13px; cursor:pointer; transition:border-color .15s; }
+        .filter-row .form-select:focus { border-color:var(--gold); }
 
         /* ── TABLE ── */
+        #facturasBody tr { animation:rowIn .4s ease-out; }
+        #facturasBody tr:nth-child(1) { animation-delay:.18s; }
+        #facturasBody tr:nth-child(2) { animation-delay:.23s; }
+        #facturasBody tr:nth-child(3) { animation-delay:.28s; }
+        #facturasBody tr:nth-child(4) { animation-delay:.33s; }
+        #facturasBody tr:nth-child(5) { animation-delay:.38s; }
+        #facturasBody tr:nth-child(n+6) { animation-delay:0; }
+
         .actions-cell { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
-        .action-btn { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:6px; border:none; cursor:pointer; transition:background .15s; color:var(--text-muted); background:transparent; }
-        .action-btn:hover { background:var(--main-bg); color:var(--text-primary); }
+        .action-btn { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:8px; border:none; cursor:pointer; transition:all .15s; color:var(--gold); background:transparent; }
+        .action-btn:hover { background:var(--gold-l); transform:scale(1.08); }
         .client-cell { display:flex; flex-direction:column; gap:2px; }
-        .client-name { font-weight:600; font-size:13.5px; }
-        .client-ruc  { font-family:'DM Mono',monospace; font-size:11px; color:var(--text-muted); }
-        .amount-main { font-weight:700; font-family:'DM Mono',monospace; font-size:13px; }
+        .client-name { font-weight:600; font-size:13.5px; color:var(--text-primary); }
+        .client-ruc  { font-family:'DM Mono',monospace; font-size:11px; color:var(--text-muted); background:var(--gold-l); padding:2px 6px; border-radius:4px; display:inline-block; width:fit-content; }
+        .amount-main { font-weight:700; font-family:'DM Mono',monospace; font-size:13px; color:var(--text-primary); }
         .amount-sub  { font-size:11px; color:var(--text-muted); font-family:'DM Mono',monospace; margin-top:2px; }
         .notify-cell { display:flex; flex-direction:column; gap:4px; }
         .notify-meta { font-size:11px; color:var(--text-muted); }
-        .btn-icon-text { display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border-radius:6px; font-size:11.5px; font-weight:600; border:none; cursor:pointer; transition:all .15s; }
+        .btn-icon-text { display:inline-flex; align-items:center; gap:5px; padding:6px 12px; border-radius:8px; font-size:11.5px; font-weight:600; border:none; cursor:pointer; transition:all .15s; }
         .btn-wa   { background:#d1fae5; color:#059669; }
-        .btn-wa:hover { background:#a7f3d0; }
+        .btn-wa:hover { background:#a7f3d0; transform:translateY(-1px); }
         .btn-mail { background:#dbeafe; color:#1d4ed8; }
-        .btn-mail:hover { background:#bfdbfe; }
-        .serie-num { font-family:'DM Mono',monospace; font-weight:700; font-size:13px; color:var(--text-primary); }
+        .btn-mail:hover { background:#bfdbfe; transform:translateY(-1px); }
+        .serie-num { font-family:'DM Mono',monospace; font-weight:700; font-size:13px; color:var(--gold); background:var(--gold-l); padding:3px 8px; border-radius:6px; display:inline-block; }
         .tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
         .tag-wa   { background:#dcfce7; color:#16a34a; }
         .tag-mail { background:#dbeafe; color:#2563eb; }
 
         /* ── RANGO FECHAS ── */
-        .date-range-wrap { display:flex; align-items:center; gap:10px; background:var(--card-bg); border:1px solid var(--border); border-radius:10px; padding:12px 20px; margin-bottom:20px; flex-wrap:wrap; }
-        .date-range-wrap label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); white-space:nowrap; }
-        .date-range-wrap input[type="date"] { height:38px; padding:0 12px; border:1.5px solid var(--border); border-radius:8px; font-size:13px; font-family:'DM Sans',sans-serif; background:#fff; color:var(--text-primary); outline:none; transition:border-color .15s; cursor:pointer; }
-        .date-range-wrap input[type="date"]:focus { border-color:var(--accent); }
-        .date-range-wrap .sep { color:var(--text-muted); font-size:14px; font-weight:600; }
+        .date-range-wrap { display:flex; align-items:center; gap:10px; background:#fff; border:1.5px solid var(--gold-b); border-radius:10px; padding:12px 20px; margin-bottom:20px; flex-wrap:wrap; animation:slideUp .55s ease-out .15s both; }
+        .date-range-wrap label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--gold-xd); white-space:nowrap; }
+        .date-range-wrap input[type="date"] { height:38px; padding:0 12px; border:1.5px solid var(--gold-b); border-radius:8px; font-size:13px; font-family:'DM Sans',sans-serif; background:#fff; color:var(--text-primary); outline:none; transition:border-color .15s; cursor:pointer; }
+        .date-range-wrap input[type="date"]:focus { border-color:var(--gold); box-shadow:0 0 0 2px var(--gold-l); }
+        .date-range-wrap .sep { color:var(--gold); font-size:14px; font-weight:600; }
+        .date-range-wrap .btn-ghost { border-color:var(--gold-b); color:var(--gold); }
+        .date-range-wrap .btn-ghost:hover { background:var(--gold-l); border-color:var(--gold); }
 
         /* ── IMAGEN ── */
-        .img-preview-thumb { width:36px; height:36px; object-fit:cover; border-radius:5px; border:1px solid var(--border); cursor:pointer; }
+        .img-preview-thumb { width:36px; height:36px; object-fit:cover; border-radius:5px; border:1px solid var(--gold-b); cursor:pointer; }
 
-        /* ── ESTADOS BADGE (nuevo esquema) ── */
-        .badge-pendiente         { background:#fef3c7; color:#92400e; }
-        .badge-vencido           { background:#fee2e2; color:#7f1d1d; }
-        .badge-pagada            { background:#d1fae5; color:#065f46; }
-        .badge-pago_parcial      { background:#e0e7ff; color:#3730a3; }
-        .badge-por_validar_det   { background:#fdf4ff; color:#7e22ce; border:1px solid #d8b4fe; }
-        .badge-anulada           { background:#f1f5f9; color:#475569; }
+        /* ── ESTADOS BADGE (esquema coherente) ── */
+        .badge-pendiente         { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+        .badge-vencido           { background:#fee2e2; color:#7f1d1d; border:1px solid #fca5a5; }
+        .badge-pagada            { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+        .badge-pago_parcial      { background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; }
+        .badge-por_validar_det   { background:#fdf4ff; color:#7e22ce; border:1.5px solid #e9d5ff; }
+        .badge-anulada           { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
 
         /* ── LEYENDA DE ESTADOS ── */
         .estados-legend {
             display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-            background:var(--card-bg); border:1px solid var(--border); border-radius:10px;
+            background:#fff; border:1.5px solid var(--gold-b); border-radius:10px;
             padding:12px 20px; margin-bottom:16px; font-size:11px;
+            animation:slideUp .55s ease-out both;
         }
         .estados-legend .legend-title {
             font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
-            color:var(--text-muted); margin-right:4px; white-space:nowrap;
+            color:var(--gold-xd); margin-right:4px; white-space:nowrap;
         }
         .legend-item { display:flex; align-items:center; gap:6px; }
         .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+        /* ── STATS CARDS ── */
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px; }
+        .stat-card {
+            background:#fff; border:1.5px solid var(--gold-b); border-radius:12px; padding:16px;
+            display:flex; align-items:center; gap:12px; transition:all .2s; animation:chipPop .4s ease-out both;
+        }
+        .stat-card:nth-child(1) { animation-delay:.1s; }
+        .stat-card:nth-child(2) { animation-delay:.17s; }
+        .stat-card:nth-child(3) { animation-delay:.24s; }
+        .stat-card:nth-child(4) { animation-delay:.31s; }
+        .stat-card:hover { border-color:var(--gold); box-shadow:0 4px 12px rgba(245,200,66,0.12); transform:translateY(-2px); }
+        .stat-icon { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; }
+        .stat-card.blue .stat-icon { background:#dbeafe; color:#1d4ed8; }
+        .stat-card.amber .stat-icon { background:#fef3c7; color:var(--gold); }
+        .stat-card.green .stat-icon { background:#d1fae5; color:#059669; }
+        .stat-card.red .stat-icon { background:#fee2e2; color:#dc2626; }
+        .stat-label { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
+        .stat-value { font-size:16px; font-weight:700; color:var(--text-primary); font-family:'DM Mono',monospace; }
 
         /* ── MONTO PENDIENTE ── */
         .monto-pendiente-cell { color:#dc2626; font-weight:700; font-family:'DM Mono',monospace; font-size:12px; }
         .monto-pendiente-zero { color:#059669; font-family:'DM Mono',monospace; font-size:12px; }
 
         /* ── MODAL PAGO ── */
-        .pago-section { background:#f8fafc; border-radius:10px; padding:18px; margin-bottom:16px; border:1px solid var(--border); }
-        .pago-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
-        .calc-display { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px; margin-top:12px; font-size:13px; }
-        .calc-row { display:flex; justify-content:space-between; align-items:center; padding:4px 0; }
-        .calc-row.total { border-top:2px solid var(--border); margin-top:8px; padding-top:10px; font-weight:800; font-size:14px; }
+        .pago-section { background:var(--gold-l); border-radius:10px; padding:18px; margin-bottom:16px; border:1px solid var(--gold-b); }
+        .pago-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--gold-xd); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+        .calc-display { background:#fff; border:1.5px solid var(--gold-b); border-radius:8px; padding:14px; margin-top:12px; font-size:13px; }
+        .calc-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; color:var(--text-primary); }
+        .calc-row.total { border-top:2px solid var(--gold); margin-top:8px; padding-top:10px; font-weight:800; font-size:14px; }
         .calc-row.pending { color:#dc2626; }
         .calc-row.paid { color:#059669; }
 
         /* Tipo recaudacion selector */
-        .tipo-rec-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:10px; }
-        .tipo-rec-card { border:2px solid var(--border); border-radius:8px; padding:10px 8px; text-align:center; cursor:pointer; transition:all .15s; background:#f8fafc; font-size:11px; font-weight:700; text-transform:uppercase; }
-        .tipo-rec-card:hover { border-color:#94a3b8; }
-        .tipo-rec-card.active-det { border-color:#d97706; background:#fef3c7; color:#92400e; }
+        .tipo-rec-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:10px; }
+        .tipo-rec-card { border:2px solid var(--gold-b); border-radius:8px; padding:10px 8px; text-align:center; cursor:pointer; transition:all .15s; background:#fff; font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-muted); }
+        .tipo-rec-card:hover { border-color:var(--gold); background:var(--gold-l); }
+        .tipo-rec-card.active-det { border-color:var(--gold); background:var(--gold-l); color:var(--gold-xd); }
         .tipo-rec-card.active-auto { border-color:#059669; background:#d1fae5; color:#065f46; }
         .tipo-rec-card.active-ret { border-color:#7c3aed; background:#ede9fe; color:#5b21b6; }
 
-        /* ── BOTÓN REPORTE VENCIDOS ── */
-        .btn-reporte-vencidos { background:#7c3aed; color:#fff; border:none; }
-        .btn-reporte-vencidos:hover { background:#6d28d9; }
+        /* ── BOTÓN GENERAR REPORTE ── */
+        .btn-generar-reporte { background:var(--gold); color:#000; border:none; font-weight:700; }
+        .btn-generar-reporte:hover { background:var(--gold-h); }
+
+        /* ── FIX SCROLL MODAL PAGO ── */
+        #modalPagoOverlay .modal-body { min-height:0; max-height:calc(90vh - 160px); overflow-y:auto; }
+
+        /* ── MODAL REPORTE NUEVO ── */
+        .reporte-tipo-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px; }
+        .reporte-tipo-card { position:relative; border:2px solid var(--gold-b); border-radius:10px; padding:18px 14px 14px; cursor:pointer; transition:all .18s; background:#fff; }
+        .reporte-tipo-card:hover { border-color:var(--gold); background:var(--gold-l); }
+        .reporte-tipo-card.active { border-color:var(--gold); background:var(--gold-l); }
+        .rtc-icon  { font-size:22px; margin-bottom:8px; display:block; }
+        .rtc-title { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--text-primary); display:block; }
+        .rtc-desc  { font-size:11px; color:var(--text-muted); margin-top:4px; line-height:1.4; }
+        .reporte-tipo-card.active .rtc-title { color:var(--gold-xd); }
+        .rtc-check { position:absolute; top:10px; right:12px; width:18px; height:18px; border-radius:50%; border:2px solid var(--gold-b); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:900; }
+        .reporte-tipo-card.active .rtc-check { border-color:var(--gold); background:var(--gold); color:#000; }
+        .estado-chip-wrap { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+        .estado-chip { padding:6px 14px; border-radius:20px; border:1.5px solid var(--gold-b); font-size:11px; font-weight:700; cursor:pointer; transition:all .15s; background:#fff; color:var(--text-muted); }
+        .estado-chip:hover { border-color:var(--gold); }
+        .estado-chip.active { border-color:var(--gold); background:var(--gold-l); color:var(--gold-xd); }
+        .chip-pendiente.active { border-color:#d97706 !important; background:#fef3c7 !important; color:#92400e !important; }
+        .chip-vencido.active   { border-color:#dc2626 !important; background:#fee2e2 !important; color:#7f1d1d !important; }
+        .chip-parcial.active   { border-color:#4f46e5 !important; background:#e0e7ff !important; color:#3730a3 !important; }
+        .chip-det.active       { border-color:#7c3aed !important; background:#fdf4ff !important; color:#6b21a8 !important; }
+        .chip-todos.active     { border-color:#059669 !important; background:#d1fae5 !important; color:#065f46 !important; }
 
         /* Modal de reporte a usuario */
-        .usuario-option { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1.5px solid var(--border); border-radius:8px; cursor:pointer; transition:all .15s; margin-bottom:8px; }
-        .usuario-option:hover { border-color:var(--accent); background:#f0f9ff; }
-        .usuario-option.selected { border-color:var(--accent); background:#dbeafe; }
-        .usuario-avatar-sm { width:32px; height:32px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; }
+        .usuario-option { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1.5px solid var(--gold-b); border-radius:8px; cursor:pointer; transition:all .15s; margin-bottom:8px; background:#fff; }
+        .usuario-option:hover { border-color:var(--gold); background:var(--gold-l); }
+        .usuario-option.selected { border-color:var(--gold); background:var(--gold-l); }
+        .usuario-avatar-sm { width:32px; height:32px; border-radius:50%; background:var(--gold); color:#000; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; }
+        .u-check { width:20px; height:20px; border-radius:5px; border:2px solid var(--gold-b); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; flex-shrink:0; transition:all .15s; }
+        .usuario-option.selected .u-check { border-color:var(--gold); background:var(--gold); color:#000; }
+        .btn-pdf-filtros { background:var(--gold); color:#000; border:none; font-weight:700; }
+        .btn-pdf-filtros:hover { background:var(--gold-h); }
+
+        /* ── MODAL HEADER DORADO ── */
+        .modal-header { background:linear-gradient(135deg, var(--gold) 0%, var(--gold-h) 100%); border-top:3px solid var(--gold-xd); }
+        .modal-header h2 { color:#000; font-weight:700; }
+        .modal-header p { color:rgba(0,0,0,.7); }
+        .modal-header button { color:#000; opacity:.7; }
+        .modal-header button:hover { opacity:1; }
+
+        /* ── INSTRUCCIONES Y HINTS ── */
+        #validarDetraccionWrap { display:none; margin-bottom:12px; padding:10px 14px; background:var(--gold-l); border-radius:8px; border:1px solid var(--gold-b); color:var(--gold-xd); }
+        #validarDetraccionWrap label { color:var(--gold-xd); font-weight:600; }
+        #validarDetraccionWrap input[type="checkbox"] { accent-color:var(--gold); }
+
+        /* ── DROP ZONE ── */
+        #dropZonePago { border:2px dashed var(--gold-b); border-radius:10px; padding:24px; text-align:center; cursor:pointer; transition:all .2s; background:#fff; }
+        #dropZonePago:hover { border-color:var(--gold); background:var(--gold-l); }
+        #dropZonePago svg { color:var(--gold); }
     </style>
 @endpush
 
@@ -102,21 +219,17 @@
             <p class="page-desc">Control de facturas, pagos y notificaciones a clientes.</p>
         </div>
         <div class="page-actions">
-            <a href="{{ route('facturas.importar') }}" class="btn btn-outline">
+            <a href="{{ route('facturas.importar') }}" class="btn btn-outline" style="border-color:var(--gold); color:var(--gold);">
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                 Importar Excel
             </a>
-            <button type="button" class="btn btn-outline" onclick="generarReportePDF()">
+            <button type="button" class="btn-pdf-filtros" onclick="generarPDFFiltros()" style="padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                Reporte PDF
+                PDF con Filtros
             </button>
-            <button type="button" class="btn btn-reporte-vencidos btn-sm" onclick="abrirModalReporteUsuario()" style="padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
-                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Enviar Reporte Vencidos
-            </button>
-            <button type="button" class="btn btn-outline" onclick="generarReporteDeuda()" style="border-color:#dc2626;color:#dc2626;" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background=''">
-                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Reporte Deuda General
+            <button type="button" class="btn-generar-reporte" onclick="abrirModalReporte()" style="padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Generar Reporte
             </button>
         </div>
     </div>
@@ -185,7 +298,7 @@
             <input type="date" name="fecha_desde" id="inputDesde" value="{{ $fechaDesde }}" onchange="document.getElementById('frmFiltros').submit()">
             <span class="sep">→</span>
             <input type="date" name="fecha_hasta" id="inputHasta" value="{{ $fechaHasta }}" onchange="document.getElementById('frmFiltros').submit()">
-            <span style="font-size:12px;color:var(--text-muted);margin-left:6px;">
+            <span style="font-size:12px;color:var(--gold-xd);margin-left:6px;">
             Mostrando del <strong>{{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }}</strong>
             al <strong>{{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }}</strong>
             &nbsp;·&nbsp; {{ $facturas->count() }} facturas
@@ -226,6 +339,13 @@
                     <option value="PEN">Soles (PEN)</option>
                     <option value="USD">Dólares (USD)</option>
                 </select>
+                <select class="form-select" id="filterRecaudacion" onchange="filtrarTabla()" style="min-width:180px;">
+                    <option value="">Toda recaudación</option>
+                    <option value="DETRACCION">Detracción</option>
+                    <option value="AUTODETRACCION">Autodetracción</option>
+                    <option value="RETENCION">Retención</option>
+                    <option value="SIN">Sin recaudación</option>
+                </select>
                 <select class="form-select" id="filterEmpresa" onchange="filtrarTabla()" style="min-width:220px;">
                     <option value="">Todas las empresas</option>
                     @foreach($clientes as $c)
@@ -245,9 +365,10 @@
                     <th>IMPORTE</th>
                     <th>RECAUDACIÓN</th>
                     <th>ABONADO</th>
+                    <th>CUENTA PAGO</th>
                     <th>PENDIENTE</th>
-                    <th>COMPROBANTE</th>
                     <th>ESTADO</th>
+                    <th>CREADO POR</th>
                     <th>NOTIFICACIONES</th>
                     <th style="text-align:right;">ACCIONES</th>
                 </tr>
@@ -270,14 +391,15 @@
                         $tipoRecaudacion  = $factura->tipo_recaudacion;
                         $montoAbonado     = $factura->monto_abonado ?? 0;
                         $montoPendiente   = $factura->monto_pendiente ?? $factura->importe_total;
-                        $tieneComprobante = !empty($factura->ruta_comprobante_pago);
+                        $tieneComprobante = false; // ruta_comprobante_pago no existe en el esquema actual
                         $puedeNotificarDeuda = in_array($estado, ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION']);
                         $ultimaNotifWa     = $factura->ultima_notif_wa ?? null;
                         $ultimaNotifCorreo = $factura->ultima_notif_correo ?? null;
                     @endphp
                     <tr data-cliente="{{ $factura->id_cliente }}" data-estado="{{ $estado }}"
                         data-moneda="{{ $factura->moneda }}"
-                        data-search="{{ strtolower($factura->serie.'-'.$factura->numero.' '.($factura->razon_social ?? '')) }}">
+                        data-recaudacion="{{ $tipoRecaudacion ?: 'SIN' }}"
+                        data-search="{{ strtolower($factura->serie.'-'.$factura->numero.' '.($factura->razon_social ?? '').($factura->usuario_nombre ?? '')) }}">
 
                         <td><div class="serie-num">{{ $factura->serie }}-{{ str_pad($factura->numero,8,'0',STR_PAD_LEFT) }}</div></td>
 
@@ -313,15 +435,36 @@
                         </td>
 
                         <td style="text-align:right;">
-                            @if($montoAbonado > 0)
+                            @php
+                                // Para AUTODETRACCION PAGADA con monto_abonado=0,
+                                // el abono implícito = importe_total - recaudacion
+                                $abonadoMostrar = $montoAbonado;
+                                if ($montoAbonado == 0 && $tipoRecaudacion === 'AUTODETRACCION' && $montoRecaudacion > 0) {
+                                    $abonadoMostrar = max(0, $factura->importe_total - $montoRecaudacion);
+                                }
+                            @endphp
+                            @if($abonadoMostrar > 0)
                                 <div style="font-weight:700;font-family:'DM Mono',monospace;font-size:12px;color:#059669;">
-                                    {{ $factura->moneda }} {{ number_format($montoAbonado,2) }}
+                                    {{ $factura->moneda }} {{ number_format($abonadoMostrar,2) }}
                                 </div>
                                 @if($factura->fecha_abono)
                                     <div style="font-size:10px;color:var(--text-muted);">{{ \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y') }}</div>
                                 @endif
+                                @if($montoAbonado == 0 && $tipoRecaudacion === 'AUTODETRACCION')
+                                    <div style="font-size:9px;color:#d97706;font-weight:600;">implícito</div>
+                                @endif
                             @else
                                 <span style="font-size:12px;color:var(--text-muted);">—</span>
+                            @endif
+                        </td>
+
+                        <td style="text-align:left;font-size:12px;">
+                            @if($factura->cuenta_pago)
+                                <div title="{{ $factura->cuenta_pago }}" style="color:#1f2937;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                    {{ $factura->cuenta_pago }}
+                                </div>
+                            @else
+                                <span style="color:var(--text-muted);">—</span>
                             @endif
                         </td>
 
@@ -335,17 +478,17 @@
                             @endif
                         </td>
 
-                        <td style="text-align:center;">
-                            @if($tieneComprobante)
-                                <a href="{{ $factura->ruta_comprobante_pago }}" target="_blank">
-                                    <img src="{{ $factura->ruta_comprobante_pago }}" class="img-preview-thumb" alt="Comprobante">
-                                </a>
+                        <td><span class="badge {{ $badgeClass }}">{{ str_replace('_',' ',$estado) }}</span></td>
+
+                        <td>
+                            @if($factura->usuario_nombre)
+                                <div style="font-size:12px;font-weight:600;color:var(--text-primary);">
+                                    {{ $factura->usuario_nombre }} {{ $factura->usuario_apellido }}
+                                </div>
                             @else
-                                <span style="font-size:10px;color:var(--text-muted);">Sin imagen</span>
+                                <span style="font-size:11px;color:var(--text-muted);">—</span>
                             @endif
                         </td>
-
-                        <td><span class="badge {{ $badgeClass }}">{{ str_replace('_',' ',$estado) }}</span></td>
 
                         <td>
                             <div class="notify-cell">
@@ -379,10 +522,10 @@
 
                                 {{-- Registrar pago / imagen --}}
                                 <button type="button"
-                                        onclick="abrirModalPago('{{ $factura->id_factura }}', {{ $factura->importe_total }}, '{{ $factura->moneda }}', {{ $montoAbonado }}, {{ $montoRecaudacion }}, {{ $porcentaje }}, '{{ $tipoRecaudacion }}', '{{ $estado }}')"
+                                        onclick="abrirModalPago('{{ $factura->id_factura }}', {{ $factura->importe_total }}, '{{ $factura->moneda }}', {{ $montoAbonado }}, {{ $montoRecaudacion }}, {{ $porcentaje }}, '{{ $tipoRecaudacion }}', '{{ $estado }}', '{{ $factura->cuenta_pago ?? '' }}')"
                                         class="action-btn"
                                         title="{{ $estado === 'PAGADA' ? 'Ver/Actualizar pago' : 'Registrar pago' }}"
-                                        style="color:{{ $tieneComprobante ? '#059669' : ($montoAbonado > 0 ? '#1d4ed8' : '#d97706') }};">
+                                        style="color:{{ $montoAbonado > 0 ? '#1d4ed8' : '#d97706' }};">
                                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
                                 </button>
 
@@ -417,7 +560,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="11"><div class="empty-state">
+                    <tr><td colspan="10"><div class="empty-state">
                                 <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                 <p style="font-weight:600;font-size:15px;color:var(--text-primary);">Sin facturas en el período seleccionado</p>
                                 <p style="font-size:13px;margin-top:4px;">Cambia el rango de fechas o importa facturas.</p>
@@ -453,8 +596,12 @@
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Fecha de Abono</label>
-                                <input type="date" id="pagoFechaAbono" name="fecha_abono" class="form-input" value="{{ now()->format('Y-m-d') }}">
+                                <input type="date" id="pagoFechaAbono" name="fecha_abono" class="form-input">
                             </div>
+                        </div>
+                        <div class="form-group" style="margin-top:14px;">
+                            <label class="form-label">Cuenta de Pago (Referencia)</label>
+                            <input type="text" id="pagoCuentaPago" name="cuenta_pago" class="form-input" placeholder="Ej: Cta. BCP S/ 123456789 o Banco XXX">
                         </div>
                     </div>
 
@@ -490,7 +637,7 @@
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Monto Recaudación</label>
-                                <input type="number" id="pagoTotalRecaudacion" name="total_recaudacion" step="0.01" min="0" class="form-input" placeholder="0.00" oninput="recalcularPago()">
+                                <input type="number" id="pagoTotalRecaudacion" name="total_recaudacion" step="0.01" min="0" class="form-input" placeholder="0.00" oninput="_recalcularAbonoAutodet(); recalcularPago();">
                             </div>
                         </div>
                     </div>
@@ -513,7 +660,7 @@
                             <span>Saldo Pendiente:</span>
                             <strong id="calcPendiente" class="monto-pendiente-cell">S/ 0.00</strong>
                         </div>
-                        <div id="estadoPreview" style="margin-top:10px;padding:8px 12px;border-radius:6px;background:#f8fafc;font-size:12px;font-weight:700;text-align:center;"></div>
+                        <div id="estadoPreview" style="margin-top:10px;padding:8px 12px;border-radius:6px;background:var(--gold-l);font-size:12px;font-weight:700;text-align:center;color:var(--gold-xd);"></div>
                     </div>
 
                     {{-- ── SECCIÓN COMPROBANTE ── --}}
@@ -529,9 +676,9 @@
                         </div>
                         <input type="file" id="fileComprobantePago" accept="image/*,application/pdf" style="display:none;" onchange="mostrarPreviewPago(event)">
                         <div id="previewPagoWrap" style="display:none;margin-top:12px;">
-                            <img id="previewPagoImg" src="" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid #e2e8f0;">
-                            <p id="previewPagoPdf" style="display:none;padding:10px;background:#f1f5f9;border-radius:8px;font-size:13px;color:#475569;">📄 PDF adjunto</p>
-                            <button type="button" onclick="limpiarPreviewPago()" style="margin-top:8px;padding:5px 14px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;cursor:pointer;font-size:12px;">Quitar</button>
+                            <img id="previewPagoImg" src="" style="max-width:100%;max-height:200px;border-radius:8px;border:1.5px solid var(--gold-b);">
+                            <p id="previewPagoPdf" style="display:none;padding:10px;background:var(--gold-l);border-radius:8px;font-size:13px;color:var(--gold-xd);">📄 PDF adjunto</p>
+                            <button type="button" onclick="limpiarPreviewPago()" style="margin-top:8px;padding:6px 14px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s;" onmouseover="this.background='#fca5a5'" onmouseout="this.background='#fee2e2'">Quitar</button>
                         </div>
                     </div>
 
@@ -556,7 +703,6 @@
                 <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                     <div class="form-group"><label class="form-label">Fecha Emisión</label><input type="date" name="fecha_emision" id="editFechaEmision" class="form-input"></div>
                     <div class="form-group"><label class="form-label">Fecha Vencimiento</label><input type="date" name="fecha_vencimiento" id="editFechaVencimiento" class="form-input"></div>
-                    <div class="form-group"><label class="form-label">Fecha Abono</label><input type="date" name="fecha_abono" id="editFechaAbono" class="form-input"></div>
                     <div class="form-group"><label class="form-label">Estado</label>
                         <select name="estado" id="editEstado" class="form-input">
                             <option value="PENDIENTE">Pendiente</option>
@@ -570,7 +716,9 @@
                     <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Glosa</label><textarea name="glosa" id="editGlosa" class="form-input" style="resize:vertical;min-height:60px;"></textarea></div>
                     <div class="form-group"><label class="form-label">Forma de Pago</label><input type="text" name="forma_pago" id="editFormaPago" class="form-input"></div>
                     <div class="form-group"><label class="form-label">Importe Total</label><input type="number" name="importe_total" id="editImporteTotal" step="0.01" class="form-input"></div>
+                    <div class="form-group"><label class="form-label">Monto Abonado</label><input type="number" name="monto_abonado" id="editMontoAbonado" step="0.01" min="0" class="form-input"></div>
                     <div class="form-group"><label class="form-label">IGV</label><input type="number" name="monto_igv" id="editMontoIgv" step="0.01" class="form-input"></div>
+                    <div class="form-group"><label class="form-label">Monto Pendiente</label><input type="number" name="monto_pendiente" id="editMontoPendiente" step="0.01" min="0" class="form-input" readonly style="background:#f1f5f9;cursor:not-allowed;"></div>
                     <div class="form-group"><label class="form-label">Subtotal Gravado</label><input type="number" name="subtotal_gravado" id="editSubtotalGravado" step="0.01" class="form-input"></div>
                 </div>
                 <div class="modal-footer">
@@ -605,77 +753,88 @@
         </div>
     </div>
 
-    {{-- ═══════════ MODAL REPORTE VENCIDOS A USUARIO ═══════════ --}}
-    <div class="modal-overlay" id="modalReporteUsuarioOverlay">
-        <div class="modal" style="max-width:560px;">
+    {{-- ═══════════ MODAL GENERAR REPORTE ═══════════ --}}
+    <div class="modal-overlay" id="modalReporteOverlay">
+        <div class="modal" style="max-width:640px;">
             <div class="modal-header">
-                <h2>Enviar Reporte a Usuario</h2>
-                <p>Selecciona el usuario destino y el tipo de reporte</p>
-                <button onclick="cerrarModalReporteUsuario()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+                <h2>Generar Reporte</h2>
+                <p>Configura el reporte — puedes seleccionar varios estados y varios destinatarios</p>
+                <button onclick="cerrarModalReporte()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="min-height:0;max-height:calc(90vh - 180px);overflow-y:auto;">
 
-                {{-- Tipo de reporte --}}
-                <div class="form-group" style="margin-bottom:20px;">
-                    <label class="form-label">Tipo de Reporte</label>
-                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px;">
-                        <label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all .15s;font-size:12px;font-weight:700;text-align:center;" id="lblVencidos">
-                            <input type="radio" name="tipoReporte" value="vencidos" style="display:none;" onchange="actualizarTipoReporte('vencidos')">
-                            <span style="font-size:20px;"></span>
-                            Vencidos
-                        </label>
-                        <label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all .15s;font-size:12px;font-weight:700;text-align:center;" id="lblPendientes">
-                            <input type="radio" name="tipoReporte" value="pendientes" style="display:none;" onchange="actualizarTipoReporte('pendientes')">
-                            <span style="font-size:20px;"></span>
-                            Pendientes
-                        </label>
-                        <label style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 10px;border:2px solid var(--accent);background:#dbeafe;border-radius:10px;cursor:pointer;transition:all .15s;font-size:12px;font-weight:700;text-align:center;color:var(--accent);" id="lblTodos">
-                            <input type="radio" name="tipoReporte" value="todos" checked style="display:none;" onchange="actualizarTipoReporte('todos')">
-                            <span style="font-size:20px;"></span>
-                            Todos (Pend.+Venc.)
-                        </label>
+                {{-- ① TIPO DE REPORTE --}}
+                <div style="margin-bottom:20px;">
+                    <label class="form-label" style="margin-bottom:6px;">① Tipo de Reporte</label>
+                    <div class="reporte-tipo-grid">
+                        <div class="reporte-tipo-card active" id="rTipoGeneral" onclick="selReporteTipo('general')">
+                            <span class="rtc-check" id="rChkGeneral">✓</span>
+                            <span class="rtc-icon"></span>
+                            <span class="rtc-title">Deuda General</span>
+                            <p class="rtc-desc">Resumen por cliente sin desglose de facturas individuales</p>
+                        </div>
+                        <div class="reporte-tipo-card" id="rTipoDetallado" onclick="selReporteTipo('detallado')">
+                            <span class="rtc-check" id="rChkDetallado"></span>
+                            <span class="rtc-icon"></span>
+                            <span class="rtc-title">Por Cliente con Facturas</span>
+                            <p class="rtc-desc">Facturas detalladas agrupadas por cliente con montos y estados</p>
+                        </div>
                     </div>
                 </div>
 
-                {{-- Filtro de fechas (opcional) --}}
-                <div class="form-group" style="margin-bottom:20px;">
-                    <label class="form-label">Filtro por fecha (opcional — dejar vacío para mostrar TODOS)</label>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;">
-                        <input type="date" id="reporteDesde" class="form-input" placeholder="Desde...">
-                        <input type="date" id="reporteHasta" class="form-input" placeholder="Hasta...">
+                {{-- ② ESTADOS (multi-select) --}}
+                <div style="margin-bottom:20px;">
+                    <label class="form-label" style="margin-bottom:4px;">② Estados a incluir <span style="font-weight:400;color:var(--gold-xd);">(selecciona uno o varios — puedes combinarlos)</span></label>
+                    <div class="estado-chip-wrap" style="margin-top:8px;">
+                        <span class="estado-chip chip-todos active" id="rChipTodos"      onclick="toggleEstado('',this)">✦ Todos Pendientes</span>
+                        <span class="estado-chip chip-pendiente"   id="rChipPendiente"   onclick="toggleEstado('PENDIENTE',this)">Pendiente</span>
+                        <span class="estado-chip chip-vencido"     id="rChipVencido"     onclick="toggleEstado('VENCIDO',this)">Vencido</span>
+                        <span class="estado-chip chip-parcial"     id="rChipParcial"     onclick="toggleEstado('PAGO PARCIAL',this)">Pago Parcial</span>
+                        <span class="estado-chip chip-det"         id="rChipDet"         onclick="toggleEstado('POR VALIDAR DETRACCION',this)">Por Validar Det.</span>
                     </div>
-                    <p style="font-size:11px;color:var(--text-muted);margin-top:6px;">
-                        Si no seleccionas fechas, el reporte incluirá <strong>todas</strong> las facturas del tipo seleccionado sin importar la fecha.
+                    <p id="rEstadoHint" style="font-size:11px;color:var(--gold-xd);margin-top:6px;">
+                        "Todos Pendientes" incluye los 4 estados. Al seleccionar uno específico, se desactiva "Todos".
                     </p>
                 </div>
 
-                {{-- Selección de usuario --}}
-                <div class="form-group">
-                    <label class="form-label">Enviar a (selecciona usuario)</label>
-                    <div id="listaUsuarios" style="margin-top:10px;max-height:220px;overflow-y:auto;">
-                        @foreach($usuarios as $u)
-                            <div class="usuario-option" onclick="seleccionarUsuario({{ $u->id_usuario }}, this)" data-id="{{ $u->id_usuario }}">
-                                <div class="usuario-avatar-sm">{{ strtoupper(substr($u->nombre,0,1)) }}</div>
-                                <div style="flex:1;">
-                                    <div style="font-weight:600;font-size:13px;">{{ $u->nombre }} {{ $u->apellido }}</div>
-                                    <div style="font-size:11px;color:var(--text-muted);"> {{ $u->celular }}{{ $u->correo ? ' · '.$u->correo : '' }}</div>
-                                </div>
-                                <div style="color:var(--text-muted);font-size:18px;" class="check-icon">○</div>
-                            </div>
-                        @endforeach
-                        @if($usuarios->isEmpty())
-                            <p style="text-align:center;color:var(--text-muted);font-size:13px;padding:20px;">No hay usuarios con celular registrado.</p>
-                        @endif
+                {{-- ③ PERÍODO --}}
+                <div style="margin-bottom:20px;">
+                    <label class="form-label" style="margin-bottom:6px;">③ Período <span style="font-weight:400;color:var(--gold-xd);">(opcional — vacío = todos los períodos)</span></label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:6px;">
+                        <input type="date" id="rDesde" class="form-input" style="border-color:var(--gold-b);">
+                        <input type="date" id="rHasta" class="form-input" style="border-color:var(--gold-b);">
                     </div>
                 </div>
 
-                <div id="reporteResultado" style="display:none;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:600;margin-top:16px;"></div>
+                {{-- ④ USUARIOS DESTINO (multi-select) --}}
+                <div>
+                    <label class="form-label" style="margin-bottom:4px;">④ Enviar a <span style="font-weight:400;color:var(--gold-xd);">(opcional — selecciona uno o varios usuarios)</span></label>
+                    <p style="font-size:11px;color:var(--gold-xd);margin-bottom:10px;">El PDF se abrirá con botones para enviar por WhatsApp / correo a todos los seleccionados. Sin selección solo abre el PDF.</p>
+                    <div style="max-height:220px;overflow-y:auto;border:1.5px solid var(--gold-b);border-radius:8px;padding:8px;background:#fff;">
+                        @foreach($usuarios as $u)
+                            <div class="usuario-option" onclick="toggleUsuario({{ $u->id_usuario }}, '{{ $u->celular }}', '{{ $u->correo ?? '' }}', this)" data-id="{{ $u->id_usuario }}">
+                                <div class="usuario-avatar-sm">{{ strtoupper(substr($u->nombre,0,1)) }}</div>
+                                <div style="flex:1;">
+                                    <div style="font-weight:600;font-size:13px;">{{ $u->nombre }} {{ $u->apellido }}</div>
+                                    <div style="font-size:11px;color:var(--text-muted);">{{ $u->celular }}{{ $u->correo ? ' · '.$u->correo : '' }}</div>
+                                </div>
+                                <div class="u-check"></div>
+                            </div>
+                        @endforeach
+                        @if($usuarios->isEmpty())
+                            <p style="text-align:center;color:var(--text-muted);font-size:13px;padding:16px;">No hay usuarios con celular registrado.</p>
+                        @endif
+                    </div>
+                    <div id="rUsuariosResumen" style="font-size:12px;color:var(--gold-xd);font-weight:600;margin-top:8px;display:none;">
+                        <!-- se actualiza dinámicamente -->
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
-                <button type="button" onclick="cerrarModalReporteUsuario()" class="btn btn-ghost">Cancelar</button>
-                <button type="button" onclick="enviarReporteUsuario()" class="btn btn-primary" id="btnEnviarReporteUsuario" disabled>
-                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                    Enviar por WhatsApp
+                <button type="button" onclick="cerrarModalReporte()" class="btn btn-ghost">Cancelar</button>
+                <button type="button" onclick="generarReporte()" class="btn btn-primary">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                    Abrir Reporte PDF
                 </button>
             </div>
         </div>
@@ -687,8 +846,6 @@
             let facturaActualId   = null;
             let facturaImporte    = 0;
             let facturaMoneda     = 'S/';
-            let usuarioSeleccionado = null;
-            let tipoReporteSeleccionado = 'todos';
             const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
             // ── RANGO DE FECHAS ──────────────────────────────────────────────
@@ -706,46 +863,168 @@
 
             // ── FILTRAR TABLA ────────────────────────────────────────────────
             function filtrarTabla() {
-                const search  = document.getElementById('searchInput').value.toLowerCase();
-                const estado  = document.getElementById('filterEstado').value;
-                const moneda  = document.getElementById('filterMoneda').value;
-                const empresa = document.getElementById('filterEmpresa').value;
+                const search      = document.getElementById('searchInput').value.toLowerCase();
+                const estado      = document.getElementById('filterEstado').value;
+                const moneda      = document.getElementById('filterMoneda').value;
+                const empresa     = document.getElementById('filterEmpresa').value;
+                const recaudacion = document.getElementById('filterRecaudacion').value;
                 document.querySelectorAll('#facturasBody tr[data-estado]').forEach(row => {
-                    const ok = (!search || row.dataset.search.includes(search))
-                        && (!estado  || row.dataset.estado  === estado)
-                        && (!moneda  || row.dataset.moneda  === moneda)
-                        && (!empresa || row.dataset.cliente === empresa);
+                    // Para filtro SIN: filas sin tipo_recaudacion (valor 'SIN')
+                    const rowRec = row.dataset.recaudacion || 'SIN';
+                    const okRec  = !recaudacion || rowRec === recaudacion;
+                    const ok = (!search    || row.dataset.search.includes(search))
+                        && (!estado    || row.dataset.estado   === estado)
+                        && (!moneda    || row.dataset.moneda   === moneda)
+                        && (!empresa   || row.dataset.cliente  === empresa)
+                        && okRec;
                     row.style.display = ok ? '' : 'none';
                 });
             }
 
             // ── REPORTES ─────────────────────────────────────────────────────
-            function generarReportePDF() {
-                const empresa = document.getElementById('filterEmpresa').value;
-                const estado  = document.getElementById('filterEstado').value;
-                const desde   = document.getElementById('inputDesde').value;
-                const hasta   = document.getElementById('inputHasta').value;
-                const params  = new URLSearchParams();
-                if (empresa) params.append('id_cliente', empresa);
-                if (estado)  params.append('estado', estado);
-                if (desde)   params.append('fecha_desde', desde);
-                if (hasta)   params.append('fecha_hasta', hasta);
+
+            // PDF rápido usando los filtros actuales de la tabla
+            function generarPDFFiltros() {
+                const empresa     = document.getElementById('filterEmpresa').value;
+                const estado      = document.getElementById('filterEstado').value;
+                const desde       = document.getElementById('inputDesde').value;
+                const hasta       = document.getElementById('inputHasta').value;
+                const recaudacion = document.getElementById('filterRecaudacion').value;
+                const params = new URLSearchParams();
+                if (empresa)     params.append('id_cliente', empresa);
+                if (estado)      params.append('estado', estado);
+                if (desde)       params.append('fecha_desde', desde);
+                if (hasta)       params.append('fecha_hasta', hasta);
+                if (recaudacion && recaudacion !== 'SIN') params.append('tipo_recaudacion', recaudacion);
+                if (recaudacion === 'SIN') params.append('sin_recaudacion', '1');
                 window.open('{{ route("reportes.pdf") }}?' + params.toString(), '_blank');
             }
 
-            function generarReporteDeuda() {
-                const desde = document.getElementById('inputDesde').value;
-                const hasta = document.getElementById('inputHasta').value;
+            // ══════════════════════════════════════════════════════════════════
+            // MODAL GENERAR REPORTE — multi-select estados + multi-select usuarios
+            // ══════════════════════════════════════════════════════════════════
+            let rTipo     = 'general';
+            let rEstados  = new Set();  // vacío = todos pendientes
+            let rUsuarios = new Map();  // id → { id, celular, correo, nombre }
+
+            function abrirModalReporte() {
+                rTipo    = 'general';
+                rEstados = new Set();
+                rUsuarios = new Map();
+                document.getElementById('rDesde').value = '';
+                document.getElementById('rHasta').value = '';
+                selReporteTipo('general');
+                // Reset chips — activar "Todos"
+                document.querySelectorAll('.estado-chip').forEach(c => c.classList.remove('active'));
+                document.getElementById('rChipTodos').classList.add('active');
+                // Reset usuarios
+                document.querySelectorAll('#modalReporteOverlay .usuario-option').forEach(el => {
+                    el.classList.remove('selected');
+                    const chk = el.querySelector('.u-check');
+                    if (chk) chk.textContent = '';
+                });
+                document.getElementById('rUsuariosResumen').style.display = 'none';
+                document.getElementById('modalReporteOverlay').classList.add('open');
+            }
+
+            function cerrarModalReporte() {
+                document.getElementById('modalReporteOverlay').classList.remove('open');
+            }
+
+            function selReporteTipo(tipo) {
+                rTipo = tipo;
+                document.getElementById('rTipoGeneral').classList.toggle('active', tipo === 'general');
+                document.getElementById('rTipoDetallado').classList.toggle('active', tipo === 'detallado');
+                document.getElementById('rChkGeneral').textContent   = tipo === 'general'   ? '✓' : '';
+                document.getElementById('rChkDetallado').textContent = tipo === 'detallado' ? '✓' : '';
+            }
+
+            function toggleEstado(estado, el) {
+                const chipTodos = document.getElementById('rChipTodos');
+
+                if (estado === '') {
+                    // "Todos Pendientes" — desactivar todo lo demás
+                    rEstados.clear();
+                    document.querySelectorAll('.estado-chip').forEach(c => c.classList.remove('active'));
+                    chipTodos.classList.add('active');
+                    return;
+                }
+
+                // Desactivar "Todos" si estaba activo
+                chipTodos.classList.remove('active');
+                rEstados.delete(''); // por si acaso
+
+                if (rEstados.has(estado)) {
+                    rEstados.delete(estado);
+                    el.classList.remove('active');
+                } else {
+                    rEstados.add(estado);
+                    el.classList.add('active');
+                }
+
+                // Si quedó todo vacío, volver a "Todos"
+                if (rEstados.size === 0) {
+                    chipTodos.classList.add('active');
+                }
+            }
+
+            function toggleUsuario(id, celular, correo, el) {
+                const chk = el.querySelector('.u-check');
+                if (rUsuarios.has(id)) {
+                    rUsuarios.delete(id);
+                    el.classList.remove('selected');
+                    if (chk) chk.textContent = '';
+                } else {
+                    // Extraer nombre del DOM
+                    const nombre = el.querySelector('div[style*="font-weight:600"]')?.textContent?.trim() || '';
+                    rUsuarios.set(id, { id, celular, correo, nombre });
+                    el.classList.add('selected');
+                    if (chk) chk.textContent = '✓';
+                }
+                // Actualizar resumen
+                const resumenEl = document.getElementById('rUsuariosResumen');
+                if (rUsuarios.size > 0) {
+                    const nombres = [...rUsuarios.values()].map(u => u.nombre).join(', ');
+                    resumenEl.textContent = `✓ ${rUsuarios.size} usuario(s) seleccionado(s): ${nombres}`;
+                    resumenEl.style.display = 'block';
+                } else {
+                    resumenEl.style.display = 'none';
+                }
+            }
+
+            function generarReporte() {
+                const desde = document.getElementById('rDesde').value;
+                const hasta  = document.getElementById('rHasta').value;
+
+                // Construir params — usando URLSearchParams con arrays
                 const params = new URLSearchParams();
                 if (desde) params.append('fecha_desde', desde);
                 if (hasta)  params.append('fecha_hasta', hasta);
-                window.open('{{ route("reportes.deuda-general") }}?' + params.toString(), '_blank');
+
+                // Estados: vacío = todos pendientes, si hay selección specific → pasar cada uno
+                if (rEstados.size > 0) {
+                    rEstados.forEach(e => params.append('estados[]', e));
+                }
+
+                // Usuarios: pasar IDs
+                if (rUsuarios.size > 0) {
+                    rUsuarios.forEach((u, id) => params.append('usuario_ids[]', id));
+                }
+
+                let url;
+                if (rTipo === 'general') {
+                    url = '{{ route("reportes.deuda-general") }}?' + params.toString();
+                } else {
+                    url = '{{ route("reportes.pdf") }}?' + params.toString();
+                }
+                window.open(url, '_blank');
+                cerrarModalReporte();
             }
 
             // ══════════════════════════════════════════════════════════════════
             // MODAL REGISTRAR PAGO
             // ══════════════════════════════════════════════════════════════════
-            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado) {
+            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, cuentaPago) {
                 facturaActualId = id;
                 facturaImporte  = parseFloat(importe);
                 facturaMoneda   = moneda;
@@ -755,6 +1034,7 @@
                 document.getElementById('pagoFechaAbono').value   = '{{ now()->format("Y-m-d") }}';
                 document.getElementById('pagoTotalRecaudacion').value = totalRec > 0 ? totalRec : '';
                 document.getElementById('pagoPorcentaje').value   = pctRec > 0 ? pctRec : '';
+                document.getElementById('pagoCuentaPago').value   = cuentaPago || '';
                 document.getElementById('chkValidarDetraccion').checked = false;
 
                 // Seleccionar tipo recaudación actual
@@ -770,61 +1050,94 @@
 
             function cerrarModalPago() {
                 document.getElementById('modalPagoOverlay').classList.remove('open');
+                // Limpiar campos
+                document.getElementById('pagoMontoAbonado').value = '';
+                document.getElementById('pagoFechaAbono').value = '';
+                document.getElementById('pagoCuentaPago').value = '';
+                document.getElementById('pagoTotalRecaudacion').value = '';
+                document.getElementById('pagoPorcentaje').value = '';
+                document.getElementById('pagoTipoRecaudacion').value = '';
                 limpiarPreviewPago();
             }
 
             function seleccionarTipoRec(tipo) {
                 document.getElementById('pagoTipoRecaudacion').value = tipo;
 
-                // Reset todos
+                // Reset todos los botones
                 ['btnTipoNinguna','btnTipoDet','btnTipoAuto','btnTipoRet'].forEach(id => {
                     const el = document.getElementById(id);
                     el.className = 'tipo-rec-card';
+                    el.style.borderColor = '';
+                    el.style.background  = '';
+                    el.style.color       = '';
                 });
 
-                const camposRec = document.getElementById('camposRecaudacion');
+                const camposRec        = document.getElementById('camposRecaudacion');
+                const validarWrap      = document.getElementById('validarDetraccionWrap');
+                const montoAbonadoEl   = document.getElementById('pagoMontoAbonado');
 
                 if (tipo === 'DETRACCION') {
                     document.getElementById('btnTipoDet').classList.add('active-det');
-                    camposRec.style.display = 'grid';
+                    camposRec.style.display  = 'grid';
+                    // El checkbox de validación ya se maneja en abrirModalPago — no tocar aquí
+
                 } else if (tipo === 'AUTODETRACCION') {
                     document.getElementById('btnTipoAuto').classList.add('active-auto');
-                    camposRec.style.display = 'grid';
-                    // Ocultar validación si cambia a autodetraccion
-                    document.getElementById('validarDetraccionWrap').style.display = 'none';
+                    camposRec.style.display  = 'grid';
+                    validarWrap.style.display = 'none';
+                    // AUTODETRACCION: importe_total = monto_abonado + total_recaudacion
+                    // → monto_abonado se calcula como (importe_total - total_recaudacion)
+                    // Se actualiza en tiempo real al cambiar el monto de recaudación
+                    _recalcularAbonoAutodet();
+
                 } else if (tipo === 'RETENCION') {
                     document.getElementById('btnTipoRet').classList.add('active-ret');
-                    camposRec.style.display = 'grid';
-                    document.getElementById('validarDetraccionWrap').style.display = 'none';
+                    camposRec.style.display  = 'grid';
+                    validarWrap.style.display = 'none';
+
                 } else {
-                    document.getElementById('btnTipoNinguna').style.borderColor = '#1d4ed8';
-                    document.getElementById('btnTipoNinguna').style.background = '#dbeafe';
-                    document.getElementById('btnTipoNinguna').style.color = '#1d4ed8';
-                    camposRec.style.display = 'none';
+                    // Sin recaudación
+                    const btnNin = document.getElementById('btnTipoNinguna');
+                    btnNin.style.borderColor = '#1d4ed8';
+                    btnNin.style.background  = '#dbeafe';
+                    btnNin.style.color       = '#1d4ed8';
+                    camposRec.style.display  = 'none';
+                    validarWrap.style.display = 'none';
                     document.getElementById('pagoTotalRecaudacion').value = '';
-                    document.getElementById('pagoPorcentaje').value = '';
-                    document.getElementById('validarDetraccionWrap').style.display = 'none';
+                    document.getElementById('pagoPorcentaje').value       = '';
                 }
 
                 recalcularPago();
             }
 
+            // Para autodetracción: monto_abonado = importe_total - total_recaudacion
+            function _recalcularAbonoAutodet() {
+                const tipoRec = document.getElementById('pagoTipoRecaudacion').value;
+                if (tipoRec !== 'AUTODETRACCION') return;
+                const rec      = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                const abono    = Math.max(0, facturaImporte - rec);
+                document.getElementById('pagoMontoAbonado').value = abono > 0 ? abono.toFixed(2) : '0.00';
+            }
+
             function calcularRecaudacion() {
-                const pct      = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
-                const importe  = facturaImporte;
-                if (pct > 0 && importe > 0) {
-                    document.getElementById('pagoTotalRecaudacion').value = (importe * pct / 100).toFixed(2);
+                const pct     = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
+                if (pct > 0 && facturaImporte > 0) {
+                    document.getElementById('pagoTotalRecaudacion').value = (facturaImporte * pct / 100).toFixed(2);
                 }
+                // Si es autodetracción, sincronizar monto_abonado
+                _recalcularAbonoAutodet();
                 recalcularPago();
             }
 
             function recalcularPago() {
-                const abonado     = parseFloat(document.getElementById('pagoMontoAbonado').value) || 0;
-                const recaudacion = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
-                const pendiente   = Math.max(0, facturaImporte - abonado - recaudacion);
-                const moneda      = facturaMoneda;
                 const tipoRec     = document.getElementById('pagoTipoRecaudacion').value;
                 const validarDet  = document.getElementById('chkValidarDetraccion').checked;
+                const recaudacion = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                const moneda      = facturaMoneda;
+
+                // Para AUTODETRACCION el monto_abonado ya se calcula automáticamente
+                const abonado = parseFloat(document.getElementById('pagoMontoAbonado').value) || 0;
+                const pendiente = Math.max(0, facturaImporte - abonado - recaudacion);
 
                 document.getElementById('calcImporte').textContent     = `${moneda} ${facturaImporte.toFixed(2)}`;
                 document.getElementById('calcAbonado').textContent     = `${moneda} ${abonado.toFixed(2)}`;
@@ -832,12 +1145,21 @@
                 document.getElementById('calcPendiente').textContent   = `${moneda} ${pendiente.toFixed(2)}`;
 
                 // Preview del estado
-                let estadoPreview = '';
-                let estadoColor   = '';
+                let estadoPreview = '', estadoColor = '';
+
                 if (tipoRec === 'DETRACCION' && !validarDet && abonado === 0) {
                     estadoPreview = 'Estado: POR VALIDAR DETRACCIÓN';
                     estadoColor   = '#fdf4ff';
-                } else if (abonado === 0) {
+                } else if (tipoRec === 'AUTODETRACCION') {
+                    // Autodetracción: abono + recaudación cubre todo → PAGADA
+                    if (pendiente <= 0) {
+                        estadoPreview = 'Estado: PAGADA — Cubierta por autodetracción';
+                        estadoColor   = '#d1fae5';
+                    } else {
+                        estadoPreview = `Estado: PAGO PARCIAL — Queda ${moneda} ${pendiente.toFixed(2)} pendiente`;
+                        estadoColor   = '#e0e7ff';
+                    }
+                } else if (abonado === 0 && recaudacion === 0) {
                     estadoPreview = 'Estado: PENDIENTE';
                     estadoColor   = '#fef3c7';
                 } else if (pendiente <= 0) {
@@ -864,8 +1186,9 @@
                 const totalRecaudacion  = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
                 const porcentaje        = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
                 const tipoRec           = document.getElementById('pagoTipoRecaudacion').value;
-                const fechaAbono        = document.getElementById('pagoFechaAbono').value;
                 const validarDet        = document.getElementById('chkValidarDetraccion').checked;
+                const fechaAbono        = document.getElementById('pagoFechaAbono').value || null;
+                const cuentaPago        = document.getElementById('pagoCuentaPago').value || null;
 
                 // Paso 1: Guardar pago
                 try {
@@ -878,6 +1201,7 @@
                             porcentaje_recaudacion: porcentaje,
                             tipo_recaudacion:       tipoRec || null,
                             fecha_abono:            fechaAbono,
+                            cuenta_pago:            cuentaPago,
                             validar_detraccion:     validarDet,
                         }),
                     });
@@ -940,27 +1264,41 @@
                 fetch(`/facturas/${id}/edit`).then(r=>r.json()).then(f=>{
                     document.getElementById('editFechaEmision').value    = f.fecha_emision    || '';
                     document.getElementById('editFechaVencimiento').value= f.fecha_vencimiento|| '';
-                    document.getElementById('editFechaAbono').value      = f.fecha_abono      || '';
                     document.getElementById('editEstado').value          = f.estado           || '';
                     document.getElementById('editGlosa').value           = f.glosa            || '';
                     document.getElementById('editFormaPago').value       = f.forma_pago       || '';
                     document.getElementById('editImporteTotal').value    = f.importe_total    || '';
+                    document.getElementById('editMontoAbonado').value    = f.monto_abonado    || '';
                     document.getElementById('editMontoIgv').value        = f.monto_igv        || '';
+                    document.getElementById('editMontoPendiente').value  = f.monto_pendiente  || '';
                     document.getElementById('editSubtotalGravado').value = f.subtotal_gravado || '';
+                    
+                    // Agregar listener para recalcular monto_pendiente
+                    document.getElementById('editMontoAbonado').addEventListener('change', recalcularMontoPendiente);
+                    document.getElementById('editImporteTotal').addEventListener('change', recalcularMontoPendiente);
                 });
             }
             function cerrarModalEditar() { document.getElementById('modalEditarOverlay').classList.remove('open'); }
+            
+            function recalcularMontoPendiente() {
+                const importe = parseFloat(document.getElementById('editImporteTotal').value) || 0;
+                const abonado = parseFloat(document.getElementById('editMontoAbonado').value) || 0;
+                const pendiente = Math.max(0, importe - abonado);
+                document.getElementById('editMontoPendiente').value = pendiente.toFixed(2);
+            }
+            
             function guardarFactura(event) {
                 event.preventDefault();
                 const datos = {
                     fecha_emision:document.getElementById('editFechaEmision').value,
                     fecha_vencimiento:document.getElementById('editFechaVencimiento').value,
-                    fecha_abono:document.getElementById('editFechaAbono').value,
                     estado:document.getElementById('editEstado').value,
                     glosa:document.getElementById('editGlosa').value,
                     forma_pago:document.getElementById('editFormaPago').value,
                     importe_total:document.getElementById('editImporteTotal').value,
+                    monto_abonado:document.getElementById('editMontoAbonado').value || 0,
                     monto_igv:document.getElementById('editMontoIgv').value,
+                    monto_pendiente:document.getElementById('editMontoPendiente').value || 0,
                     subtotal_gravado:document.getElementById('editSubtotalGravado').value,
                 };
                 fetch(`/facturas/${facturaActualId}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':CSRF},body:JSON.stringify(datos)})
@@ -997,82 +1335,8 @@
                     .catch(err=>alert('Error: '+err.message));
             }
 
-            // ══════════════════════════════════════════════════════════════════
-            // MODAL REPORTE VENCIDOS A USUARIO
-            // ══════════════════════════════════════════════════════════════════
-            function abrirModalReporteUsuario() {
-                usuarioSeleccionado = null;
-                document.getElementById('btnEnviarReporteUsuario').disabled = true;
-                document.getElementById('reporteResultado').style.display = 'none';
-                document.querySelectorAll('.usuario-option').forEach(el => {
-                    el.classList.remove('selected');
-                    el.querySelector('.check-icon').textContent = '○';
-                });
-                document.getElementById('modalReporteUsuarioOverlay').classList.add('open');
-            }
-            function cerrarModalReporteUsuario() { document.getElementById('modalReporteUsuarioOverlay').classList.remove('open'); }
-
-            function seleccionarUsuario(id, el) {
-                usuarioSeleccionado = id;
-                document.querySelectorAll('.usuario-option').forEach(o => { o.classList.remove('selected'); o.querySelector('.check-icon').textContent = '○'; });
-                el.classList.add('selected');
-                el.querySelector('.check-icon').textContent = '●';
-                document.getElementById('btnEnviarReporteUsuario').disabled = false;
-                document.getElementById('reporteResultado').style.display = 'none';
-            }
-
-            function actualizarTipoReporte(tipo) {
-                tipoReporteSeleccionado = tipo;
-                ['lblVencidos','lblPendientes','lblTodos'].forEach(id => {
-                    const el = document.getElementById(id);
-                    el.style.borderColor = 'var(--border)';
-                    el.style.background  = '';
-                    el.style.color       = '';
-                });
-                const mapa = { vencidos:'lblVencidos', pendientes:'lblPendientes', todos:'lblTodos' };
-                const sel  = document.getElementById(mapa[tipo]);
-                sel.style.borderColor = 'var(--accent)';
-                sel.style.background  = '#dbeafe';
-                sel.style.color       = 'var(--accent)';
-            }
-
-            async function enviarReporteUsuario() {
-                if (!usuarioSeleccionado) return;
-                const btn = document.getElementById('btnEnviarReporteUsuario');
-                btn.disabled = true;
-                btn.textContent = 'Enviando…';
-
-                const body = new URLSearchParams({
-                    id_usuario:  usuarioSeleccionado,
-                    tipo:        tipoReporteSeleccionado,
-                    fecha_desde: document.getElementById('reporteDesde').value,
-                    fecha_hasta: document.getElementById('reporteHasta').value,
-                    _token:      CSRF,
-                });
-
-                try {
-                    const res  = await fetch('{{ route("facturas.reporte-vencidos-usuario") }}', { method:'POST', body });
-                    const data = await res.json();
-                    const el   = document.getElementById('reporteResultado');
-                    el.textContent  = (data.success ? '✓ ' : '✗ ') + (data.message || data.error || '');
-                    el.style.background = data.success ? '#d1fae5' : '#fee2e2';
-                    el.style.color      = data.success ? '#065f46' : '#7f1d1d';
-                    el.style.display    = 'block';
-                } catch(e) {
-                    const el = document.getElementById('reporteResultado');
-                    el.textContent = '✗ Error de red: ' + e.message;
-                    el.style.background = '#fee2e2';
-                    el.style.color = '#7f1d1d';
-                    el.style.display = 'block';
-                } finally {
-                    btn.disabled = false;
-                    btn.textContent = 'Enviar por WhatsApp';
-                    document.getElementById('btnEnviarReporteUsuario').innerHTML = '<svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg> Enviar por WhatsApp';
-                }
-            }
-
             // ── Cierre de modales con click fuera ────────────────────────────
-            ['modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteUsuarioOverlay'].forEach(id => {
+            ['modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay'].forEach(id => {
                 document.getElementById(id)?.addEventListener('click', e => { if(e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
             });
         </script>
