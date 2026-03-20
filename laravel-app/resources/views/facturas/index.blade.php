@@ -223,6 +223,11 @@
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                 Importar Excel
             </a>
+            {{-- ← AGREGA ESTO --}}
+            <a href="{{ route('detracciones.index') }}" class="btn btn-outline" style="border-color:#7c3aed;color:#7c3aed;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Validar Detracciones
+            </a>
             <button type="button" class="btn-pdf-filtros" onclick="generarPDFFiltros()" style="padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 PDF con Filtros
@@ -426,9 +431,15 @@
                                     {{ $factura->moneda }} {{ number_format($montoRecaudacion,2) }}
                                 </div>
                                 <div style="font-size:10px;color:#92400e;font-weight:600;">
-                                    {{ $porcentaje > 0 ? $porcentaje.'%' : '' }}
-                                    {{ $tipoRecaudacion ? ' · '.$tipoRecaudacion : '' }}
+                                    {{ $tipoRecaudacion ?? '' }}
                                 </div>
+                                @if(!empty($factura->fecha_recaudacion))
+                                    <div style="font-size:10px;color:#059669;font-weight:600;margin-top:2px;">
+                                        {{ \Carbon\Carbon::parse($factura->fecha_recaudacion)->format('d/m/Y') }}
+                                    </div>
+                                @elseif($porcentaje > 0)
+                                    <div style="font-size:10px;color:#92400e;font-weight:600;">{{ $porcentaje }}%</div>
+                                @endif
                             @else
                                 <span style="font-size:12px;color:var(--text-muted);">—</span>
                             @endif
@@ -522,8 +533,7 @@
 
                                 {{-- Registrar pago / imagen --}}
                                 <button type="button"
-                                        onclick="abrirModalPago('{{ $factura->id_factura }}', {{ $factura->importe_total }}, '{{ $factura->moneda }}', {{ $montoAbonado }}, {{ $montoRecaudacion }}, {{ $porcentaje }}, '{{ $tipoRecaudacion }}', '{{ $estado }}', '{{ $factura->cuenta_pago ?? '' }}')"
-                                        class="action-btn"
+                                        onclick="abrirModalPago('{{ $factura->id_factura }}', {{ $factura->importe_total }}, '{{ $factura->moneda }}', {{ $montoAbonado }}, {{ $montoRecaudacion }}, {{ $porcentaje }}, '{{ $tipoRecaudacion }}', '{{ $estado }}', '{{ $factura->cuenta_pago ?? '' }}', '{{ $factura->fecha_recaudacion ?? '' }}')"                                        class="action-btn"
                                         title="{{ $estado === 'PAGADA' ? 'Ver/Actualizar pago' : 'Registrar pago' }}"
                                         style="color:{{ $montoAbonado > 0 ? '#1d4ed8' : '#d97706' }};">
                                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
@@ -630,6 +640,7 @@
                             <p style="font-size:11px;color:#92400e;margin-top:6px;margin-left:26px;">Al marcar esta opción, se validará la detracción y cambiará el estado de la factura.</p>
                         </div>
 
+                        {{-- dentro de #camposRecaudacion, después del grid de porcentaje/monto --}}
                         <div id="camposRecaudacion" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                             <div class="form-group">
                                 <label class="form-label">Porcentaje (%)</label>
@@ -638,6 +649,12 @@
                             <div class="form-group">
                                 <label class="form-label">Monto Recaudación</label>
                                 <input type="number" id="pagoTotalRecaudacion" name="total_recaudacion" step="0.01" min="0" class="form-input" placeholder="0.00" oninput="_recalcularAbonoAutodet(); recalcularPago();">
+                            </div>
+                            {{-- NUEVO --}}
+                            <div class="form-group" style="grid-column:1/-1;">
+                                <label class="form-label">Fecha de Depósito / Recaudación</label>
+                                <input type="date" id="pagoFechaRecaudacion" name="fecha_recaudacion" class="form-input" style="border-color:var(--gold-b);">
+                                <span style="font-size:11px;color:var(--text-muted);margin-top:3px;display:block;">Fecha en que se depositó la detracción o retención</span>
                             </div>
                         </div>
                     </div>
@@ -698,30 +715,35 @@
                 <h2>Editar Factura</h2><p>Actualiza los datos de la factura</p>
                 <button onclick="cerrarModalEditar()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
             </div>
-            <form id="formEditarFactura" onsubmit="guardarFactura(event)">
+            <form id="formEditarFactura" onsubmit="guardarFactura(event)" style="display:flex;flex-direction:column;max-height:calc(90vh - 80px);overflow:hidden;">
                 @csrf @method('PUT')
-                <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                    <div class="form-group"><label class="form-label">Fecha Emisión</label><input type="date" name="fecha_emision" id="editFechaEmision" class="form-input"></div>
-                    <div class="form-group"><label class="form-label">Fecha Vencimiento</label><input type="date" name="fecha_vencimiento" id="editFechaVencimiento" class="form-input"></div>
-                    <div class="form-group"><label class="form-label">Estado</label>
-                        <select name="estado" id="editEstado" class="form-input">
-                            <option value="PENDIENTE">Pendiente</option>
-                            <option value="VENCIDO">Vencido</option>
-                            <option value="PAGADA">Pagada</option>
-                            <option value="PAGO PARCIAL">Pago Parcial</option>
-                            <option value="POR VALIDAR DETRACCION">Por Validar Detracción</option>
-                            <option value="ANULADA">Anulada</option>
-                        </select>
+                <div class="modal-body" style="overflow-y:auto;padding:24px;flex:1;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div class="form-group"><label class="form-label">Fecha Emisión</label><input type="date" name="fecha_emision" id="editFechaEmision" class="form-input"></div>
+                        <div class="form-group"><label class="form-label">Fecha Vencimiento</label><input type="date" name="fecha_vencimiento" id="editFechaVencimiento" class="form-input"></div>
+                        <div class="form-group"><label class="form-label">Estado</label>
+                            <select name="estado" id="editEstado" class="form-input">
+                                <option value="PENDIENTE">Pendiente</option>
+                                <option value="VENCIDO">Vencido</option>
+                                <option value="PAGADA">Pagada</option>
+                                <option value="PAGO PARCIAL">Pago Parcial</option>
+                                <option value="POR VALIDAR DETRACCION">Por Validar Detracción</option>
+                                <option value="ANULADA">Anulada</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Forma de Pago</label><input type="text" name="forma_pago" id="editFormaPago" class="form-input"></div>
+                        <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Glosa</label><textarea name="glosa" id="editGlosa" class="form-input" style="resize:vertical;min-height:60px;height:60px;"></textarea></div>
+                        <div class="form-group"><label class="form-label">Importe Total</label><input type="number" name="importe_total" id="editImporteTotal" step="0.01" class="form-input"></div>
+                        <div class="form-group"><label class="form-label">IGV</label><input type="number" name="monto_igv" id="editMontoIgv" step="0.01" class="form-input"></div>
+                        <div class="form-group"><label class="form-label">Subtotal Gravado</label><input type="number" name="subtotal_gravado" id="editSubtotalGravado" step="0.01" class="form-input"></div>
+                        <div class="form-group">
+                            <label class="form-label">Monto Pendiente</label>
+                            <input type="number" name="monto_pendiente" id="editMontoPendiente" step="0.01" min="0" class="form-input" readonly style="background:#f8fafc;cursor:not-allowed;color:var(--text-muted);">
+                            <span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block;">Se recalcula automáticamente</span>
+                        </div>
                     </div>
-                    <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Glosa</label><textarea name="glosa" id="editGlosa" class="form-input" style="resize:vertical;min-height:60px;"></textarea></div>
-                    <div class="form-group"><label class="form-label">Forma de Pago</label><input type="text" name="forma_pago" id="editFormaPago" class="form-input"></div>
-                    <div class="form-group"><label class="form-label">Importe Total</label><input type="number" name="importe_total" id="editImporteTotal" step="0.01" class="form-input"></div>
-                    <div class="form-group"><label class="form-label">Monto Abonado</label><input type="number" name="monto_abonado" id="editMontoAbonado" step="0.01" min="0" class="form-input"></div>
-                    <div class="form-group"><label class="form-label">IGV</label><input type="number" name="monto_igv" id="editMontoIgv" step="0.01" class="form-input"></div>
-                    <div class="form-group"><label class="form-label">Monto Pendiente</label><input type="number" name="monto_pendiente" id="editMontoPendiente" step="0.01" min="0" class="form-input" readonly style="background:#f1f5f9;cursor:not-allowed;"></div>
-                    <div class="form-group"><label class="form-label">Subtotal Gravado</label><input type="number" name="subtotal_gravado" id="editSubtotalGravado" step="0.01" class="form-input"></div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer" style="flex-shrink:0;">
                     <button type="button" onclick="cerrarModalEditar()" class="btn btn-ghost">Cancelar</button>
                     <button type="submit" class="btn btn-primary">Guardar Cambios</button>
                 </div>
@@ -1024,23 +1046,22 @@
             // ══════════════════════════════════════════════════════════════════
             // MODAL REGISTRAR PAGO
             // ══════════════════════════════════════════════════════════════════
-            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, cuentaPago) {
+            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, cuentaPago, fechaRec) {
                 facturaActualId = id;
                 facturaImporte  = parseFloat(importe);
                 facturaMoneda   = moneda;
 
                 document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} · ${moneda} ${parseFloat(importe).toFixed(2)}`;
-                document.getElementById('pagoMontoAbonado').value = montoAbonado > 0 ? montoAbonado : '';
-                document.getElementById('pagoFechaAbono').value   = '{{ now()->format("Y-m-d") }}';
-                document.getElementById('pagoTotalRecaudacion').value = totalRec > 0 ? totalRec : '';
-                document.getElementById('pagoPorcentaje').value   = pctRec > 0 ? pctRec : '';
-                document.getElementById('pagoCuentaPago').value   = cuentaPago || '';
-                document.getElementById('chkValidarDetraccion').checked = false;
+                document.getElementById('pagoMontoAbonado').value        = montoAbonado > 0 ? montoAbonado : '';
+                document.getElementById('pagoFechaAbono').value          = '{{ now()->format("Y-m-d") }}';
+                document.getElementById('pagoTotalRecaudacion').value    = totalRec > 0 ? totalRec : '';
+                document.getElementById('pagoPorcentaje').value          = pctRec > 0 ? pctRec : '';
+                document.getElementById('pagoCuentaPago').value          = cuentaPago || '';
+                document.getElementById('pagoFechaRecaudacion').value    = fechaRec || '';   // ← NUEVO
+                document.getElementById('chkValidarDetraccion').checked  = false;
 
-                // Seleccionar tipo recaudación actual
                 seleccionarTipoRec(tipoRec || '');
 
-                // Mostrar aviso de validación si es POR VALIDAR DETRACCION
                 document.getElementById('validarDetraccionWrap').style.display =
                     (tipoRec === 'DETRACCION' && (estado === 'POR VALIDAR DETRACCION' || estado === 'PENDIENTE')) ? 'block' : 'none';
 
@@ -1050,13 +1071,13 @@
 
             function cerrarModalPago() {
                 document.getElementById('modalPagoOverlay').classList.remove('open');
-                // Limpiar campos
-                document.getElementById('pagoMontoAbonado').value = '';
-                document.getElementById('pagoFechaAbono').value = '';
-                document.getElementById('pagoCuentaPago').value = '';
-                document.getElementById('pagoTotalRecaudacion').value = '';
-                document.getElementById('pagoPorcentaje').value = '';
-                document.getElementById('pagoTipoRecaudacion').value = '';
+                document.getElementById('pagoMontoAbonado').value        = '';
+                document.getElementById('pagoFechaAbono').value          = '';
+                document.getElementById('pagoCuentaPago').value          = '';
+                document.getElementById('pagoTotalRecaudacion').value    = '';
+                document.getElementById('pagoPorcentaje').value          = '';
+                document.getElementById('pagoTipoRecaudacion').value     = '';
+                document.getElementById('pagoFechaRecaudacion').value    = '';  // ← NUEVO
                 limpiarPreviewPago();
             }
 
@@ -1189,6 +1210,10 @@
                 const validarDet        = document.getElementById('chkValidarDetraccion').checked;
                 const fechaAbono        = document.getElementById('pagoFechaAbono').value || null;
                 const cuentaPago        = document.getElementById('pagoCuentaPago').value || null;
+                let fechaRecaudacion    = document.getElementById('pagoFechaRecaudacion').value || null;
+                if (validarDet && !fechaRecaudacion) {
+                    fechaRecaudacion = new Date().toISOString().split('T')[0];
+                }
 
                 // Paso 1: Guardar pago
                 try {
@@ -1202,6 +1227,7 @@
                             tipo_recaudacion:       tipoRec || null,
                             fecha_abono:            fechaAbono,
                             cuenta_pago:            cuentaPago,
+                            fecha_recaudacion:      fechaRecaudacion,  // ← NUEVO
                             validar_detraccion:     validarDet,
                         }),
                     });
@@ -1262,31 +1288,24 @@
                 facturaActualId = id;
                 document.getElementById('modalEditarOverlay').classList.add('open');
                 fetch(`/facturas/${id}/edit`).then(r=>r.json()).then(f=>{
-                    document.getElementById('editFechaEmision').value    = f.fecha_emision    || '';
-                    document.getElementById('editFechaVencimiento').value= f.fecha_vencimiento|| '';
-                    document.getElementById('editEstado').value          = f.estado           || '';
-                    document.getElementById('editGlosa').value           = f.glosa            || '';
-                    document.getElementById('editFormaPago').value       = f.forma_pago       || '';
-                    document.getElementById('editImporteTotal').value    = f.importe_total    || '';
-                    document.getElementById('editMontoAbonado').value    = f.monto_abonado    || '';
-                    document.getElementById('editMontoIgv').value        = f.monto_igv        || '';
-                    document.getElementById('editMontoPendiente').value  = f.monto_pendiente  || '';
-                    document.getElementById('editSubtotalGravado').value = f.subtotal_gravado || '';
-                    
-                    // Agregar listener para recalcular monto_pendiente
-                    document.getElementById('editMontoAbonado').addEventListener('change', recalcularMontoPendiente);
-                    document.getElementById('editImporteTotal').addEventListener('change', recalcularMontoPendiente);
+                    document.getElementById('editFechaEmision').value    = f.fecha_emision     || '';
+                    document.getElementById('editFechaVencimiento').value= f.fecha_vencimiento || '';
+                    document.getElementById('editEstado').value          = f.estado            || '';
+                    document.getElementById('editGlosa').value           = f.glosa             || '';
+                    document.getElementById('editFormaPago').value       = f.forma_pago        || '';
+                    document.getElementById('editImporteTotal').value    = f.importe_total     || '';
+                    document.getElementById('editMontoIgv').value        = f.monto_igv         || '';
+                    document.getElementById('editMontoPendiente').value  = f.monto_pendiente   || '';
+                    document.getElementById('editSubtotalGravado').value = f.subtotal_gravado  || '';
+                    // Recalcular monto_pendiente si cambia el importe (sin tocar monto_abonado — se gestiona en modal pago)
+                    document.getElementById('editImporteTotal').oninput = function() {
+                        const imp = parseFloat(this.value) || 0;
+                        const abo = parseFloat(f.monto_abonado) || 0;
+                        document.getElementById('editMontoPendiente').value = Math.max(0, imp - abo).toFixed(2);
+                    };
                 });
             }
             function cerrarModalEditar() { document.getElementById('modalEditarOverlay').classList.remove('open'); }
-            
-            function recalcularMontoPendiente() {
-                const importe = parseFloat(document.getElementById('editImporteTotal').value) || 0;
-                const abonado = parseFloat(document.getElementById('editMontoAbonado').value) || 0;
-                const pendiente = Math.max(0, importe - abonado);
-                document.getElementById('editMontoPendiente').value = pendiente.toFixed(2);
-            }
-            
             function guardarFactura(event) {
                 event.preventDefault();
                 const datos = {
@@ -1296,9 +1315,7 @@
                     glosa:document.getElementById('editGlosa').value,
                     forma_pago:document.getElementById('editFormaPago').value,
                     importe_total:document.getElementById('editImporteTotal').value,
-                    monto_abonado:document.getElementById('editMontoAbonado').value || 0,
                     monto_igv:document.getElementById('editMontoIgv').value,
-                    monto_pendiente:document.getElementById('editMontoPendiente').value || 0,
                     subtotal_gravado:document.getElementById('editSubtotalGravado').value,
                 };
                 fetch(`/facturas/${facturaActualId}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':CSRF},body:JSON.stringify(datos)})

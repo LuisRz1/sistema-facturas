@@ -9,6 +9,8 @@ use App\Http\Controllers\UsuarioController;
 use App\Http\Controllers\NotificacionController;
 use App\Http\Controllers\ImportarFacturasController;
 use App\Http\Controllers\ReporteController;
+use App\Http\Controllers\ValidarDetraccionesController;
+
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────────────
 Route::get('/login',  [AuthController::class, 'showLogin'])->name('login');
@@ -22,6 +24,15 @@ Route::middleware('auth')->group(function () {
 
     // ── DASHBOARD ──────────────────────────────────────────────────────
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // ── VALIDAR DETRACCIONES (SUNAT) ───────────────────────────────
+    Route::get('/facturas/validar-detracciones',
+        [ValidarDetraccionesController::class, 'index']
+    )->name('detracciones.index');
+
+    Route::post('/facturas/validar-detracciones/procesar',
+        [ValidarDetraccionesController::class, 'procesar']
+    )->name('detracciones.procesar');
 
     // ── FACTURAS ───────────────────────────────────────────────────────
     Route::get('/facturas', [FacturaController::class, 'index'])->name('facturas.index');

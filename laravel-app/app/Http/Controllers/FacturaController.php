@@ -37,7 +37,6 @@ class FacturaController extends Controller
                 'f.tipo_recaudacion',
                 'f.glosa',
                 'f.forma_pago',
-                'f.cuenta_pago',
                 'f.usuario_creacion',
                 'c.id_cliente',
                 'c.razon_social',
@@ -48,6 +47,8 @@ class FacturaController extends Controller
                 'u.apellido as usuario_apellido',
                 'rec.total_recaudacion as monto_recaudacion',
                 'rec.porcentaje as porcentaje_recaudacion',
+                'rec.fecha_recaudacion',
+                'f.cuenta_pago',
             ])
             ->orderByDesc('f.fecha_emision')
             ->orderByDesc('f.numero')
@@ -131,23 +132,8 @@ class FacturaController extends Controller
             'importe_total'    => 'nullable|numeric',
             'monto_igv'        => 'nullable|numeric',
             'subtotal_gravado' => 'nullable|numeric',
-            'monto_abonado'    => 'nullable|numeric|min:0',
-            'monto_pendiente'  => 'nullable|numeric|min:0',
         ]);
 
-        // Si se actualiza monto_abonado, recalcular monto_pendiente
-        if ($request->filled('monto_abonado')) {
-            $montoAbonado = floatval($validated['monto_abonado']);
-            $importeTotal = floatval($validated['importe_total'] ?? $factura->importe_total);
-            $validated['monto_pendiente'] = max(0, $importeTotal - $montoAbonado);
-            
-            // Actualizar fecha_abono si se registra un abono
-            if ($montoAbonado > 0 && !$factura->fecha_abono) {
-                $validated['fecha_abono'] = now()->toDateString();
-            }
-        }
-
-        $validated['fecha_actualizacion'] = now();
         $factura->update($validated);
 
         return response()->json([
@@ -172,6 +158,7 @@ class FacturaController extends Controller
             'tipo_recaudacion'      => 'nullable|string|in:DETRACCION,AUTODETRACCION,RETENCION',
             'validar_detraccion'    => 'nullable|boolean',
             'fecha_abono'           => 'nullable|date',
+            'fecha_recaudacion'     => 'nullable|date',
             'cuenta_pago'           => 'nullable|string|max:255',
         ]);
 
@@ -180,6 +167,7 @@ class FacturaController extends Controller
         $tipoRecaudacion   = $validated['tipo_recaudacion'] ?? $factura->tipo_recaudacion;
         $porcentaje        = $validated['porcentaje_recaudacion'] ?? null;
         $fechaAbono        = $validated['fecha_abono'] ?? null;
+        $fechaRecaudacion  = $validated['fecha_recaudacion'] ?? null;
         $cuentaPago        = $validated['cuenta_pago'] ?? null;
         $importeTotal      = (float) $factura->importe_total;
 
@@ -194,8 +182,9 @@ class FacturaController extends Controller
             DB::table('recaudacion')->updateOrInsert(
                 ['id_factura' => $id],
                 [
-                    'porcentaje'        => $porcentaje ?? 0,
-                    'total_recaudacion' => $totalRecaudacion,
+                    'porcentaje'         => $porcentaje ?? 0,
+                    'total_recaudacion'  => $totalRecaudacion,
+                    'fecha_recaudacion'  => $fechaRecaudacion,
                 ]
             );
         } elseif (!$tipoRecaudacion && $totalRecaudacion == 0) {
