@@ -47,6 +47,23 @@ class ImportarFacturasController extends Controller
 
         $hoja  = $spreadsheet->getActiveSheet();
         $filas = $hoja->toArray(null, true, false, true);
+        
+        // Leer encabezados para mapear dinámicamente las columnas
+        $encabezados = $filas[1] ?? [];
+        $colSerieModificado = null;
+        $colNumeroModificado = null;
+        
+        // Buscar por nombre de referencia
+        foreach ($encabezados as $columna => $valor) {
+            $nombreEncabezado = strtoupper(trim((string)$valor));
+            if ($nombreEncabezado === 'SERIE DOC MODIFICADO') {
+                $colSerieModificado = $columna;
+            }
+            if ($nombreEncabezado === 'NUMERO DOC MODIFICADO') {
+                $colNumeroModificado = $columna;
+            }
+        }
+        
         unset($filas[1]); // quitar cabecera
 
         $idUsuario  = Auth::id();
@@ -151,9 +168,13 @@ class ImportarFacturasController extends Controller
                 $numeroModificada = null;
 
                 if ($esNotaCredito) {
-                    // Leer referencias de la factura que modifica
-                    $serieModificada = strtoupper(trim((string)($f['CZ'] ?? '')));  // SERIE DOC MODIFICADO
-                    $numeroModificada = (int) trim((string)($f['DA'] ?? '0'));     // NUMERO DOC MODIFICADO
+                    // Leer referencias de la factura que modifica usando columnas mapeadas dinámicamente
+                    $serieModificada = !is_null($colSerieModificado) 
+                        ? strtoupper(trim((string)($f[$colSerieModificado] ?? '')))
+                        : '';
+                    $numeroModificada = !is_null($colNumeroModificado) 
+                        ? (int) trim((string)($f[$colNumeroModificado] ?? '0'))
+                        : 0;
 
                     // El importe de la nota de crédito es NEGATIVO
                     $importeTotal = -abs($importeTotal);

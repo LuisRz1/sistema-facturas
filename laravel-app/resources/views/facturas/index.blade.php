@@ -277,18 +277,12 @@
 
     {{-- ── STATS ── --}}
     @php
-        // Incluir ANULADO solo si está ligado a otra factura
-        $facturasParaTotales = $facturas->filter(function ($f) {
-            if ($f->estado === 'ANULADO') {
-                return \DB::table('credito')->where('id_factura', $f->id_factura)->exists();
-            }
-            return true;
-        });
+        // Usar colección pre-filtrada del controlador
         $total        = $facturasParaTotales->sum('importe_total');
         $pendiente    = $facturasParaTotales->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
         $pagada       = $facturasParaTotales->where('estado','PAGADA')->sum('importe_total');
-        $parcial      = $facturasParaTotales->where('estado','PAGO PARCIAL')->sum('monto_pendiente');
-        $totalPendienteReal = $pendiente + $parcial;
+        $recaudacionTotal = $facturas->sum('monto_recaudacion') ?? 0;
+        $totalPendienteReal = $pendiente;
     @endphp
     <div class="stats-grid">
         <div class="stat-card blue">
@@ -305,7 +299,7 @@
         </div>
         <div class="stat-card red">
             <div class="stat-icon"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div>
-            <div><div class="stat-label">Pago Parcial Pendiente</div><div class="stat-value">S/ {{ number_format($parcial,2) }}</div></div>
+            <div><div class="stat-label">Monto de Recaudación</div><div class="stat-value">S/ {{ number_format($recaudacionTotal,2) }}</div></div>
         </div>
     </div>
 
@@ -414,8 +408,17 @@
                         $puedeNotificarDeuda = in_array($estado, ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION','DIFERENCIA PENDIENTE']);
                         $ultimaNotifWa     = $factura->ultima_notif_wa ?? null;
                         $ultimaNotifCorreo = $factura->ultima_notif_correo ?? null;
-                        // Verificar si ANULADO está ligado a otra factura
-                        $anuladoLigado = $estado === 'ANULADO' && \DB::table('credito')->where('id_factura', $factura->id_factura)->exists();
+                        /* Verificar si ANULADO está ligado Y su factura original existe */
+                        $anuladoLigado = false;
+                        if ($estado === 'ANULADO') {
+                            $creditoRec = \DB::table('credito')->where('id_factura', $factura->id_factura)->first();
+                            if ($creditoRec && !empty($creditoRec->serie_doc_modificado) && $creditoRec->numero_doc_modificado > 0) {
+                                $anuladoLigado = \DB::table('factura')
+                                    ->where('serie', $creditoRec->serie_doc_modificado)
+                                    ->where('numero', $creditoRec->numero_doc_modificado)
+                                    ->exists();
+                            }
+                        }
                         $esAnuladoHuerfano = $estado === 'ANULADO' && !$anuladoLigado;
                     @endphp
                     <tr data-cliente="{{ $factura->id_cliente }}" data-estado="{{ $estado }}"
