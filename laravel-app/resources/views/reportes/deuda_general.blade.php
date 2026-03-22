@@ -9,26 +9,61 @@
         body { font-family:Arial, Helvetica, sans-serif; font-size:11px; color:#111; background:#fff; }
 
         /* ── TOP BAR ── */
-        .no-print { background:#1e293b; padding:12px 24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+        .no-print {
+            background:#1e293b; padding:12px 24px;
+            display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+        }
         .no-print .hint { color:#94a3b8; font-size:12px; white-space:nowrap; }
-        .btn-print { background:#dc2626; color:#fff; border:none; padding:8px 18px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+        .btn-print {
+            background:#dc2626; color:#fff; border:none; padding:8px 18px;
+            border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;
+            display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+        }
         .btn-print:hover { background:#b91c1c; }
-        .btn-close { background:transparent; color:#64748b; border:1px solid #334155; padding:8px 14px; border-radius:6px; font-size:12px; cursor:pointer; }
+        .btn-close {
+            background:transparent; color:#64748b; border:1px solid #334155;
+            padding:8px 14px; border-radius:6px; font-size:12px; cursor:pointer;
+            white-space:nowrap;
+        }
         .btn-close:hover { background:#334155; color:#fff; }
 
-        /* ── SEND BAR ── */
-        .send-bar { display:none; background:#0f2027; border-top:1px solid #334155; padding:12px 24px; align-items:center; gap:12px; flex-wrap:wrap; }
-        .send-bar.visible { display:flex; }
-        .send-bar .send-label { color:#94a3b8; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; }
-        .btn-wa   { background:#22c55e; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background .15s; }
-        .btn-wa:hover:not(:disabled)   { background:#16a34a; }
-        .btn-mail { background:#3b82f6; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:background .15s; }
-        .btn-mail:hover:not(:disabled) { background:#2563eb; }
-        .btn-wa:disabled, .btn-mail:disabled { opacity:.55; cursor:not-allowed; }
-        .contact-info { color:#64748b; font-size:12px; }
-        .send-result { display:none; padding:8px 14px; border-radius:6px; font-size:12px; font-weight:700; }
-        .send-result.ok    { background:#14532d; color:#86efac; }
-        .send-result.error { background:#7f1d1d; color:#fca5a5; }
+        /* ── SELECTOR DE USUARIO INLINE ── */
+        .send-inline {
+            display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+            margin-left:auto; border-left:1px solid #334155; padding-left:14px;
+        }
+        .send-inline-label {
+            color:#94a3b8; font-size:11px; font-weight:700;
+            text-transform:uppercase; letter-spacing:.05em; white-space:nowrap;
+        }
+        .send-inline select {
+            height:34px; padding:0 10px; border:1px solid #475569;
+            border-radius:6px; background:#0f172a; color:#e2e8f0;
+            font-size:12px; min-width:190px; cursor:pointer; outline:none;
+        }
+        .send-inline select:focus { border-color:#f5c842; }
+        .btn-send-wa {
+            background:#22c55e; color:#fff; border:none; padding:7px 14px;
+            border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;
+            display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+            transition:all .15s; opacity:.45;
+        }
+        .btn-send-wa:not(:disabled) { opacity:1; }
+        .btn-send-wa:not(:disabled):hover { background:#16a34a; transform:translateY(-1px); }
+        .btn-send-mail {
+            background:#3b82f6; color:#fff; border:none; padding:7px 14px;
+            border-radius:6px; font-size:12px; font-weight:700; cursor:pointer;
+            display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+            transition:all .15s; opacity:.45;
+        }
+        .btn-send-mail:not(:disabled) { opacity:1; }
+        .btn-send-mail:not(:disabled):hover { background:#2563eb; transform:translateY(-1px); }
+        .send-result-bar {
+            display:none; padding:6px 12px; border-radius:6px;
+            font-size:12px; font-weight:700; white-space:nowrap;
+        }
+        .send-result-bar.ok    { background:#14532d; color:#86efac; display:block; }
+        .send-result-bar.error { background:#7f1d1d; color:#fca5a5; display:block; }
 
         /* ── HEADER ── */
         .header { background:#0f172a; color:#fff; text-align:center; padding:22px 32px 18px; }
@@ -84,44 +119,42 @@
 
         @media print {
             body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-            .no-print, .send-bar { display:none !important; }
+            .no-print { display:none !important; }
             @page { size:A4 portrait; margin:10mm; }
         }
     </style>
 </head>
 <body>
 
-{{-- ── TOP BAR ── --}}
+{{-- ── TOP BAR con selector de usuario inline ── --}}
 <div class="no-print">
-    <span class="hint">Reporte de Deuda General · Solo facturas pendientes de cobro</span>
+    <span class="hint">Reporte de Deuda General · Solo facturas pendientes</span>
     <button class="btn-print" onclick="window.print()">🖨 Imprimir / Guardar PDF</button>
     <button class="btn-close" onclick="window.close()">Cerrar</button>
-</div>
 
-{{-- ── SEND BAR — solo si hay usuario destino ── --}}
-@if(!empty($usuarioDestino))
-    <div class="send-bar visible" id="sendBar">
-        <span class="send-label">Enviar a {{ $usuarioDestino->nombre }} {{ $usuarioDestino->apellido }}:</span>
-
-        <button class="btn-wa" id="btnWA" onclick="enviarReporte('whatsapp')"
-                @if(empty($usuarioDestino->celular)) disabled title="Sin celular registrado" @endif>
+    {{-- Selector de usuario inline --}}
+    <div class="send-inline">
+        <span class="send-inline-label">Enviar a:</span>
+        <select id="selUsuario" onchange="onUsuarioChange()">
+            <option value="">— Seleccionar usuario —</option>
+            @foreach($todosUsuarios as $u)
+                <option value="{{ $u->id_usuario }}"
+                        data-celular="{{ $u->celular ?? '' }}"
+                        data-correo="{{ $u->correo ?? '' }}">
+                    {{ $u->nombre }} {{ $u->apellido }}
+                    @if($u->celular) · {{ $u->celular }}@endif
+                </option>
+            @endforeach
+        </select>
+        <button class="btn-send-wa" id="btnEnvWA" onclick="enviarReporte('whatsapp')" disabled>
             WhatsApp
         </button>
-
-        <button class="btn-mail" id="btnMail" onclick="enviarReporte('correo')"
-                @if(empty($usuarioDestino->correo)) disabled title="Sin correo registrado" @endif>
+        <button class="btn-send-mail" id="btnEnvMail" onclick="enviarReporte('correo')" disabled>
             Correo
         </button>
-
-        <span class="contact-info">
-        @if(!empty($usuarioDestino->celular)) {{ $usuarioDestino->celular }}@endif
-            @if(!empty($usuarioDestino->celular) && !empty($usuarioDestino->correo)) &nbsp;·&nbsp; @endif
-            @if(!empty($usuarioDestino->correo)) {{ $usuarioDestino->correo }}@endif
-    </span>
-
-        <div class="send-result" id="sendResult"></div>
+        <div class="send-result-bar" id="sendResultBar"></div>
     </div>
-@endif
+</div>
 
 {{-- ── HEADER ── --}}
 <div class="header">
@@ -276,50 +309,62 @@
     @endif
 </div>
 
-@if(!empty($usuarioDestino))
-    <script>
-        const CSRF       = '{{ csrf_token() }}';
-        const USUARIO_ID = {{ $usuarioDestino->id_usuario }};
-        const FECHA_DESDE= '{{ $fechaDesde ?? "" }}';
-        const FECHA_HASTA= '{{ $fechaHasta ?? "" }}';
-        const ESTADO     = '{{ $estadoLabel ?? "" }}';
-        const RUTA_WA    = '{{ route("reportes.enviar-whatsapp") }}';
-        const RUTA_MAIL  = '{{ route("reportes.enviar-correo") }}';
-
-        async function enviarReporte(canal) {
-            const btnWA  = document.getElementById('btnWA');
-            const btnMail= document.getElementById('btnMail');
-            const result = document.getElementById('sendResult');
-            btnWA.disabled = btnMail.disabled = true;
-            result.style.display = 'none';
-
-            const body = new URLSearchParams({
-                usuario_id:  USUARIO_ID,
-                fecha_desde: FECHA_DESDE,
-                fecha_hasta: FECHA_HASTA,
-                estado:      ESTADO,
-                _token:      CSRF,
-            });
-
-            try {
-                const ruta = canal === 'whatsapp' ? RUTA_WA : RUTA_MAIL;
-                const res  = await fetch(ruta, { method:'POST', body });
-                const data = await res.json();
-                result.textContent   = (data.success ? '✓ ' : '✗ ') + (data.message || data.error || 'Error');
-                result.className     = 'send-result ' + (data.success ? 'ok' : 'error');
-                result.style.display = 'block';
-            } catch(err) {
-                result.textContent   = '✗ Error de red: ' + err.message;
-                result.className     = 'send-result error';
-                result.style.display = 'block';
-            } finally {
-                btnWA.disabled = btnMail.disabled = false;
-            }
-        }
-    </script>
-@endif
-
 <script>
+    const CSRF          = '{{ csrf_token() }}';
+    const RUTA_WA       = '{{ route("reportes.enviar-whatsapp") }}';
+    const RUTA_MAIL     = '{{ route("reportes.enviar-correo") }}';
+    const FECHA_DESDE   = '{{ $fechaDesde ?? "" }}';
+    const FECHA_HASTA   = '{{ $fechaHasta ?? "" }}';
+    const ESTADOS_FILTRO = {!! $estadosFiltroJson !!};
+
+    function onUsuarioChange() {
+        const sel    = document.getElementById('selUsuario');
+        const opt    = sel.options[sel.selectedIndex];
+        const cel    = opt?.dataset?.celular || '';
+        const correo = opt?.dataset?.correo  || '';
+        const btnWA  = document.getElementById('btnEnvWA');
+        const btnMail= document.getElementById('btnEnvMail');
+
+        btnWA.disabled  = !(sel.value && cel);
+        btnMail.disabled= !(sel.value && correo);
+        document.getElementById('sendResultBar').className = 'send-result-bar';
+        document.getElementById('sendResultBar').textContent = '';
+    }
+
+    async function enviarReporte(canal) {
+        const sel  = document.getElementById('selUsuario');
+        if (!sel.value) return;
+
+        const btnWA  = document.getElementById('btnEnvWA');
+        const btnMail= document.getElementById('btnEnvMail');
+        const result = document.getElementById('sendResultBar');
+
+        btnWA.disabled = btnMail.disabled = true;
+        result.className = 'send-result-bar';
+        result.textContent = 'Enviando…';
+
+        const body = new URLSearchParams({
+            usuario_id:  sel.value,
+            fecha_desde: FECHA_DESDE,
+            fecha_hasta: FECHA_HASTA,
+            _token:      CSRF,
+        });
+        ESTADOS_FILTRO.forEach(e => body.append('estados[]', e));
+
+        try {
+            const ruta = canal === 'whatsapp' ? RUTA_WA : RUTA_MAIL;
+            const res  = await fetch(ruta, { method: 'POST', body });
+            const data = await res.json();
+            result.className   = 'send-result-bar ' + (data.success ? 'ok' : 'error');
+            result.textContent = (data.success ? '✓ ' : '✗ ') + (data.message || data.error || 'Error');
+        } catch(err) {
+            result.className   = 'send-result-bar error';
+            result.textContent = '✗ Error de red: ' + err.message;
+        } finally {
+            onUsuarioChange();
+        }
+    }
+
     window.addEventListener('load', function() { setTimeout(() => window.print(), 600); });
 </script>
 </body>

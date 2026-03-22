@@ -128,7 +128,7 @@ class ReporteController extends Controller
             }
         }
 
-        // Usuarios destino (puede ser uno o varios)
+        // Usuarios destino pre-seleccionados (puede venir del modal legacy)
         $usuariosDestino = [];
         if (!empty($usuarioIds)) {
             $usuariosDestino = DB::table('usuario')
@@ -137,17 +137,28 @@ class ReporteController extends Controller
                 ->all();
         }
 
+        // NUEVO: todos los usuarios con celular o correo para el selector inline
+        $todosUsuarios = DB::table('usuario')
+            ->where(function ($q) {
+                $q->whereNotNull('celular')->orWhereNotNull('correo');
+            })
+            ->orderBy('nombre')
+            ->get(['id_usuario', 'nombre', 'apellido', 'celular', 'correo']);
+
         $estadoLabel  = count($estadosFiltro) === 4
             ? 'TODOS LOS PENDIENTES'
             : implode(' · ', $estadosFiltro);
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
+
+        // Pasamos los estados como JSON para usarlos en el JS del selector inline
+        $estadosFiltroJson = json_encode($estadosFiltro);
 
         return view('reportes.pdf', compact(
             'facturas','facturasAgrupadas','resumen',
             'clienteNombre','estadoLabel','idCliente','periodoLabel',
             'fechaDesde','fechaHasta',
             'clienteCelular','clienteCorreo',
-            'usuariosDestino'
+            'usuariosDestino','todosUsuarios','estadosFiltroJson'
         ));
     }
 
@@ -158,12 +169,11 @@ class ReporteController extends Controller
     public function enviarReporteWhatsApp(Request $request, WhatsAppGatewayService $gateway)
     {
         $idCliente  = $request->input('id_cliente');
-        $usuarioId  = $request->input('usuario_id');  // nuevo: usuario destino
+        $usuarioId  = $request->input('usuario_id');
         $estado     = $request->input('estado');
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
 
-        // Resolver destinatario: usuario o cliente
         $celular    = null;
         $nombre     = null;
 
@@ -185,9 +195,11 @@ class ReporteController extends Controller
             return response()->json(['success'=>false,'error'=>'Debes seleccionar un cliente o usuario destino.'], 422);
         }
 
-        $estadosFiltro = $estado
-            ? [$estado]
-            : ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION'];
+        // Acepta estados[] o estado simple
+        $estadosParam = $request->input('estados', []);
+        $estadosFiltro = !empty($estadosParam)
+            ? (array) $estadosParam
+            : ($estado ? [$estado] : ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION']);
 
         $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
             ->whereIn('f.estado', $estadosFiltro)
@@ -199,7 +211,7 @@ class ReporteController extends Controller
         });
 
         $periodoLabel  = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel   = $estado ? strtoupper($estado) : 'TODOS LOS PENDIENTES';
+        $estadoLabel   = count($estadosFiltro) === 4 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
         $clienteNombre = $nombre ?? 'TODOS LOS CLIENTES';
         $facturasAgrupadas = null;
 
@@ -229,7 +241,6 @@ class ReporteController extends Controller
             return response()->json(['success'=>false,'error'=>'No se pudo subir el PDF a Cloudinary.'], 500);
         }
 
-        // Nombre del archivo: Reporte_[TIPO]_[ESTADO]_[PERIODO].pdf
         $partes = ['Reporte'];
         $partes[] = preg_replace('/[^A-Za-z0-9]/', '_', $estadoLabel);
         if ($fechaDesde || $fechaHasta) {
@@ -314,9 +325,11 @@ class ReporteController extends Controller
             return response()->json(['success'=>false,'error'=>'Debes seleccionar un cliente o usuario destino.'], 422);
         }
 
-        $estadosFiltro = $estado
-            ? [$estado]
-            : ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION'];
+        // Acepta estados[] o estado simple
+        $estadosParam = $request->input('estados', []);
+        $estadosFiltro = !empty($estadosParam)
+            ? (array) $estadosParam
+            : ($estado ? [$estado] : ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION']);
 
         $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
             ->whereIn('f.estado', $estadosFiltro)
@@ -329,7 +342,7 @@ class ReporteController extends Controller
 
         $facturasAgrupadas = $facturas->groupBy('razon_social')->sortKeys();
         $periodoLabel      = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel       = $estado ? strtoupper($estado) : 'TODOS LOS PENDIENTES';
+        $estadoLabel       = count($estadosFiltro) === 4 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
         $clienteNombre     = strtoupper($nombre ?? 'TODOS LOS CLIENTES');
         $idCliente         = $idCliente ?? null;
         $usuarioDestino    = null;
@@ -432,7 +445,6 @@ class ReporteController extends Controller
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
 
-        // Acepta estado simple (legacy) o array estados[]
         $estadosParam = $request->input('estados', []);
         $estadoSimple = $request->input('estado');
 
@@ -444,7 +456,7 @@ class ReporteController extends Controller
             $estadosFiltro = ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION'];
         }
 
-        // Usuarios destino
+        // Usuarios destino pre-seleccionados (legacy desde modal)
         $usuarioIdsParam = $request->input('usuario_ids', []);
         $usuarioIdSimple = $request->input('usuario_id');
         $usuarioIds = $usuarioIdSimple
@@ -515,12 +527,23 @@ class ReporteController extends Controller
                 ->all();
         }
 
+        // NUEVO: todos los usuarios con celular o correo para el selector inline
+        $todosUsuarios = DB::table('usuario')
+            ->where(function ($q) {
+                $q->whereNotNull('celular')->orWhereNotNull('correo');
+            })
+            ->orderBy('nombre')
+            ->get(['id_usuario', 'nombre', 'apellido', 'celular', 'correo']);
+
+        $estadosFiltroJson = json_encode($estadosFiltro);
+
         return view('reportes.deuda_general', compact(
             'clientes','totalPen','totalUsd',
             'totalRecaudacionPen','totalRecaudacionUsd',
             'totalPendientePen','totalPendienteUsd',
             'periodoLabel','fechaDesde','fechaHasta',
-            'estadoLabel','usuariosDestino'
+            'estadoLabel','usuariosDestino',
+            'todosUsuarios','estadosFiltroJson'
         ));
     }
 }
