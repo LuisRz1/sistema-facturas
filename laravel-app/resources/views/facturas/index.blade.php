@@ -98,6 +98,7 @@
         .badge-pagada            { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
         .badge-pago_parcial      { background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; }
         .badge-por_validar_det   { background:#fdf4ff; color:#7e22ce; border:1.5px solid #e9d5ff; }
+        .badge-diferencia_pend   { background:#fce7f3; color:#9d174d; border:1.5px solid #fbcfe8; }
         .badge-anulada           { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
 
         /* ── LEYENDA DE ESTADOS ── */
@@ -208,6 +209,11 @@
         #dropZonePago { border:2px dashed var(--gold-b); border-radius:10px; padding:24px; text-align:center; cursor:pointer; transition:all .2s; background:#fff; }
         #dropZonePago:hover { border-color:var(--gold); background:var(--gold-l); }
         #dropZonePago svg { color:var(--gold); }
+
+        .inline-alert { position:fixed; bottom:24px; right:24px; z-index:9999; padding:14px 20px; border-radius:10px; font-size:13px; font-weight:600; display:flex; align-items:center; gap:10px; box-shadow:0 8px 24px rgba(0,0,0,.15); transform:translateY(80px); opacity:0; transition:all .3s cubic-bezier(.16,1,.3,1); max-width:400px; }
+        .inline-alert.show  { transform:translateY(0); opacity:1; }
+        .inline-alert.ok    { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
+        .inline-alert.error { background:#fee2e2; color:#7f1d1d; border:1px solid #fca5a5; }
     </style>
 @endpush
 
@@ -263,18 +269,25 @@
             <span style="font-size:11px;color:var(--text-muted);">— Monto abonado menor al total</span>
         </div>
         <div class="legend-item">
-            <span class="legend-dot" style="background:#a855f7;border:2px solid #d8b4fe;"></span>
-            <span class="badge badge-por_validar_det" style="font-size:10px;">POR VALIDAR DET.</span>
-            <span style="font-size:11px;color:var(--text-muted);">— Detracción pendiente de validar</span>
+            <span class="legend-dot" style="background:#be185d;"></span>
+            <span class="badge badge-diferencia_pend" style="font-size:10px;">DIFERENCIA PENDIENTE</span>
+            <span style="font-size:11px;color:var(--text-muted);">— Detracción validada, falta diferencia</span>
         </div>
     </div>
 
     {{-- ── STATS ── --}}
     @php
-        $total        = $facturas->sum('importe_total');
-        $pendiente    = $facturas->whereIn('estado',['PENDIENTE','VENCIDO','POR VALIDAR DETRACCION'])->sum('monto_pendiente');
-        $pagada       = $facturas->where('estado','PAGADA')->sum('importe_total');
-        $parcial      = $facturas->where('estado','PAGO PARCIAL')->sum('monto_pendiente');
+        // Incluir ANULADO solo si está ligado a otra factura
+        $facturasParaTotales = $facturas->filter(function ($f) {
+            if ($f->estado === 'ANULADO') {
+                return \DB::table('credito')->where('id_factura', $f->id_factura)->exists();
+            }
+            return true;
+        });
+        $total        = $facturasParaTotales->sum('importe_total');
+        $pendiente    = $facturasParaTotales->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
+        $pagada       = $facturasParaTotales->where('estado','PAGADA')->sum('importe_total');
+        $parcial      = $facturasParaTotales->where('estado','PAGO PARCIAL')->sum('monto_pendiente');
         $totalPendienteReal = $pendiente + $parcial;
     @endphp
     <div class="stats-grid">
@@ -337,7 +350,7 @@
                     <option value="VENCIDO">Vencido</option>
                     <option value="PAGADA">Pagada</option>
                     <option value="PAGO PARCIAL">Pago Parcial</option>
-                    <option value="POR VALIDAR DETRACCION">Por Validar Detracción</option>
+                    <option value="DIFERENCIA PENDIENTE">Diferencia Pendiente</option>
                 </select>
                 <select class="form-select" id="filterMoneda" onchange="filtrarTabla()">
                     <option value="">Todas las monedas</option>
@@ -369,9 +382,9 @@
                     <th>EMISIÓN / VCTO.</th>
                     <th>IMPORTE</th>
                     <th>RECAUDACIÓN</th>
-                    <th>ABONADO</th>
-                    <th>CUENTA PAGO</th>
                     <th>PENDIENTE</th>
+                    <th>CUENTA PAGO</th>
+                    <th>ABONADO</th>
                     <th>ESTADO</th>
                     <th>CREADO POR</th>
                     <th>NOTIFICACIONES</th>
@@ -388,6 +401,7 @@
                             'PAGADA'                => 'badge-pagada',
                             'PAGO PARCIAL'          => 'badge-pago_parcial',
                             'POR VALIDAR DETRACCION'=> 'badge-por_validar_det',
+                            'DIFERENCIA PENDIENTE'  => 'badge-diferencia_pend',
                             'ANULADA'               => 'badge-anulada',
                         ];
                         $badgeClass = $badgeMap[$estado] ?? 'badge-pendiente';
@@ -397,14 +411,18 @@
                         $montoAbonado     = $factura->monto_abonado ?? 0;
                         $montoPendiente   = $factura->monto_pendiente ?? $factura->importe_total;
                         $tieneComprobante = false; // ruta_comprobante_pago no existe en el esquema actual
-                        $puedeNotificarDeuda = in_array($estado, ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION']);
+                        $puedeNotificarDeuda = in_array($estado, ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION','DIFERENCIA PENDIENTE']);
                         $ultimaNotifWa     = $factura->ultima_notif_wa ?? null;
                         $ultimaNotifCorreo = $factura->ultima_notif_correo ?? null;
+                        // Verificar si ANULADO está ligado a otra factura
+                        $anuladoLigado = $estado === 'ANULADO' && \DB::table('credito')->where('id_factura', $factura->id_factura)->exists();
+                        $esAnuladoHuerfano = $estado === 'ANULADO' && !$anuladoLigado;
                     @endphp
                     <tr data-cliente="{{ $factura->id_cliente }}" data-estado="{{ $estado }}"
                         data-moneda="{{ $factura->moneda }}"
                         data-recaudacion="{{ $tipoRecaudacion ?: 'SIN' }}"
-                        data-search="{{ strtolower($factura->serie.'-'.$factura->numero.' '.($factura->razon_social ?? '').($factura->usuario_nombre ?? '')) }}">
+                        data-search="{{ strtolower($factura->serie.'-'.$factura->numero.' '.($factura->razon_social ?? '').($factura->usuario_nombre ?? '')) }}"
+                        @if($esAnuladoHuerfano) style="text-decoration: line-through; opacity: 0.6;" @endif>
 
                         <td><div class="serie-num">{{ $factura->serie }}-{{ str_pad($factura->numero,8,'0',STR_PAD_LEFT) }}</div></td>
 
@@ -445,40 +463,7 @@
                             @endif
                         </td>
 
-                        <td style="text-align:right;">
-                            @php
-                                // Para AUTODETRACCION PAGADA con monto_abonado=0,
-                                // el abono implícito = importe_total - recaudacion
-                                $abonadoMostrar = $montoAbonado;
-                                if ($montoAbonado == 0 && $tipoRecaudacion === 'AUTODETRACCION' && $montoRecaudacion > 0) {
-                                    $abonadoMostrar = max(0, $factura->importe_total - $montoRecaudacion);
-                                }
-                            @endphp
-                            @if($abonadoMostrar > 0)
-                                <div style="font-weight:700;font-family:'DM Mono',monospace;font-size:12px;color:#059669;">
-                                    {{ $factura->moneda }} {{ number_format($abonadoMostrar,2) }}
-                                </div>
-                                @if($factura->fecha_abono)
-                                    <div style="font-size:10px;color:var(--text-muted);">{{ \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y') }}</div>
-                                @endif
-                                @if($montoAbonado == 0 && $tipoRecaudacion === 'AUTODETRACCION')
-                                    <div style="font-size:9px;color:#d97706;font-weight:600;">implícito</div>
-                                @endif
-                            @else
-                                <span style="font-size:12px;color:var(--text-muted);">—</span>
-                            @endif
-                        </td>
-
-                        <td style="text-align:left;font-size:12px;">
-                            @if($factura->cuenta_pago)
-                                <div title="{{ $factura->cuenta_pago }}" style="color:#1f2937;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                                    {{ $factura->cuenta_pago }}
-                                </div>
-                            @else
-                                <span style="color:var(--text-muted);">—</span>
-                            @endif
-                        </td>
-
+                        {{-- PENDIENTE (6ta celda) --}}
                         <td style="text-align:right;">
                             @if($estado === 'PAGADA')
                                 <span class="monto-pendiente-zero">✓ Cancelado</span>
@@ -489,8 +474,55 @@
                             @endif
                         </td>
 
-                        <td><span class="badge {{ $badgeClass }}">{{ str_replace('_',' ',$estado) }}</span></td>
+                        {{-- CUENTA PAGO (7ma celda) --}}
+                        <td style="text-align:left;font-size:12px;">
+                            @if($factura->cuenta_pago)
+                                <div title="{{ $factura->cuenta_pago }}" style="color:#1f2937;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                                    {{ $factura->cuenta_pago }}
+                                </div>
+                            @else
+                                <span style="color:var(--text-muted);">—</span>
+                            @endif
+                        </td>
 
+                        {{-- ABONADO (8va celda) --}}
+                        <td style="text-align:right;">
+                            @php
+                                // Verificar si esta factura es una nota de crédito
+                                $creditoInfo = DB::table('credito')->where('id_factura', $factura->id_factura)->first();
+                                $creditoAsociado = DB::table('credito')
+                                    ->where('serie_doc_modificado', $factura->serie)
+                                    ->where('numero_doc_modificado', $factura->numero)
+                                    ->first();
+                            @endphp
+                            @if($montoAbonado > 0)
+                                <div style="font-weight:700;font-family:'DM Mono',monospace;font-size:12px;color:#059669;">
+                                    {{ $factura->moneda }} {{ number_format($montoAbonado,2) }}
+                                </div>
+                                @if($factura->fecha_abono)
+                                    <div style="font-size:10px;color:var(--text-muted);">{{ \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y') }}</div>
+                                @endif
+                            @else
+                                <span style="font-size:12px;color:var(--text-muted);">—</span>
+                            @endif
+                            
+                            {{-- Mostrar relación con nota de crédito --}}
+                            @if($creditoInfo)
+                                {{-- Esta es una nota de crédito: mostrar FC01-XXX / FF01-XXX --}}
+                                <div style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:3px;">
+                                    {{ $factura->serie }}-{{ str_pad($factura->numero,8,'0',STR_PAD_LEFT) }} / {{ $creditoInfo->serie_doc_modificado }}-{{ str_pad($creditoInfo->numero_doc_modificado,8,'0',STR_PAD_LEFT) }}
+                                </div>
+                            @elseif($creditoAsociado)
+                                {{-- Esta factura tiene una nota de crédito asociada: mostrar FF01-XXX / FC01-XXX --}}
+                                <div style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:3px;">
+                                    {{ $factura->serie }}-{{ str_pad($factura->numero,8,'0',STR_PAD_LEFT) }} / {{ $creditoAsociado->serie }}-{{ str_pad($creditoAsociado->numero,8,'0',STR_PAD_LEFT) }}
+                                </div>
+                            @endif
+                        </td>
+
+                        {{-- ESTADO (9na celda) --}}
+                        <td><span class="badge {{ $badgeClass }}">{{ str_replace('_',' ',$estado) }}</span></td>
+                        {{-- CREADO POR (10ma celda) --}}
                         <td>
                             @if($factura->usuario_nombre)
                                 <div style="font-size:12px;font-weight:600;color:var(--text-primary);">
@@ -501,6 +533,7 @@
                             @endif
                         </td>
 
+                        {{-- NOTIFICACIONES (11va celda) --}}
                         <td>
                             <div class="notify-cell">
                                 <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
@@ -581,6 +614,12 @@
         </div>
     </div>
 
+    {{-- ═══════════ TOAST DE CONFIRMACIÓN ═══════════ --}}
+    <div class="inline-alert" id="toastFactura">
+        <svg id="toastFacturaIco" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"></svg>
+        <span id="toastFacturaTxt"></span>
+    </div>
+
     {{-- ═══════════ MODAL REGISTRAR PAGO + IMAGEN ═══════════ --}}
     <div class="modal-overlay" id="modalPagoOverlay">
         <div class="modal" style="max-width:700px;">
@@ -601,8 +640,8 @@
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                             <div class="form-group">
-                                <label class="form-label">Monto Abonado *</label>
-                                <input type="number" id="pagoMontoAbonado" name="monto_abonado" step="0.01" min="0" class="form-input" placeholder="0.00" oninput="recalcularPago()" required>
+                                <label class="form-label">Monto Abonado</label>
+                                <input type="number" id="pagoMontoAbonado" name="monto_abonado" step="0.01" min="0" class="form-input" placeholder="0.00 (opcional)" oninput="recalcularPago()">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Fecha de Abono</label>
@@ -712,7 +751,7 @@
     <div class="modal-overlay" id="modalEditarOverlay">
         <div class="modal">
             <div class="modal-header">
-                <h2>Editar Factura</h2><p>Actualiza los datos de la factura</p>
+                <h2>Editar Factura</h2><p id="editModalSubtitle">Actualiza los datos de la factura</p>
                 <button onclick="cerrarModalEditar()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
             </div>
             <form id="formEditarFactura" onsubmit="guardarFactura(event)" style="display:flex;flex-direction:column;max-height:calc(90vh - 80px);overflow:hidden;">
@@ -728,6 +767,7 @@
                                 <option value="PAGADA">Pagada</option>
                                 <option value="PAGO PARCIAL">Pago Parcial</option>
                                 <option value="POR VALIDAR DETRACCION">Por Validar Detracción</option>
+                                <option value="DIFERENCIA PENDIENTE">Diferencia Pendiente</option>
                                 <option value="ANULADA">Anulada</option>
                             </select>
                         </div>
@@ -1052,13 +1092,25 @@
                 facturaMoneda   = moneda;
 
                 document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} · ${moneda} ${parseFloat(importe).toFixed(2)}`;
-                document.getElementById('pagoMontoAbonado').value        = montoAbonado > 0 ? montoAbonado : '';
-                document.getElementById('pagoFechaAbono').value          = '{{ now()->format("Y-m-d") }}';
-                document.getElementById('pagoTotalRecaudacion').value    = totalRec > 0 ? totalRec : '';
-                document.getElementById('pagoPorcentaje').value          = pctRec > 0 ? pctRec : '';
-                document.getElementById('pagoCuentaPago').value          = cuentaPago || '';
-                document.getElementById('pagoFechaRecaudacion').value    = fechaRec || '';   // ← NUEVO
-                document.getElementById('chkValidarDetraccion').checked  = false;
+                
+                document.getElementById('pagoFechaAbono').value = '{{ now()->format("Y-m-d") }}';
+                document.getElementById('pagoCuentaPago').value = cuentaPago || '';
+                document.getElementById('pagoFechaRecaudacion').value = fechaRec || '';
+                document.getElementById('chkValidarDetraccion').checked = false;
+
+                // Para AUTODETRACCION: mostrar recaudación pero NO llenar abono
+                if (tipoRec === 'AUTODETRACCION') {
+                    // Mostrar monto recaudación y porcentaje actuales
+                    document.getElementById('pagoTotalRecaudacion').value = totalRec > 0 ? totalRec : '';
+                    document.getElementById('pagoPorcentaje').value = pctRec > 0 ? pctRec : '';
+                    // NO llenar abono (debe quedar vacío a menos que el usuario lo ingrese)
+                    document.getElementById('pagoMontoAbonado').value = '';
+                } else {
+                    // Para otros tipos: precarga normal
+                    document.getElementById('pagoMontoAbonado').value = montoAbonado > 0 ? montoAbonado : '';
+                    document.getElementById('pagoTotalRecaudacion').value = totalRec > 0 ? totalRec : '';
+                    document.getElementById('pagoPorcentaje').value = pctRec > 0 ? pctRec : '';
+                }
 
                 seleccionarTipoRec(tipoRec || '');
 
@@ -1081,6 +1133,18 @@
                 limpiarPreviewPago();
             }
 
+            function showToastFactura(msg, ok = true) {
+                const el  = document.getElementById('toastFactura');
+                const ico = document.getElementById('toastFacturaIco');
+                document.getElementById('toastFacturaTxt').textContent = msg;
+                el.className = 'inline-alert ' + (ok ? 'ok' : 'error');
+                ico.innerHTML = ok
+                    ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>'
+                    : '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>';
+                el.classList.add('show');
+                setTimeout(() => el.classList.remove('show'), 3500);
+            }
+
             function seleccionarTipoRec(tipo) {
                 document.getElementById('pagoTipoRecaudacion').value = tipo;
 
@@ -1096,25 +1160,35 @@
                 const camposRec        = document.getElementById('camposRecaudacion');
                 const validarWrap      = document.getElementById('validarDetraccionWrap');
                 const montoAbonadoEl   = document.getElementById('pagoMontoAbonado');
+                const totalRecEl       = document.getElementById('pagoTotalRecaudacion');
+                const pctEl            = document.getElementById('pagoPorcentaje');
 
                 if (tipo === 'DETRACCION') {
                     document.getElementById('btnTipoDet').classList.add('active-det');
                     camposRec.style.display  = 'grid';
-                    // El checkbox de validación ya se maneja en abrirModalPago — no tocar aquí
+                    // Habilitar campos para DETRACCION
+                    montoAbonadoEl.disabled = false;
+                    totalRecEl.disabled = false;
+                    pctEl.disabled = false;
 
                 } else if (tipo === 'AUTODETRACCION') {
                     document.getElementById('btnTipoAuto').classList.add('active-auto');
                     camposRec.style.display  = 'grid';
                     validarWrap.style.display = 'none';
-                    // AUTODETRACCION: importe_total = monto_abonado + total_recaudacion
-                    // → monto_abonado se calcula como (importe_total - total_recaudacion)
-                    // Se actualiza en tiempo real al cambiar el monto de recaudación
-                    _recalcularAbonoAutodet();
+                    // AUTODETRACCION: habilitar campos para editar
+                    // Pero el abono NO se calcula automáticamente
+                    montoAbonadoEl.disabled = false;
+                    totalRecEl.disabled = false;
+                    pctEl.disabled = false;
 
                 } else if (tipo === 'RETENCION') {
                     document.getElementById('btnTipoRet').classList.add('active-ret');
                     camposRec.style.display  = 'grid';
                     validarWrap.style.display = 'none';
+                    // Habilitar campos para RETENCION
+                    montoAbonadoEl.disabled = false;
+                    totalRecEl.disabled = false;
+                    pctEl.disabled = false;
 
                 } else {
                     // Sin recaudación
@@ -1124,20 +1198,25 @@
                     btnNin.style.color       = '#1d4ed8';
                     camposRec.style.display  = 'none';
                     validarWrap.style.display = 'none';
-                    document.getElementById('pagoTotalRecaudacion').value = '';
-                    document.getElementById('pagoPorcentaje').value       = '';
+                    totalRecEl.value = '';
+                    pctEl.value = '';
+                    montoAbonadoEl.value = '';
+                    // Habilitar campos (para que sean accesibles si cambia de tipo después)
+                    montoAbonadoEl.disabled = false;
+                    totalRecEl.disabled = false;
+                    pctEl.disabled = false;
                 }
 
                 recalcularPago();
             }
 
-            // Para autodetracción: monto_abonado = importe_total - total_recaudacion
+            // Para AUTODETRACCION: NO calcular monto_abonado automático
+            // El usuario puede ingresar abono manualmente si lo desea
+            // La recaudación reduce directamente el monto_pendiente
             function _recalcularAbonoAutodet() {
-                const tipoRec = document.getElementById('pagoTipoRecaudacion').value;
-                if (tipoRec !== 'AUTODETRACCION') return;
-                const rec      = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
-                const abono    = Math.max(0, facturaImporte - rec);
-                document.getElementById('pagoMontoAbonado').value = abono > 0 ? abono.toFixed(2) : '0.00';
+                // para AUTODETRACCION: NO hacer nada
+                // El abono no se calcula implícito, solo la recaudación
+                return;
             }
 
             function calcularRecaudacion() {
@@ -1172,13 +1251,13 @@
                     estadoPreview = 'Estado: POR VALIDAR DETRACCIÓN';
                     estadoColor   = '#fdf4ff';
                 } else if (tipoRec === 'AUTODETRACCION') {
-                    // Autodetracción: abono + recaudación cubre todo → PAGADA
-                    if (pendiente <= 0) {
-                        estadoPreview = 'Estado: PAGADA — Cubierta por autodetracción';
-                        estadoColor   = '#d1fae5';
+                    // Autodetracción: muestra diferencia pendiente, NO calcula abono implícito
+                    if (recaudacion > 0) {
+                        estadoPreview = 'Estado: DIFERENCIA PENDIENTE — Pendiente después de autodetracción';
+                        estadoColor   = '#fce7f3';
                     } else {
-                        estadoPreview = `Estado: PAGO PARCIAL — Queda ${moneda} ${pendiente.toFixed(2)} pendiente`;
-                        estadoColor   = '#e0e7ff';
+                        estadoPreview = 'Estado: PENDIENTE';
+                        estadoColor   = '#fef3c7';
                     }
                 } else if (abonado === 0 && recaudacion === 0) {
                     estadoPreview = 'Estado: PENDIENTE';
@@ -1288,6 +1367,8 @@
                 facturaActualId = id;
                 document.getElementById('modalEditarOverlay').classList.add('open');
                 fetch(`/facturas/${id}/edit`).then(r=>r.json()).then(f=>{
+                    document.getElementById('editModalSubtitle').textContent =
+                        `Editando: ${f.serie}-${String(f.numero).padStart(8,'0')}`;
                     document.getElementById('editFechaEmision').value    = f.fecha_emision     || '';
                     document.getElementById('editFechaVencimiento').value= f.fecha_vencimiento || '';
                     document.getElementById('editEstado').value          = f.estado            || '';
@@ -1319,8 +1400,17 @@
                     subtotal_gravado:document.getElementById('editSubtotalGravado').value,
                 };
                 fetch(`/facturas/${facturaActualId}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':CSRF},body:JSON.stringify(datos)})
-                    .then(r=>r.json()).then(data=>{ if(data.success){cerrarModalEditar();location.reload();}else alert('Error: '+(data.message||'No se pudo guardar')); })
-                    .catch(err=>alert('Error: '+err.message));
+                    .then(r=>r.json()).then(data=>{
+                        if(data.success){
+                            cerrarModalEditar();
+                            const facNum = data.factura_num ? ` ${data.factura_num}` : '';
+                            showToastFactura(`✓ Factura${facNum} actualizada correctamente.`);
+                            setTimeout(() => location.reload(), 1500);
+                        } else {
+                            showToastFactura((data.message||'No se pudo guardar'), false);
+                        }
+                    })
+                    .catch(err=>showToastFactura('Error de red: '+err.message, false));
             }
 
             // ══════════════════════════════════════════════════════════════════

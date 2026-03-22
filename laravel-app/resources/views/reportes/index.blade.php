@@ -111,12 +111,13 @@
 
                 <div style="display:flex;gap:10px;flex-shrink:0;padding-bottom:1px;align-self:flex-end;">
                     <button type="button" class="btn btn-outline" onclick="previsualizarReporte()">
-                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         Previsualizar
                     </button>
                     <button type="submit" class="btn-pdf">
-                        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         Descargar PDF
+                    </button>
+                    <button type="button" class="btn-pdf" style="background:#10b981;" onclick="descargarExcel()">
+                        Descargar Excel
                     </button>
                 </div>
             </div>
@@ -126,11 +127,9 @@
         <div class="send-panel" id="sendPanel">
             <span class="send-label">Enviar reporte al cliente:</span>
             <button type="button" class="btn-send-wa" id="btnEnviarWA" onclick="enviarReporte('whatsapp')">
-                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
                 WhatsApp
             </button>
             <button type="button" class="btn-send-mail" id="btnEnviarMail" onclick="enviarReporte('correo')">
-                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                 Correo
             </button>
             <span class="send-info" id="sendContactInfo"></span>
@@ -311,6 +310,21 @@
 
             document.getElementById('emptyState').style.display  = 'none';
             document.getElementById('previewArea').style.display = 'block';
+        }
+
+        function descargarExcel() {
+            const cliente    = document.getElementById('selCliente').value;
+            const estado     = document.getElementById('selEstado').value;
+            const fechaDesde = document.getElementById('selDesde').value;
+            const fechaHasta = document.getElementById('selHasta').value;
+
+            const params = new URLSearchParams();
+            if (cliente)    params.append('id_cliente',  cliente);
+            if (estado)     params.append('estado',      estado);
+            if (fechaDesde) params.append('fecha_desde', fechaDesde);
+            if (fechaHasta) params.append('fecha_hasta', fechaHasta);
+
+            window.location.href = `{{ route('reportes.excel') }}?${params}`;
         }
     </script>
 @endpush

@@ -99,11 +99,9 @@ class ImportarFacturasController extends Controller
                     : null;
 
                 // ── Estado inicial ─────────────────────────────────────────
-                // Si tiene el indicador Y es DETRACCION Y hay monto → POR VALIDAR DETRACCION
-                // Si no tiene indicador o no es detracción → PENDIENTE
-                $estado = ($tipoRecaudacionFila === 'DETRACCION' && $montoRecaudacion > 0)
-                    ? 'POR VALIDAR DETRACCION'
-                    : 'PENDIENTE';
+                // Todas las facturas importadas inician en PENDIENTE
+                // (Detracción sin validar = monto pendiente es el total)
+                $estado = 'PENDIENTE';
 
                 // ── Glosa y fechas ─────────────────────────────────────────
                 $glosa            = $this->transformarGlosa(trim((string)($f['AG'] ?? '')));
@@ -147,8 +145,37 @@ class ImportarFacturasController extends Controller
                     continue;
                 }
 
+                // ── DETECTAR NOTA DE CRÉDITO (serie FC01) ──────────────────
+                $esNotaCredito = strtoupper($serie) === 'FC01';
+                $serieModificada = null;
+                $numeroModificada = null;
+
+                if ($esNotaCredito) {
+                    // Leer referencias de la factura que modifica
+                    $serieModificada = strtoupper(trim((string)($f['CZ'] ?? '')));  // SERIE DOC MODIFICADO
+                    $numeroModificada = (int) trim((string)($f['DA'] ?? '0'));     // NUMERO DOC MODIFICADO
+
+                    // El importe de la nota de crédito es NEGATIVO
+                    $importeTotal = -abs($importeTotal);
+                    
+                    // Si no tiene referencias pero es FC01 → igual se inserta en ANULADO
+                    // para poder considerarla y usarla posteriormente
+                }
+
                 // ── Monto pendiente inicial ────────────────────────────────
-                $montoPendiente = max(0, $importeTotal - $montoRecaudacion);
+                // Si el estado es PENDIENTE o VENCIDO, el pendiente es el importe total
+                // porque aun no se ha validado la recaudacion/detraccion
+                if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
+                    $montoPendiente = $importeTotal;
+                } else {
+                    $montoPendiente = max(0, $importeTotal - $montoRecaudacion);
+                }
+
+                // Para notas de crédito sin factura vinculada: estado = ANULADO
+                $estadoFinal = $estado;
+                if ($esNotaCredito && (empty($serieModificada) || $numeroModificada <= 0)) {
+                    $estadoFinal = 'ANULADO';
+                }
 
                 // ── Insertar Factura ───────────────────────────────────────
                 $idFactura = DB::table('factura')->insertGetId([
@@ -161,7 +188,7 @@ class ImportarFacturasController extends Controller
                     'subtotal_gravado'  => $subtotalGravado,
                     'monto_igv'         => $montoIgv,
                     'importe_total'     => $importeTotal,
-                    'estado'            => $estado,
+                    'estado'            => $estadoFinal,
                     'glosa'             => $glosa,
                     'forma_pago'        => trim((string)($f['AH'] ?? '')),
                     'tipo_recaudacion'  => $tipoRecaudacionFila,
@@ -172,6 +199,39 @@ class ImportarFacturasController extends Controller
                     'monto_abonado'     => 0.00,
                     'monto_pendiente'   => $montoPendiente,
                 ]);
+
+                // ── Procesar nota de crédito si aplica ─────────────────────
+                if ($esNotaCredito && !empty($serieModificada) && $numeroModificada > 0) {
+                    // Insertar relación en tabla credito solo si tiene referencias válidas
+                    DB::table('credito')->insert([
+                        'id_factura'           => $idFactura,
+                        'serie_doc_modificado' => $serieModificada,
+                        'numero_doc_modificado'=> $numeroModificada,
+                        'fecha_creacion'       => now(),
+                    ]);
+
+                    // Buscar la factura que está siendo anulada
+                    $facturaModificada = DB::table('factura')
+                        ->where('serie', $serieModificada)
+                        ->where('numero', $numeroModificada)
+                        ->first();
+
+                    if ($facturaModificada) {
+                        // Calcular nuevo pendiente de la factura modificada
+                        $nuevoPendiente = $facturaModificada->monto_pendiente + $importeTotal; // suma porque importeTotal es negativo
+                        $nuevoPendiente = max(0, $nuevoPendiente);
+
+                        // Si el nuevo pendiente es 0, cambiar estado a ANULADO
+                        $estadoNuevo = $nuevoPendiente <= 0 ? 'ANULADO' : $facturaModificada->estado;
+
+                        DB::table('factura')
+                            ->where('id_factura', $facturaModificada->id_factura)
+                            ->update([
+                                'monto_pendiente' => $nuevoPendiente,
+                                'estado'          => $estadoNuevo,
+                            ]);
+                    }
+                }
 
                 // ── Insertar recaudación si aplica ─────────────────────────
                 if ($montoRecaudacion > 0 && $tipoRecaudacionFila !== null) {

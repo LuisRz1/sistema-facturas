@@ -65,4 +65,12 @@ class Factura extends Model
     {
         return $this->hasMany(NotificacionFactura::class, 'id_factura', 'id_factura');
     }
+
+    /**
+     * Si esta factura es una nota de crédito, obtiene la relación con el crédito.
+     */
+    public function credito()
+    {
+        return $this->hasOne(Credito::class, 'id_factura', 'id_factura');
+    }
 }
