@@ -231,8 +231,17 @@
                         $badgeKey        = str_replace([' '], ['_'], $f->estado);
                         /* Cuando la detraccion no fue validada: pendiente = importe_total */
                         $pendienteDisplay = $f->pendiente_display ?? (($f->estado === 'DIFERENCIA PENDIENTE') ? $f->importe_total : $f->monto_pendiente);
-                        /* Verificar si ANULADO está ligado a otra factura */
-                        $anuladoLigado = $f->estado === 'ANULADO' && \DB::table('credito')->where('id_factura', $f->id_factura)->exists();
+                        /* Verificar si ANULADO está ligado a otra factura Y la factura original existe */
+                        $anuladoLigado = false;
+                        if ($f->estado === 'ANULADO') {
+                            $credito = \DB::table('credito')->where('id_factura', $f->id_factura)->first();
+                            if ($credito) {
+                                $anuladoLigado = \DB::table('factura')
+                                    ->where('serie', $credito->serie_doc_modificado)
+                                    ->where('numero', $credito->numero_doc_modificado)
+                                    ->exists();
+                            }
+                        }
                         $esAnuladoHuerfano = $f->estado === 'ANULADO' && !$anuladoLigado;
                     @endphp
                     <tr @if($esAnuladoHuerfano) style="text-decoration: line-through; opacity: 0.6;" @endif>

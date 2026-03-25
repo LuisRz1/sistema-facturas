@@ -63,10 +63,16 @@ class ReporteController extends Controller
             return $f;
         });
 
-        // Para totales: incluir ANULADO solo si está ligado a otra factura
+        // Para totales: incluir ANULADO solo si está ligado a otra factura Y la factura original existe
         $facturasParaTotales = $facturas->filter(function ($f) {
             if ($f->estado === 'ANULADO') {
-                return DB::table('credito')->where('id_factura', $f->id_factura)->exists();
+                $credito = DB::table('credito')->where('id_factura', $f->id_factura)->first();
+                if (!$credito) return false; // No es NC ligada
+                // Verificar que la factura original existe
+                return DB::table('factura')
+                    ->where('serie', $credito->serie_doc_modificado)
+                    ->where('numero', $credito->numero_doc_modificado)
+                    ->exists();
             }
             return true;
         });
@@ -128,10 +134,16 @@ class ReporteController extends Controller
             return $f;
         });
 
-        // Para totales: incluir ANULADO solo si está ligado a otra factura
+        // Para totales: incluir ANULADO solo si está ligado a otra factura Y la factura original existe
         $facturasParaTotales = $facturas->filter(function ($f) {
             if ($f->estado === 'ANULADO') {
-                return DB::table('credito')->where('id_factura', $f->id_factura)->exists();
+                $credito = DB::table('credito')->where('id_factura', $f->id_factura)->first();
+                if (!$credito) return false; // No es NC ligada
+                // Verificar que la factura original existe
+                return DB::table('factura')
+                    ->where('serie', $credito->serie_doc_modificado)
+                    ->where('numero', $credito->numero_doc_modificado)
+                    ->exists();
             }
             return true;
         });
@@ -219,10 +231,16 @@ class ReporteController extends Controller
         $clienteNombre = $nombre ?? 'TODOS LOS CLIENTES';
         $facturasAgrupadas = null;
         
-        // Para totales: incluir ANULADO solo si está ligado a otra factura
+        // Para totales: incluir ANULADO solo si está ligado a otra factura Y la factura original existe
         $facturasParaTotales = $facturas->filter(function ($f) {
             if ($f->estado === 'ANULADO') {
-                return DB::table('credito')->where('id_factura', $f->id_factura)->exists();
+                $credito = DB::table('credito')->where('id_factura', $f->id_factura)->first();
+                if (!$credito) return false; // No es NC ligada
+                // Verificar que la factura original existe
+                return DB::table('factura')
+                    ->where('serie', $credito->serie_doc_modificado)
+                    ->where('numero', $credito->numero_doc_modificado)
+                    ->exists();
             }
             return true;
         });
@@ -317,10 +335,16 @@ class ReporteController extends Controller
             return $f;
         });
 
-        // Para totales: incluir ANULADO solo si está ligado a otra factura
+        // Para totales: incluir ANULADO solo si está ligado a otra factura Y la factura original existe
         $facturasParaTotales = $facturas->filter(function ($f) {
             if ($f->estado === 'ANULADO') {
-                return DB::table('credito')->where('id_factura', $f->id_factura)->exists();
+                $credito = DB::table('credito')->where('id_factura', $f->id_factura)->first();
+                if (!$credito) return false; // No es NC ligada
+                // Verificar que la factura original existe
+                return DB::table('factura')
+                    ->where('serie', $credito->serie_doc_modificado)
+                    ->where('numero', $credito->numero_doc_modificado)
+                    ->exists();
             }
             return true;
         });
@@ -415,18 +439,38 @@ class ReporteController extends Controller
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
             ->whereIn('f.estado', $estadosFiltro)
-            ->select(['c.id_cliente','c.razon_social','c.ruc','f.moneda','f.estado','f.importe_total','f.monto_pendiente',
+            ->select(['f.id_factura','c.id_cliente','c.razon_social','c.ruc','f.moneda','f.estado','f.importe_total','f.monto_pendiente',
                 DB::raw('COALESCE(rec.total_recaudacion, 0) AS monto_recaudacion')]);
 
         if ($fechaDesde) $query->where('f.fecha_emision', '>=', $fechaDesde);
         if ($fechaHasta) $query->where('f.fecha_emision', '<=', $fechaHasta);
 
         $facturas = $query->get();
+        
+        // Pre-identificar créditos huérfanos para excluirlos completamente de las sumas
+        $orphanFacturaIds = [];
+        foreach ($facturas as $f) {
+            if ($f->estado === 'ANULADO') {
+                $credito = DB::table('credito')->where('id_factura', $f->id_factura)->first();
+                if (!$credito) {
+                    $orphanFacturaIds[] = (int) $f->id_factura;
+                    continue;
+                }
+                
+                // Verificar que la factura original existe
+                if (!DB::table('factura')
+                    ->where('serie', $credito->serie_doc_modificado)
+                    ->where('numero', $credito->numero_doc_modificado)
+                    ->exists()) {
+                    $orphanFacturaIds[] = (int) $f->id_factura;
+                }
+            }
+        }
+        
         $clientes = [];
         foreach ($facturas as $f) {
-            // EXCLUIR ANULADO sin factura ligada de conteos totales para no afectar deuda general
-            // Incluir ANULADO solo si está ligado a otra factura
-            if ($f->estado === 'ANULADO' && !DB::table('credito')->where('id_factura', $f->id_factura)->exists()) {
+            // EXCLUIR COMPLETAMENTE los créditos huérfanos de cualquier suma
+            if (in_array((int) $f->id_factura, $orphanFacturaIds)) {
                 continue;
             }
             
@@ -505,10 +549,16 @@ class ReporteController extends Controller
             return $f;
         });
 
-        // Para totales: incluir ANULADO solo si está ligado a otra factura
+        // Para totales: incluir ANULADO solo si está ligado a otra factura Y la factura original existe
         $facturasParaTotales = $facturas->filter(function ($f) {
             if ($f->estado === 'ANULADO') {
-                return DB::table('credito')->where('id_factura', $f->id_factura)->exists();
+                $credito = DB::table('credito')->where('id_factura', $f->id_factura)->first();
+                if (!$credito) return false; // No es NC ligada
+                // Verificar que la factura original existe
+                return DB::table('factura')
+                    ->where('serie', $credito->serie_doc_modificado)
+                    ->where('numero', $credito->numero_doc_modificado)
+                    ->exists();
             }
             return true;
         });

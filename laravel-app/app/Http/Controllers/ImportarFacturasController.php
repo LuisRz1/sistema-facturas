@@ -47,13 +47,12 @@ class ImportarFacturasController extends Controller
 
         $hoja  = $spreadsheet->getActiveSheet();
         $filas = $hoja->toArray(null, true, false, true);
-        
+
         // Leer encabezados para mapear dinámicamente las columnas
         $encabezados = $filas[1] ?? [];
-        $colSerieModificado = null;
+        $colSerieModificado  = null;
         $colNumeroModificado = null;
-        
-        // Buscar por nombre de referencia
+
         foreach ($encabezados as $columna => $valor) {
             $nombreEncabezado = strtoupper(trim((string)$valor));
             if ($nombreEncabezado === 'SERIE DOC MODIFICADO') {
@@ -63,7 +62,7 @@ class ImportarFacturasController extends Controller
                 $colNumeroModificado = $columna;
             }
         }
-        
+
         unset($filas[1]); // quitar cabecera
 
         $idUsuario  = Auth::id();
@@ -97,27 +96,21 @@ class ImportarFacturasController extends Controller
                 $montoRecaudacion = $this->monto($f['AE'] ?? 0);
                 $porcentajeExcel  = $this->monto($f['AC'] ?? 0);
 
-                // Si no hay monto en AE, no hay recaudación para esta fila
                 if ($montoRecaudacion <= 0) {
                     $porcentajeExcel = 0;
                 }
 
-                // ── Verificar si esta fila tiene el tipo de recaudación ─────
-                // Lee columna AI: si dice "SI", "DETRACCION", etc → aplica tipo
-                // Si está vacía/NO → sin recaudación
+                // ── Verificar indicador de recaudación (columna AI) ────────
                 $indicadorExcel = strtoupper(trim((string)($f['AI'] ?? '')));
-                $tieneIndicador = (strpos($indicadorExcel, 'SI') !== false || 
-                                  strpos($indicadorExcel, 'DETRACCION') !== false ||
-                                  strpos($indicadorExcel, 'RETENCION') !== false);
+                $tieneIndicador = (strpos($indicadorExcel, 'SI') !== false ||
+                    strpos($indicadorExcel, 'DETRACCION') !== false ||
+                    strpos($indicadorExcel, 'RETENCION') !== false);
 
-                // Aplicar tipo de recaudación SOLO si el indicador está presente
-                $tipoRecaudacionFila = ($tieneIndicador && $montoRecaudacion > 0) 
-                    ? $tipoRecaudacion 
+                $tipoRecaudacionFila = ($tieneIndicador && $montoRecaudacion > 0)
+                    ? $tipoRecaudacion
                     : null;
 
                 // ── Estado inicial ─────────────────────────────────────────
-                // Todas las facturas importadas inician en PENDIENTE
-                // (Detracción sin validar = monto pendiente es el total)
                 $estado = 'PENDIENTE';
 
                 // ── Glosa y fechas ─────────────────────────────────────────
@@ -138,10 +131,10 @@ class ImportarFacturasController extends Controller
                 $cliente = DB::table('cliente')->where('ruc', $ruc)->first();
                 if (!$cliente) {
                     $idCliente = DB::table('cliente')->insertGetId([
-                        'ruc'                => $ruc,
-                        'razon_social'       => $razonSocial,
-                        'estado_contado'     => 'SIN_DATOS',  // columna correcta en BD
-                        'fecha_creacion'     => now(),
+                        'ruc'            => $ruc,
+                        'razon_social'   => $razonSocial,
+                        'estado_contado' => 'SIN_DATOS',
+                        'fecha_creacion' => now(),
                     ]);
                 } else {
                     $idCliente = $cliente->id_cliente;
@@ -163,29 +156,23 @@ class ImportarFacturasController extends Controller
                 }
 
                 // ── DETECTAR NOTA DE CRÉDITO (serie FC01) ──────────────────
-                $esNotaCredito = strtoupper($serie) === 'FC01';
-                $serieModificada = null;
+                $esNotaCredito   = strtoupper($serie) === 'FC01';
+                $serieModificada  = null;
                 $numeroModificada = null;
 
                 if ($esNotaCredito) {
-                    // Leer referencias de la factura que modifica usando columnas mapeadas dinámicamente
-                    $serieModificada = !is_null($colSerieModificado) 
+                    $serieModificada = !is_null($colSerieModificado)
                         ? strtoupper(trim((string)($f[$colSerieModificado] ?? '')))
                         : '';
-                    $numeroModificada = !is_null($colNumeroModificado) 
+                    $numeroModificada = !is_null($colNumeroModificado)
                         ? (int) trim((string)($f[$colNumeroModificado] ?? '0'))
                         : 0;
 
                     // El importe de la nota de crédito es NEGATIVO
                     $importeTotal = -abs($importeTotal);
-                    
-                    // Si no tiene referencias pero es FC01 → igual se inserta en ANULADO
-                    // para poder considerarla y usarla posteriormente
                 }
 
                 // ── Monto pendiente inicial ────────────────────────────────
-                // Si el estado es PENDIENTE o VENCIDO, el pendiente es el importe total
-                // porque aun no se ha validado la recaudacion/detraccion
                 if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
                     $montoPendiente = $importeTotal;
                 } else {
@@ -221,37 +208,18 @@ class ImportarFacturasController extends Controller
                     'monto_pendiente'   => $montoPendiente,
                 ]);
 
-                // ── Procesar nota de crédito si aplica ─────────────────────
+                // ── Registrar relación de nota de crédito ──────────────────
+                // SOLO se registra la relación en la tabla credito.
+                // NO se modifica el monto_pendiente ni el estado de la factura enlazada.
+                // Si la factura enlazada no existe → la nota aparece tachada en reportes
+                // y es excluida de totales (lógica en el controlador de facturas y reportes).
                 if ($esNotaCredito && !empty($serieModificada) && $numeroModificada > 0) {
-                    // Insertar relación en tabla credito solo si tiene referencias válidas
                     DB::table('credito')->insert([
-                        'id_factura'           => $idFactura,
-                        'serie_doc_modificado' => $serieModificada,
-                        'numero_doc_modificado'=> $numeroModificada,
-                        'fecha_creacion'       => now(),
+                        'id_factura'            => $idFactura,
+                        'serie_doc_modificado'  => $serieModificada,
+                        'numero_doc_modificado' => $numeroModificada,
+                        'fecha_creacion'        => now(),
                     ]);
-
-                    // Buscar la factura que está siendo anulada
-                    $facturaModificada = DB::table('factura')
-                        ->where('serie', $serieModificada)
-                        ->where('numero', $numeroModificada)
-                        ->first();
-
-                    if ($facturaModificada) {
-                        // Calcular nuevo pendiente de la factura modificada
-                        $nuevoPendiente = $facturaModificada->monto_pendiente + $importeTotal; // suma porque importeTotal es negativo
-                        $nuevoPendiente = max(0, $nuevoPendiente);
-
-                        // Si el nuevo pendiente es 0, cambiar estado a ANULADO
-                        $estadoNuevo = $nuevoPendiente <= 0 ? 'ANULADO' : $facturaModificada->estado;
-
-                        DB::table('factura')
-                            ->where('id_factura', $facturaModificada->id_factura)
-                            ->update([
-                                'monto_pendiente' => $nuevoPendiente,
-                                'estado'          => $estadoNuevo,
-                            ]);
-                    }
                 }
 
                 // ── Insertar recaudación si aplica ─────────────────────────

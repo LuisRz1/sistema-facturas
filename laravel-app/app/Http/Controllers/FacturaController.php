@@ -63,16 +63,54 @@ class FacturaController extends Controller
             ]);
         }));
 
+        // ── Pre-computar notas de crédito huérfanas ──────────────────────
+        // Una nota de crédito es "huérfana" si tiene registro en `credito`
+        // pero la factura a la que apunta (serie+numero) no existe en BD.
+        // Estas notas aparecen tachadas en la vista y se excluyen de totales.
+        $facturaIds    = $facturasCollection->pluck('id_factura')->toArray();
+        $creditosPorId = DB::table('credito')
+            ->whereIn('id_factura', $facturaIds)
+            ->get()
+            ->keyBy('id_factura');
+
+        $orphanFacturaIds = [];
+        foreach ($creditosPorId as $idFactura => $credito) {
+            $existe = DB::table('factura')
+                ->where('serie',  $credito->serie_doc_modificado)
+                ->where('numero', $credito->numero_doc_modificado)
+                ->exists();
+            if (!$existe) {
+                $orphanFacturaIds[] = (int) $idFactura;
+            }
+        }
+
+        // Facturas que cuentan para los totales:
+        //   - excluir estado ANULADO sin registro en credito
+        //   - excluir notas de crédito cuya factura enlazada no existe
+        $facturasParaTotales = $facturasCollection->reject(function ($f) use ($orphanFacturaIds) {
+            // Excluir si está en la lista de huérfanas
+            if (in_array((int) $f->id_factura, $orphanFacturaIds)) {
+                return true;
+            }
+            // Excluir ANULADO que no tiene registro en credito (no es NC ligada)
+            if ($f->estado === 'ANULADO') {
+                return !DB::table('credito')->where('id_factura', $f->id_factura)->exists();
+            }
+            return false;
+        });
+
         $clientes = DB::table('cliente')->orderBy('razon_social')->get(['id_cliente', 'razon_social', 'ruc']);
         $usuarios = DB::table('usuario')->whereNotNull('celular')->orderBy('nombre')
             ->get(['id_usuario', 'nombre', 'apellido', 'celular', 'correo']);
 
         return view('facturas.index', [
-            'facturas'   => $facturasCollection,
-            'clientes'   => $clientes,
-            'usuarios'   => $usuarios,
-            'fechaDesde' => $fechaDesde,
-            'fechaHasta' => $fechaHasta,
+            'facturas'            => $facturasCollection,
+            'facturasParaTotales' => $facturasParaTotales,
+            'orphanFacturaIds'    => $orphanFacturaIds,
+            'clientes'            => $clientes,
+            'usuarios'            => $usuarios,
+            'fechaDesde'          => $fechaDesde,
+            'fechaHasta'          => $fechaHasta,
         ]);
     }
 
@@ -125,22 +163,13 @@ class FacturaController extends Controller
 
     /**
      * Procesar pago / abono.
-     *
-     * Lógica de estados SIN "POR VALIDAR DETRACCION":
-     *   - DETRACCION registrada pero no validada           → PENDIENTE
-     *   - DETRACCION validada + sin abono + saldo > 0     → DIFERENCIA PENDIENTE
-     *   - DETRACCION validada + sin abono + saldo = 0     → PAGADA  (raro, caso de autodet)
-     *   - AUTODETRACCION + cubre todo                     → PAGADA
-     *   - Sin abono                                       → PENDIENTE / VENCIDO
-     *   - Con abono parcial                               → PAGO PARCIAL
-     *   - Abono total                                     → PAGADA
      */
     public function procesarPago(Request $request, $id): JsonResponse
     {
         $factura = Factura::findOrFail($id);
 
         $validated = $request->validate([
-            'monto_abonado'         => 'nullable|numeric|min:0',  // Realmente opcional: puede ser 0, null o vacío
+            'monto_abonado'         => 'nullable|numeric|min:0',
             'total_recaudacion'     => 'nullable|numeric|min:0',
             'porcentaje_recaudacion'=> 'nullable|numeric|min:0|max:100',
             'tipo_recaudacion'      => 'nullable|string|in:DETRACCION,AUTODETRACCION,RETENCION',
@@ -158,13 +187,6 @@ class FacturaController extends Controller
         $fechaRecaudacion = $validated['fecha_recaudacion'] ?? null;
         $cuentaPago       = $validated['cuenta_pago'] ?? null;
         $importeTotal     = (float) $factura->importe_total;
-
-        // AUTODETRACCION: NO recalcular monto_abonado
-        // El usuario solo puede editar fecha de depósito, los valores (recaudación, abono) vienen del frontend disabled
-        // Usar los valores tal como se envían del frontend
-        
-        // Para otros tipos: si hay recaudación, usar ese valor
-        // (los cálculos de abono se hacen en frontend en tiempo real)
 
         // Gestionar tabla recaudacion
         if ($tipoRecaudacion && $totalRecaudacion > 0) {
@@ -189,8 +211,6 @@ class FacturaController extends Controller
             (bool) ($validated['validar_detraccion'] ?? false)
         );
 
-        // IMPORTANTE: Si el estado final es PENDIENTE o VENCIDO, el monto_pendiente debe ser el importe total
-        // porque aún NO se ha procesado ningún pago
         if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
             $montoPendiente = $importeTotal;
         }
@@ -214,37 +234,22 @@ class FacturaController extends Controller
         ]);
     }
 
-    /**
-     * Calcular estado — sin POR VALIDAR DETRACCION.
-     *
-     * AUTODETRACCION con recaudación → DIFERENCIA PENDIENTE (no calcula abono implícito)
-     * DETRACCION validada + saldo → DIFERENCIA PENDIENTE
-     * DETRACCION validada + sin saldo → PAGADA
-     */
     private function calcularEstado(
         Factura $factura, float $montoAbonado, float $montoPendiente,
         float $totalRecaudacion, ?string $tipoRecaudacion, bool $validarDetraccion
     ): string {
-        // AUTODETRACCION con recaudación → DIFERENCIA PENDIENTE (sin calcular abono implícito)
         if ($tipoRecaudacion === 'AUTODETRACCION' && $totalRecaudacion > 0) {
             if ($montoPendiente <= 0) return 'PAGADA';
             return 'DIFERENCIA PENDIENTE';
         }
 
-        // AUTODETRACCION sin recaudación → PENDIENTE (sin cambios)
         if ($tipoRecaudacion === 'AUTODETRACCION') return 'PENDIENTE';
 
-        // DETRACCION validada → determinar si queda diferencia
         if ($tipoRecaudacion === 'DETRACCION' && $validarDetraccion) {
             if ($montoPendiente <= 0) return 'PAGADA';
-            // Queda saldo después de la detracción → DIFERENCIA PENDIENTE
             return 'DIFERENCIA PENDIENTE';
         }
 
-        // DETRACCION no validada → simplemente PENDIENTE (ya no existe POR VALIDAR)
-        // (el campo tipo_recaudacion='DETRACCION' en la BD indica que hay detracción pendiente de validar)
-
-        // Sin abono → PENDIENTE o VENCIDO
         if ($montoAbonado == 0) {
             if ($factura->fecha_vencimiento && $factura->fecha_vencimiento < now()->toDateString()) return 'VENCIDO';
             return 'PENDIENTE';
