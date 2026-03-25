@@ -54,6 +54,14 @@
         .send-result-bar.ok    { background:#14532d; color:#86efac; display:block; }
         .send-result-bar.error { background:#7f1d1d; color:#fca5a5; display:block; }
 
+        /* ── LEYENDA NC HUÉRFANAS ── */
+        .leyenda-nc {
+            background:#fef9e0; border:1px solid #fde68a; border-left:3px solid #f59e0b;
+            padding:8px 14px; margin-bottom:10px; font-size:10px; color:#92400e;
+            display:flex; align-items:center; gap:8px;
+        }
+        .leyenda-nc strong { font-weight:800; }
+
         /* ── HEADER ── */
         .header { background:#0f172a; color:#fff; text-align:center; padding:22px 32px 18px; }
         .header h1 { font-size:20px; font-weight:900; letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
@@ -69,22 +77,22 @@
         .kpi-val.red   { color:#dc2626; }
         .kpi-val.amber { color:#d97706; }
 
-        /* ── TABLE LAYOUT FIJO para evitar descuadre ── */
+        /* ── TABLE ── */
         .body { padding:24px 32px; }
         .empresa-table { width:100%; border-collapse:collapse; table-layout:fixed; margin-bottom:4px; }
-        .empresa-table colgroup col:nth-child(1)  { width:3%; }   /* # */
-        .empresa-table colgroup col:nth-child(2)  { width:7%; }   /* Emisión */
-        .empresa-table colgroup col:nth-child(3)  { width:7%; }   /* Vcto */
-        .empresa-table colgroup col:nth-child(4)  { width:10%; }  /* Factura */
-        .empresa-table colgroup col:nth-child(5)  { width:10%; }  /* Glosa */
-        .empresa-table colgroup col:nth-child(6)  { width:8%; }   /* Importe */
-        .empresa-table colgroup col:nth-child(7)  { width:8%; }   /* Det. */
-        .empresa-table colgroup col:nth-child(8)  { width:7%; }   /* F.Det */
-        .empresa-table colgroup col:nth-child(9)  { width:7%; }   /* Tipo */
-        .empresa-table colgroup col:nth-child(10) { width:8%; }   /* Abonado */
-        .empresa-table colgroup col:nth-child(11) { width:7%; }   /* F.Abono */
-        .empresa-table colgroup col:nth-child(12) { width:8%; }   /* Pendiente */
-        .empresa-table colgroup col:nth-child(13) { width:10%; }  /* Estado */
+        .empresa-table colgroup col:nth-child(1)  { width:3%; }
+        .empresa-table colgroup col:nth-child(2)  { width:7%; }
+        .empresa-table colgroup col:nth-child(3)  { width:7%; }
+        .empresa-table colgroup col:nth-child(4)  { width:10%; }
+        .empresa-table colgroup col:nth-child(5)  { width:10%; }
+        .empresa-table colgroup col:nth-child(6)  { width:8%; }
+        .empresa-table colgroup col:nth-child(7)  { width:8%; }
+        .empresa-table colgroup col:nth-child(8)  { width:7%; }
+        .empresa-table colgroup col:nth-child(9)  { width:7%; }
+        .empresa-table colgroup col:nth-child(10) { width:8%; }
+        .empresa-table colgroup col:nth-child(11) { width:7%; }
+        .empresa-table colgroup col:nth-child(12) { width:8%; }
+        .empresa-table colgroup col:nth-child(13) { width:10%; }
 
         .empresa-table thead tr { background:#0f172a; color:#fff; }
         .empresa-table thead th {
@@ -101,6 +109,23 @@
         }
         .empresa-table tbody td.r { text-align:right; }
         .empresa-table tbody td.mono { font-family:'Courier New',monospace; font-size:9.5px; }
+
+        /* Fila NC huérfana: tachado igual que en módulo de facturas */
+        .empresa-table tbody tr.nc-huerfana {
+            text-decoration: line-through;
+            opacity: 0.55;
+            background: #fafafa !important;
+        }
+        .empresa-table tbody tr.nc-huerfana td {
+            color: #9ca3af !important;
+        }
+        /* Badge indicador inline para la columna estado */
+        .badge-nc-huerfana {
+            display:inline-block; padding:1px 5px; border-radius:4px;
+            font-size:7.5px; font-weight:800; text-transform:uppercase;
+            background:#fef3c7; color:#92400e; border:1px solid #fde68a;
+            margin-left:3px; vertical-align:middle; text-decoration:none;
+        }
 
         /* Fila de totales por empresa */
         .empresa-table tbody tr.total-empresa {
@@ -122,6 +147,7 @@
         .b-PAGADA                { background:#d1fae5; color:#065f46; }
         .b-PAGO_PARCIAL, .b-PAGO\ PARCIAL { background:#e0e7ff; color:#3730a3; }
         .b-DIFERENCIA_PENDIENTE, .b-DIFERENCIA\ PENDIENTE { background:#fce7f3; color:#9d174d; border:1px solid #fbcfe8; }
+        .b-ANULADO               { background:#f1f5f9; color:#475569; }
 
         .group-title {
             font-size:12px; font-weight:900; color:#0f172a; text-transform:uppercase; letter-spacing:.4px;
@@ -188,9 +214,20 @@
         <p style="text-align:center;padding:40px;color:#64748b;">No se encontraron facturas.</p>
 
     @else
+        {{-- Leyenda si hay NCs huérfanas --}}
+        @if(!empty($orphanFacturaIds))
+            <div class="leyenda-nc">
+                <span>⚠</span>
+                <span>
+                    Las filas <strong>tachadas</strong> son notas de crédito cuya factura original no existe en el sistema.
+                    <strong>No se incluyen en los totales</strong> ni en el saldo por cobrar.
+                </span>
+            </div>
+        @endif
+
         @foreach($facturasAgrupadas as $empresa => $facturasPorEmpresa)
             @php
-                /* Totales por empresa: usar facturasAgrupParaTotales para NO incluir huérfanos */
+                /* Totales por empresa usando solo las facturas que cuentan */
                 $facturasPorEmpresaParaTotales = $facturasAgrupParaTotales[$empresa] ?? collect();
                 $totEmpresa      = $facturasPorEmpresaParaTotales->sum('importe_total');
                 $totRecEmpresa   = $facturasPorEmpresaParaTotales->sum('monto_recaudacion');
@@ -226,62 +263,67 @@
                 <tbody>
                 @foreach($facturasPorEmpresa as $idx => $f)
                     @php
-                        $recaudacion     = $f->monto_recaudacion ?? 0;
-                        $tipoRec         = $f->tipo_recaudacion  ?? '—';
-                        $badgeKey        = str_replace([' '], ['_'], $f->estado);
-                        /* Cuando la detraccion no fue validada: pendiente = importe_total */
-                        $pendienteDisplay = $f->pendiente_display ?? (($f->estado === 'DIFERENCIA PENDIENTE') ? $f->importe_total : $f->monto_pendiente);
-                        /* Verificar si ANULADO está ligado a otra factura Y la factura original existe */
-                        $anuladoLigado = false;
-                        if ($f->estado === 'ANULADO') {
-                            $credito = \DB::table('credito')->where('id_factura', $f->id_factura)->first();
-                            if ($credito) {
-                                $anuladoLigado = \DB::table('factura')
-                                    ->where('serie', $credito->serie_doc_modificado)
-                                    ->where('numero', $credito->numero_doc_modificado)
-                                    ->exists();
-                            }
-                        }
-                        $esAnuladoHuerfano = $f->estado === 'ANULADO' && !$anuladoLigado;
+                        /*
+                         * Usar el array pre-computado del controlador:
+                         * NO hacer queries por fila (N+1).
+                         * Misma lógica que facturas/index.blade.php
+                         */
+                        $esNcHuerfana     = in_array((int) $f->id_factura, $orphanFacturaIds);
+                        $recaudacion      = $f->monto_recaudacion ?? 0;
+                        $tipoRec          = $f->tipo_recaudacion  ?? '—';
+                        $badgeKey         = str_replace([' '], ['_'], $f->estado);
+                        $pendienteDisplay = $f->pendiente_display
+                            ?? (($f->estado === 'DIFERENCIA PENDIENTE') ? $f->importe_total : $f->monto_pendiente);
                     @endphp
-                    <tr @if($esAnuladoHuerfano) style="text-decoration: line-through; opacity: 0.6;" @endif>
-                        <td style="text-align:center;color:#64748b;font-size:9px;">{{ $idx+1 }}</td>
+                    <tr class="{{ $esNcHuerfana ? 'nc-huerfana' : '' }}">
+                        <td style="text-align:center;color:#64748b;font-size:9px;">{{ $idx + 1 }}</td>
                         <td class="mono">{{ $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—' }}</td>
                         <td class="mono">{{ $f->fecha_vencimiento ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—' }}</td>
-                        <td class="factura-num">{{ $f->serie }}-{{ str_pad($f->numero,8,'0',STR_PAD_LEFT) }}</td>
-                        <td style="font-size:9px;">{{ $f->glosa ? Str::limit($f->glosa,22) : '—' }}</td>
-                        <td class="r mono">{{ $f->moneda }} {{ number_format($f->importe_total,2) }}</td>
-                        <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda.' '.number_format($recaudacion,2) : '—' }}</td>
+                        <td class="factura-num">{{ $f->serie }}-{{ str_pad($f->numero, 8, '0', STR_PAD_LEFT) }}</td>
+                        <td style="font-size:9px;">{{ $f->glosa ? Str::limit($f->glosa, 22) : '—' }}</td>
+                        <td class="r mono">{{ $f->moneda }} {{ number_format($f->importe_total, 2) }}</td>
+                        <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda.' '.number_format($recaudacion, 2) : '—' }}</td>
                         <td class="mono" style="font-size:8.5px;color:#d97706;">
                             {{ $f->fecha_recaudacion ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—' }}
                         </td>
                         <td style="font-size:8.5px;font-weight:700;color:#7c3aed;">{{ $tipoRec !== '—' ? $tipoRec : '—' }}</td>
                         <td class="r abonado">
-                            {{ ($f->monto_abonado ?? 0) > 0 ? $f->moneda.' '.number_format($f->monto_abonado,2) : '—' }}
+                            {{ ($f->monto_abonado ?? 0) > 0 ? $f->moneda.' '.number_format($f->monto_abonado, 2) : '—' }}
                         </td>
                         <td class="mono" style="font-size:8.5px;color:#059669;">
                             {{ $f->fecha_abono ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—' }}
                         </td>
-                        <td class="r pendiente-cell">
-                            {{ $f->moneda }} {{ number_format($pendienteDisplay,2) }}
-                            @if($f->estado === 'DIFERENCIA PENDIENTE')
-                                <div style="font-size:7.5px;color:#7c3aed;font-weight:600;">det. no valid.</div>
+                        <td class="r {{ $esNcHuerfana ? '' : 'pendiente-cell' }}">
+                            @if($esNcHuerfana)
+                                <span style="color:#9ca3af;">—</span>
+                            @else
+                                {{ $f->moneda }} {{ number_format($pendienteDisplay, 2) }}
+                                @if($f->estado === 'DIFERENCIA PENDIENTE')
+                                    <div style="font-size:7.5px;color:#7c3aed;font-weight:600;">det. no valid.</div>
+                                @endif
                             @endif
                         </td>
-                        <td><span class="badge b-{{ $badgeKey }}">{{ str_replace('_',' ',$f->estado) }}</span></td>
+                        <td>
+                            <span class="badge b-{{ $badgeKey }}">{{ str_replace('_', ' ', $f->estado) }}</span>
+                            @if($esNcHuerfana)
+                                <span class="badge-nc-huerfana">sin factura</span>
+                            @endif
+                        </td>
                     </tr>
                 @endforeach
 
-                {{-- FILA TOTALES POR EMPRESA ── sin "Pendiente: X" en el título --}}
+                {{-- FILA TOTALES POR EMPRESA — usa $facturasAgrupParaTotales ── --}}
                 <tr class="total-empresa">
-                    <td colspan="5" style="font-size:10px;letter-spacing:.3px;">SUBTOTAL — {{ $facturasPorEmpresaParaTotales->count() }} factura(s)</td>
-                    <td class="r" style="color:#fca5a5;">{{ number_format($totEmpresa,2) }}</td>
-                    <td class="r" style="color:#fcd34d;">{{ $totRecEmpresa > 0 ? number_format($totRecEmpresa,2) : '—' }}</td>
+                    <td colspan="5" style="font-size:10px;letter-spacing:.3px;">
+                        SUBTOTAL — {{ $facturasPorEmpresaParaTotales->count() }} factura(s)
+                    </td>
+                    <td class="r" style="color:#fca5a5;">{{ number_format($totEmpresa, 2) }}</td>
+                    <td class="r" style="color:#fcd34d;">{{ $totRecEmpresa > 0 ? number_format($totRecEmpresa, 2) : '—' }}</td>
                     <td></td>
                     <td></td>
-                    <td class="r" style="color:#6ee7b7;">{{ $totAbono > 0 ? number_format($totAbono,2) : '—' }}</td>
+                    <td class="r" style="color:#6ee7b7;">{{ $totAbono > 0 ? number_format($totAbono, 2) : '—' }}</td>
                     <td></td>
-                    <td class="r" style="color:#fca5a5;font-size:11px;">{{ number_format($totPendEmpresa,2) }}</td>
+                    <td class="r" style="color:#fca5a5;font-size:11px;">{{ number_format($totPendEmpresa, 2) }}</td>
                     <td></td>
                 </tr>
                 </tbody>
@@ -305,6 +347,8 @@
     const FECHA_HASTA    = '{{ $fechaHasta ?? "" }}';
     const ID_CLIENTE     = '{{ $idCliente ?? "" }}';
     const ESTADOS_FILTRO = {!! $estadosFiltroJson !!};
+    // IDs de NCs huérfanas para exclusión en exportación Excel
+    const ORPHAN_IDS     = {!! json_encode($orphanFacturaIds) !!};
 
     function onUsuarioChange() {
         const sel    = document.getElementById('selUsuario');
@@ -326,11 +370,11 @@
         btnWA.disabled = btnMail.disabled = true;
         result.className = 'send-result-bar';
         result.textContent = 'Enviando…';
-        const body = new URLSearchParams({ usuario_id:sel.value, fecha_desde:FECHA_DESDE, fecha_hasta:FECHA_HASTA, _token:CSRF });
+        const body = new URLSearchParams({ usuario_id: sel.value, fecha_desde: FECHA_DESDE, fecha_hasta: FECHA_HASTA, _token: CSRF });
         if (ID_CLIENTE) body.append('id_cliente', ID_CLIENTE);
         ESTADOS_FILTRO.forEach(e => body.append('estados[]', e));
         try {
-            const res  = await fetch(canal === 'whatsapp' ? RUTA_WA : RUTA_MAIL, { method:'POST', body });
+            const res  = await fetch(canal === 'whatsapp' ? RUTA_WA : RUTA_MAIL, { method: 'POST', body });
             const data = await res.json();
             result.className   = 'send-result-bar ' + (data.success ? 'ok' : 'error');
             result.textContent = (data.success ? '✓ ' : '✗ ') + (data.message || data.error || 'Error');
@@ -340,59 +384,73 @@
         } finally { onUsuarioChange(); }
     }
 
-    /* ── Exportar Excel ── */
+    /* ── Exportar Excel: excluye huérfanas de totales, las tacha visualmente ── */
     function exportarExcel() {
-        const wb = XLSX.utils.book_new();
-        // Recopilar datos de todas las empresas
+        const wb   = XLSX.utils.book_new();
         const rows = [
             ['#','EMPRESA','EMISIÓN','VCTO','FACTURA','GLOSA','IMPORTE','DETRACCIÓN','F.DETRACCION','TIPO','ABONADO','F.ABONO','PENDIENTE','ESTADO']
         ];
 
+        // Acumuladores de totales (excluyen huérfanas)
+        let totalBruto = 0, totalRec = 0, totalAbono = 0, totalPend = 0;
+
         document.querySelectorAll('.empresa-table').forEach((tabla, tIdx) => {
-            const empresa = tabla.previousElementSibling?.textContent?.trim() || `Empresa ${tIdx+1}`;
+            const empresa = tabla.previousElementSibling?.textContent?.trim() || `Empresa ${tIdx + 1}`;
             tabla.querySelectorAll('tbody tr:not(.total-empresa)').forEach(tr => {
-                const celdas = tr.querySelectorAll('td');
+                const celdas    = tr.querySelectorAll('td');
                 if (celdas.length < 13) return;
-                rows.push([
+                const esHuerfana = tr.classList.contains('nc-huerfana');
+                const row = [
                     celdas[0].textContent.trim(),
                     empresa,
                     celdas[1].textContent.trim(),
                     celdas[2].textContent.trim(),
                     celdas[3].textContent.trim(),
                     celdas[4].textContent.trim(),
-                    celdas[5].textContent.trim(),
-                    celdas[6].textContent.trim(),
+                    esHuerfana ? '(NC sin factura)' : celdas[5].textContent.trim(),
+                    esHuerfana ? '—'                : celdas[6].textContent.trim(),
                     celdas[7].textContent.trim(),
                     celdas[8].textContent.trim(),
                     celdas[9].textContent.trim(),
                     celdas[10].textContent.trim(),
-                    celdas[11].textContent.replace('det. no valid.','').trim(),
-                    celdas[12].textContent.trim(),
-                ]);
+                    esHuerfana ? '—'                : celdas[11].textContent.replace('det. no valid.','').trim(),
+                    celdas[12].textContent.trim() + (esHuerfana ? ' [NC SIN FACTURA - NO SUMA]' : ''),
+                ];
+                rows.push(row);
             });
-            // Fila de subtotal
+
+            // Fila de subtotal por empresa (del DOM, ya es la suma correcta)
             const totRow = tabla.querySelector('tbody tr.total-empresa');
             if (totRow) {
                 const cTot = totRow.querySelectorAll('td');
-                rows.push(['','SUBTOTAL — '+empresa,'','','','',
-                    cTot[5]?.textContent.trim()||'',
-                    cTot[6]?.textContent.trim()||'','','',
-                    cTot[9]?.textContent.trim()||'','',
-                    cTot[11]?.textContent.trim()||'','']);
+                const tBruto = parseFloat((cTot[5]?.textContent.replace(/[^0-9.\-]/g,'')).trim()) || 0;
+                const tRec   = parseFloat((cTot[6]?.textContent.replace(/[^0-9.\-]/g,'')).trim()) || 0;
+                const tAbon  = parseFloat((cTot[9]?.textContent.replace(/[^0-9.\-]/g,'')).trim()) || 0;
+                const tPend  = parseFloat((cTot[11]?.textContent.replace(/[^0-9.\-]/g,'')).trim()) || 0;
+                totalBruto += tBruto; totalRec += tRec; totalAbono += tAbon; totalPend += tPend;
+                rows.push(['', 'SUBTOTAL — ' + empresa, '', '', '', '',
+                    cTot[5]?.textContent.trim() || '',
+                    cTot[6]?.textContent.trim() || '', '', '',
+                    cTot[9]?.textContent.trim() || '', '',
+                    cTot[11]?.textContent.trim() || '', '']);
             }
-            rows.push([]); // fila vacía entre empresas
+            rows.push([]);
         });
 
+        // Fila de totales generales
+        rows.push([]);
+        rows.push(['', 'TOTAL GENERAL', '', '', '', '',
+            totalBruto.toFixed(2), totalRec.toFixed(2), '', '',
+            totalAbono.toFixed(2), '', totalPend.toFixed(2), '']);
+
         const ws = XLSX.utils.aoa_to_sheet(rows);
-        // Anchos de columna
         ws['!cols'] = [
             {wch:4},{wch:30},{wch:12},{wch:12},{wch:16},{wch:22},
-            {wch:12},{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:12},{wch:20}
+            {wch:14},{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:14},{wch:28}
         ];
 
         XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
-        const filename = 'Reporte_CRC_{{ now()->format("Ymd_Hi") }}.xlsx';
-        XLSX.writeFile(wb, filename);
+        XLSX.writeFile(wb, 'Reporte_CRC_{{ now()->format("Ymd_Hi") }}.xlsx');
     }
 
     window.addEventListener('load', () => setTimeout(() => window.print(), 600));
