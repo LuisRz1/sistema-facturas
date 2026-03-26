@@ -10,6 +10,7 @@ use App\Http\Controllers\NotificacionController;
 use App\Http\Controllers\ImportarFacturasController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\ValidarDetraccionesController;
+use App\Http\Controllers\ImportarRetencionesController;
 
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────────────
@@ -33,6 +34,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/facturas/validar-detracciones/procesar',
         [ValidarDetraccionesController::class, 'procesar']
     )->name('detracciones.procesar');
+
+    Route::post('/facturas/importar-retenciones/procesar',
+        [ImportarRetencionesController::class, 'importar']
+    )->name('facturas.importar.retenciones.procesar');
 
     // ── FACTURAS ───────────────────────────────────────────────────────
     Route::get('/facturas', [FacturaController::class, 'index'])->name('facturas.index');
