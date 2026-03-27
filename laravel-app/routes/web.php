@@ -11,6 +11,9 @@ use App\Http\Controllers\ImportarFacturasController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\ValidarDetraccionesController;
 use App\Http\Controllers\ImportarRetencionesController;
+use App\Http\Controllers\CotizacionController;
+use App\Http\Controllers\CatalogosController;
+use App\Http\Controllers\CotizacionExportController;
 
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────────────
@@ -80,6 +83,49 @@ Route::middleware('auth')->group(function () {
     Route::post('/clientes',        [ClienteController::class, 'store']  )->name('clientes.store');
     Route::put('/clientes/{id}',    [ClienteController::class, 'update'] )->name('clientes.update');
     Route::delete('/clientes/{id}', [ClienteController::class, 'destroy'])->name('clientes.destroy');
+
+
+    // ── COTIZACIONES ────────────────────────────────────────────────
+    Route::get('/cotizaciones',
+        [CotizacionController::class, 'index'])->name('cotizaciones.index');
+    Route::get('/cotizaciones/create',
+        [CotizacionController::class, 'create'])->name('cotizaciones.create');
+    Route::post('/cotizaciones',
+        [CotizacionController::class, 'store'])->name('cotizaciones.store');
+    Route::get('/cotizaciones/{id}',
+        [CotizacionController::class, 'show'])->name('cotizaciones.show');
+    Route::post('/cotizaciones/{id}',
+        [CotizacionController::class, 'update'])->name('cotizaciones.update');
+    Route::delete('/cotizaciones/{id}',
+        [CotizacionController::class, 'destroy'])->name('cotizaciones.destroy');
+    Route::get('/cotizaciones/{id}/print',
+        [CotizacionController::class, 'print'])->name('cotizaciones.print');
+
+    // Rows AJAX
+    Route::post('/cotizaciones/{id}/rows',
+        [CotizacionController::class, 'storeRow'])->name('cotizaciones.rows.store');
+    Route::post('/cotizaciones/{id}/rows/{rowId}',
+        [CotizacionController::class, 'updateRow'])->name('cotizaciones.rows.update');
+    Route::delete('/cotizaciones/{id}/rows/{rowId}',
+        [CotizacionController::class, 'destroyRow'])->name('cotizaciones.rows.destroy');
+
+    // Catálogos (Chofer, Maquinaria, Agregado)
+    Route::get('/catalogos', [CatalogosController::class, 'index'])->name('catalogos.index');
+    Route::post('/catalogos/choferes',         [CatalogosController::class, 'storeChofer'])->name('catalogos.choferes.store');
+    Route::post('/catalogos/choferes/{id}',    [CatalogosController::class, 'updateChofer'])->name('catalogos.choferes.update');
+    Route::delete('/catalogos/choferes/{id}',  [CatalogosController::class, 'destroyChofer'])->name('catalogos.choferes.destroy');
+    Route::post('/catalogos/maquinarias',      [CatalogosController::class, 'storeMaquinaria'])->name('catalogos.maquinarias.store');
+    Route::post('/catalogos/maquinarias/{id}', [CatalogosController::class, 'updateMaquinaria'])->name('catalogos.maquinarias.update');
+    Route::delete('/catalogos/maquinarias/{id}',[CatalogosController::class, 'destroyMaquinaria'])->name('catalogos.maquinarias.destroy');
+    Route::post('/catalogos/agregados',        [CatalogosController::class, 'storeAgregado'])->name('catalogos.agregados.store');
+    Route::post('/catalogos/agregados/{id}',   [CatalogosController::class, 'updateAgregado'])->name('catalogos.agregados.update');
+    Route::delete('/catalogos/agregados/{id}', [CatalogosController::class, 'destroyAgregado'])->name('catalogos.agregados.destroy');
+
+// Excel export para cotizaciones
+    Route::get('/cotizaciones/{id}/export-excel',
+        [CotizacionExportController::class, 'exportExcel'])->name('cotizaciones.export-excel');
+    Route::post('/cotizaciones/export-excel-bulk',
+        [CotizacionExportController::class, 'exportExcelBulk'])->name('cotizaciones.export-excel-bulk');
 
     // ── USUARIOS ───────────────────────────────────────────────────────
     Route::get('/usuarios',         [UsuarioController::class, 'index']  )->name('usuarios.index');

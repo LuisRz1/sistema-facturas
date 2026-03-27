@@ -735,13 +735,13 @@
                     <div class="reporte-tipo-grid">
                         <div class="reporte-tipo-card active" id="rTipoGeneral" onclick="selReporteTipo('general')">
                             <span class="rtc-check" id="rChkGeneral">✓</span>
-                            <span class="rtc-icon">📊</span>
+                            <span class="rtc-icon"></span>
                             <span class="rtc-title">Deuda General</span>
                             <p class="rtc-desc">Resumen por cliente sin desglose de facturas individuales</p>
                         </div>
                         <div class="reporte-tipo-card" id="rTipoDetallado" onclick="selReporteTipo('detallado')">
                             <span class="rtc-check" id="rChkDetallado"></span>
-                            <span class="rtc-icon">📋</span>
+                            <span class="rtc-icon"></span>
                             <span class="rtc-title">Por Cliente con Facturas</span>
                             <p class="rtc-desc">Facturas detalladas agrupadas por cliente con montos y estados</p>
                         </div>

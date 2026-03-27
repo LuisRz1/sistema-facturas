@@ -11,39 +11,19 @@ use Carbon\Carbon;
 /**
  * Importa el Excel oficial de Retenciones SUNAT (Consulta de Comprobantes Emitidos/Recibidos).
  *
- * Estructura del Excel por cada bloque de retención:
- *   Fila N+0  : (vacía o título global)
- *   Fila N+4  : Emisor  → col B = "Emisor:"  col C = "RUC XXXXXXXX - NOMBRE"
- *   Fila N+5  : Receptor
- *   Fila N+6  : Importe Total Retenido | tasa %
- *   Fila N+7  : col H = "Fecha de emisión:" (= fecha de pago/recaudación)  col I = "DD/MM/YYYY"
- *   Fila N+8  : cabeceras (Tipo | Serie | Número | Fecha emisión | Total comprobante | ... | Retención | ...)
- *   Fila N+9+ : filas de facturas hasta encontrar la fila de subtotal (solo col H tiene número)
+ * Por cada bloque de retención:
+ *   Fila Emisor    → col B = "Emisor:"  col C = "RUC XXXXXXXX - NOMBRE EMPRESA"
+ *   Fila Receptor  → col I (8) = fecha de pago de la retención (fecha_recaudacion)
+ *   Fila Importe   → col F (5) = porcentaje tasa
+ *   Cabecera       → "Tipo de documento | Serie | Número | ..."
+ *   Filas factura  → hasta fila subtotal (col A vacía + col H con valor/fórmula)
  *
- * Columnas de cada fila de factura (A..I):
- *   A = Tipo de documento  (ignorado, siempre FACTURA)
- *   B = Serie              → serie
- *   C = Número             → numero
- *   D = Fecha de emisión   → fecha_emision de la factura
- *   E = Total comprobante  → importe_total  (formato "S/ 1234.56")
- *   F = Nro. de pago       (ignorado)
- *   G = Importe pagado     → monto_abonado  (pendiente de validación manual)
- *   H = Retención S/       → total_recaudacion
- *   I = Monto neto a pagar (ignorado)
- *
- * Campos tomados del bloque cabecera:
- *   - fecha_recaudacion  = col I de la fila "Fecha de emisión:" del comprobante de retención
- *   - ruc_emisor         = extraído de col C de la fila "Emisor:"
- *   - razon_social       = extraído de col C de la fila "Emisor:"
- *   - porcentaje         = col F de la fila "Importe Total Retenido:" (tasa %)
+ * Columnas de cada fila de factura (0-based):
+ *   1 = Serie, 2 = Número, 3 = Fecha emisión, 4 = Total comprobante,
+ *   6 = Importe pagado (referencial), 7 = Retención S/
  */
 class ImportarRetencionesController extends Controller
 {
-    public function index()
-    {
-        return view('facturas.importar_retenciones');
-    }
-
     public function importar(Request $request)
     {
         set_time_limit(300);
@@ -68,16 +48,15 @@ class ImportarRetencionesController extends Controller
             return back()->with('error', 'No se pudo leer el Excel: ' . $e->getMessage())->withInput();
         }
 
+        // Sin calcular fórmulas para detectar filas subtotal (=6.37+26.77)
         $hoja = $spreadsheet->getActiveSheet();
-        $rows = $hoja->toArray(null, true, false, false); // array 0-indexed, columnas 0-indexed
+        $rows = $hoja->toArray(null, true, false, false); // 0-indexed
 
-        $idUsuario  = Auth::id();
-        $procesadas = 0;
-        $omitidas   = 0;
-        $duplicadas = 0;
-        $noEncontradas = 0;
-        $errores    = [];
-        $resultados = [];
+        $procesadas      = 0;
+        $noEncontradas   = 0;
+        $clientesCreados = 0;
+        $errores         = [];
+        $resultados      = [];
 
         DB::beginTransaction();
 
@@ -86,30 +65,53 @@ class ImportarRetencionesController extends Controller
 
             foreach ($bloques as $bloque) {
                 $fechaRecaudacion = $bloque['fecha_recaudacion'];
-                $rucEmisor        = $bloque['ruc_emisor'];
                 $razonSocial      = $bloque['razon_social'];
+                $rucEmisor        = $bloque['ruc_emisor'];
                 $porcentaje       = $bloque['porcentaje'];
 
+                // ── Buscar o crear el cliente emisor usando el RUC del Excel ─────
+                $idClienteEmisor = null;
+                if (!empty($rucEmisor)) {
+                    $clienteExistente = DB::table('cliente')->where('ruc', $rucEmisor)->first();
+                    if ($clienteExistente) {
+                        $idClienteEmisor = $clienteExistente->id_cliente;
+                        // Actualizar razón social si cambió
+                        if (!empty($razonSocial) && $clienteExistente->razon_social !== $razonSocial) {
+                            DB::table('cliente')
+                                ->where('id_cliente', $idClienteEmisor)
+                                ->update([
+                                    'razon_social'        => $razonSocial,
+                                    'fecha_actualizacion' => now(),
+                                ]);
+                        }
+                    } else {
+                        // Crear nuevo cliente con los datos del emisor
+                        $idClienteEmisor = DB::table('cliente')->insertGetId([
+                            'ruc'            => $rucEmisor,
+                            'razon_social'   => $razonSocial,
+                            'estado_contado' => 'SIN_DATOS',
+                            'fecha_creacion' => now(),
+                        ]);
+                        $clientesCreados++;
+                    }
+                }
+
                 foreach ($bloque['facturas'] as $fila) {
-                    $serie    = trim((string) ($fila['serie']   ?? ''));
+                    $serie    = strtoupper(trim((string) ($fila['serie']   ?? '')));
                     $numeroRaw = trim((string) ($fila['numero'] ?? ''));
                     $numero   = (int) preg_replace('/\D/', '', $numeroRaw);
 
                     if (empty($serie) || $numero <= 0) {
-                        $omitidas++;
                         continue;
                     }
 
-                    $importe         = $this->parseMonto($fila['importe_total']);
-                    $totalRetencion  = $this->parseMonto($fila['total_recaudacion']);
-                    $importePagado   = $this->parseMonto($fila['importe_pagado']);
-                    $fechaEmision    = $this->parsearFecha($fila['fecha_emision']);
+                    $totalRetencion = $this->parseMonto($fila['total_recaudacion']);
+                    $importePagado  = $this->parseMonto($fila['importe_pagado']);
+                    $fechaEmision   = $this->parsearFecha($fila['fecha_emision']);
 
-                    // Buscar la factura en la BD por serie y número
-                    $factura = DB::table('factura')
-                        ->where('serie',  $serie)
-                        ->where('numero', $numero)
-                        ->first();
+                    // ── Buscar factura: exacto → variantes de serie ───────────────
+                    $factura       = $this->buscarFactura($serie, $numero);
+                    $serieRealEnDB = $factura ? $factura->serie : null;
 
                     if (!$factura) {
                         $noEncontradas++;
@@ -119,24 +121,25 @@ class ImportarRetencionesController extends Controller
                             'serie'            => $serie,
                             'numero'           => str_pad($numero, 8, '0', STR_PAD_LEFT),
                             'emisor'           => $razonSocial,
-                            'importe'          => $importe,
+                            'ruc_emisor'       => $rucEmisor,
+                            'importe'          => null,
                             'retencion'        => $totalRetencion,
+                            'importe_pagado'   => $importePagado,
                             'fecha_emision'    => $fechaEmision,
                             'fecha_recaudacion'=> $fechaRecaudacion,
                             'estado_anterior'  => null,
                             'estado_nuevo'     => null,
                             'accion'           => 'NO_ENCONTRADA',
+                            'serie_real'       => null,
                         ];
                         continue;
                     }
 
                     $estadoActual = $factura->estado;
+                    $importeTotal = (float) ($factura->importe_total ?? 0);
+                    $montoAbonado = (float) ($factura->monto_abonado ?? 0);
 
-                    // Si ya está PAGADA, solo actualizar recaudación si no existe
-                    // Para estados pendientes: actualizar recaudación y dejar en PENDIENTE
-                    // (el pago real debe validarse manualmente, como indica el usuario)
-
-                    // Upsert en tabla recaudacion
+                    // ── Upsert en tabla recaudacion ──────────────────────────────
                     DB::table('recaudacion')->updateOrInsert(
                         ['id_factura' => $factura->id_factura],
                         [
@@ -147,22 +150,10 @@ class ImportarRetencionesController extends Controller
                     );
 
                     // Recalcular monto pendiente
-                    $montoAbonado   = (float) ($factura->monto_abonado ?? 0);
-                    $importeTotal   = (float) ($factura->importe_total ?? $importe);
                     $montoPendiente = max(0, $importeTotal - $montoAbonado - $totalRetencion);
 
-                    // Determinar nuevo estado:
-                    //   - Si ya está PAGADA → no tocar
-                    //   - Si el importe pagado del Excel == importe total → PAGO PARCIAL (pendiente validación)
-                    //   - Resto → PENDIENTE (mantener o actualizar tipo_recaudacion)
-                    $nuevoEstado = $estadoActual;
-                    if (!in_array($estadoActual, ['PAGADA', 'ANULADO'])) {
-                        // Registramos la retención pero NO marcamos como pagada automáticamente.
-                        // El usuario debe validar manualmente el pago real.
-                        // Solo actualizamos tipo_recaudacion = RETENCION.
-                        $nuevoEstado = $estadoActual; // sin cambio de estado
-                    }
-
+                    // Actualizar factura: solo tipo_recaudacion y monto_pendiente
+                    // NO se cambia el estado (requiere validación manual del pago)
                     DB::table('factura')
                         ->where('id_factura', $factura->id_factura)
                         ->update([
@@ -173,17 +164,20 @@ class ImportarRetencionesController extends Controller
 
                     $procesadas++;
                     $resultados[] = [
-                        'serie'            => $serie,
-                        'numero'           => str_pad($numero, 8, '0', STR_PAD_LEFT),
-                        'emisor'           => $razonSocial,
-                        'importe'          => $importeTotal,
-                        'retencion'        => $totalRetencion,
-                        'importe_pagado'   => $importePagado,
-                        'fecha_emision'    => $fechaEmision,
-                        'fecha_recaudacion'=> $fechaRecaudacion,
-                        'estado_anterior'  => $estadoActual,
-                        'estado_nuevo'     => $nuevoEstado,
-                        'accion'           => 'RETENCION_REGISTRADA',
+                        'serie'             => $factura->serie,
+                        'numero'            => str_pad($numero, 8, '0', STR_PAD_LEFT),
+                        'emisor'            => $razonSocial,
+                        'ruc_emisor'        => $rucEmisor,
+                        'importe'           => $importeTotal,
+                        'retencion'         => $totalRetencion,
+                        'importe_pagado'    => $importePagado,
+                        'fecha_emision'     => $fechaEmision,
+                        'fecha_recaudacion' => $fechaRecaudacion,
+                        'estado_anterior'   => $estadoActual,
+                        'estado_nuevo'      => $estadoActual,
+                        'accion'            => 'RETENCION_REGISTRADA',
+                        // Si la serie en DB difiere de la del Excel, mostramos nota
+                        'serie_real'        => ($serieRealEnDB !== $serie) ? $serieRealEnDB : null,
                     ];
                 }
             }
@@ -195,16 +189,17 @@ class ImportarRetencionesController extends Controller
             return back()->with('error',
                 'Error al procesar: ' . $e->getMessage() .
                 ' [' . basename($e->getFile()) . ':' . $e->getLine() . ']'
-            )->with('resumen_tipo', 'retencion')->withInput();
+            )->withInput();
         }
 
         return redirect()->route('facturas.importar')->with('resumen', [
-            'procesadas'    => $procesadas,
-            'duplicadas'    => $duplicadas,
-            'omitidas'      => $omitidas,
-            'no_encontradas'=> $noEncontradas,
-            'errores'       => $errores,
-            'resultados'    => $resultados,
+            'procesadas'       => $procesadas,
+            'duplicadas'       => 0,
+            'omitidas'         => 0,
+            'no_encontradas'   => $noEncontradas,
+            'clientes_creados' => $clientesCreados,
+            'errores'          => $errores,
+            'resultados'       => $resultados,
         ])->with('resumen_tipo', 'retencion');
     }
 
@@ -213,84 +208,148 @@ class ImportarRetencionesController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
+     * Busca una factura por serie+numero con fallback a variantes de serie.
+     * El Excel SUNAT puede usar "FF01" mientras el sistema tiene "F001", etc.
+     */
+    private function buscarFactura(string $serie, int $numero): ?object
+    {
+        // 1. Búsqueda exacta
+        $f = DB::table('factura')->where('serie', $serie)->where('numero', $numero)->first();
+        if ($f) return $f;
+
+        // 2. Variantes de la serie
+        foreach ($this->generarVariantesSerie($serie) as $variante) {
+            $f = DB::table('factura')->where('serie', $variante)->where('numero', $numero)->first();
+            if ($f) return $f;
+        }
+
+        // 3. Case-insensitive como último recurso
+        return DB::table('factura')
+            ->whereRaw('UPPER(serie) = ?', [strtoupper($serie)])
+            ->where('numero', $numero)
+            ->first() ?: null;
+    }
+
+    /**
+     * Genera variantes de serie para tolerancia de formato.
+     * FF01 → [F01, F001, F0001]  |  F001 → [FF01, FF001]  |  FF01 → [F01, F001]
+     */
+    private function generarVariantesSerie(string $serie): array
+    {
+        $variantes = [];
+        $s = strtoupper($serie);
+
+        if (!preg_match('/^([A-Z]+)(\d+)$/', $s, $m)) {
+            return $variantes;
+        }
+
+        $letras  = $m[1];
+        $digitos = $m[2];
+        $num     = (int) $digitos;
+
+        // Variantes de letras
+        $altLetras = [$letras];
+        if (strlen($letras) >= 2 && count(array_unique(str_split($letras))) === 1) {
+            // FF → F, FFF → F
+            $altLetras[] = $letras[0];
+        } else {
+            // F → FF
+            $altLetras[] = str_repeat($letras, 2);
+        }
+
+        // Variantes de padding de dígitos
+        $pads = array_unique([
+            (string) $num,
+            str_pad($num, 2, '0', STR_PAD_LEFT),
+            str_pad($num, 3, '0', STR_PAD_LEFT),
+            str_pad($num, 4, '0', STR_PAD_LEFT),
+        ]);
+
+        foreach ($altLetras as $alt) {
+            foreach ($pads as $pad) {
+                $v = $alt . $pad;
+                if ($v !== $s) {
+                    $variantes[] = $v;
+                }
+            }
+        }
+
+        return array_unique($variantes);
+    }
+
+    /**
      * Recorre todas las filas del Excel e identifica los bloques de retención.
-     * Cada bloque tiene:
-     *   - fecha_recaudacion : fecha del comprobante de retención (col I de fila "Fecha de emisión:")
-     *   - ruc_emisor        : RUC del emisor
-     *   - razon_social      : razón social del emisor
-     *   - porcentaje        : tasa de retención
-     *   - facturas[]        : filas de comprobantes afectados
+     * Detección: fila donde col B (índice 1) == "emisor:"
      */
     private function extraerBloques(array $rows): array
     {
-        $bloques = [];
+        $bloques   = [];
         $totalRows = count($rows);
-        $i = 0;
+        $i         = 0;
 
         while ($i < $totalRows) {
-            $row = $rows[$i];
+            $row  = $rows[$i];
+            $colB = strtolower(trim((string) ($row[1] ?? '')));
 
-            // Detectar fila de "Emisor:" → col B (índice 1) = "Emisor:"
-            $colB = trim((string) ($row[1] ?? ''));
-
-            if (strtolower($colB) === 'emisor:') {
-                // Fila Emisor (i)
+            if ($colB === 'emisor:') {
+                // RUC + razón social del emisor
                 $emisorTexto = trim((string) ($row[2] ?? ''));
                 [$rucEmisor, $razonSocial] = $this->parsearEmisor($emisorTexto);
 
-                // Fila Receptor (i+1) → ignorada
-                // Fila Importe Total Retenido (i+2) → col E = tasa %
-                $filaTasa    = $rows[$i + 2] ?? [];
-                $porcentaje  = (float) trim((string) ($filaTasa[5] ?? '0'));
+                // Receptor (i+1) → col I (8) = fecha de pago de la retención
+                $filaReceptor     = $rows[$i + 1] ?? [];
+                $fechaRecaudacion = $this->parsearFecha($filaReceptor[8] ?? null);
 
-                // Fila "Fecha de emisión:" del comprobante retención (i+1) col H/I
-                // En el Excel: fila Receptor tiene col H = "Fecha de emisión:" y col I = fecha
-                $filaReceptor       = $rows[$i + 1] ?? [];
-                $fechaRecaudacion   = $this->parsearFecha($filaReceptor[8] ?? null);
+                // Importe (i+2) → col F (5) = porcentaje tasa
+                $filaTasa   = $rows[$i + 2] ?? [];
+                $porcentaje = (float) trim((string) ($filaTasa[5] ?? '0'));
 
-                // Saltamos: Emisor(i), Receptor(i+1), Importe(i+2), [vacía(i+3)], Cabecera(i+4)
-                // Las filas de facturas empiezan en i+5 (puede variar si hay fila vacía entre cabecera y datos)
+                // Avanzar hasta la cabecera de facturas
                 $j = $i + 3;
-
-                // Saltar fila de cabeceras (contiene "Tipo de documento")
                 while ($j < $totalRows) {
                     $testCol = strtolower(trim((string) ($rows[$j][0] ?? '')));
-                    if ($testCol === 'tipo de documento') {
+                    if (str_contains($testCol, 'tipo')) {
                         $j++;
                         break;
                     }
                     $j++;
                 }
 
-                // Recolectar filas de facturas hasta encontrar fila de subtotal o nuevo bloque
+                // Recolectar filas de facturas hasta subtotal o nuevo bloque
                 $facturas = [];
                 while ($j < $totalRows) {
-                    $rowJ = $rows[$j];
+                    $rowJ    = $rows[$j];
                     $tipoDoc = strtolower(trim((string) ($rowJ[0] ?? '')));
 
-                    // Fila de factura real
-                    if (in_array($tipoDoc, ['factura', 'boleta', 'nota de crédito', 'nota de debito'])) {
+                    if (in_array($tipoDoc, [
+                        'factura', 'boleta', 'nota de crédito', 'nota de credito',
+                        'nota de debito', 'nota de débito',
+                    ])) {
                         $facturas[] = [
-                            'serie'            => strtoupper(trim((string) ($rowJ[1] ?? ''))),
-                            'numero'           => trim((string) ($rowJ[2] ?? '')),
-                            'fecha_emision'    => $rowJ[3] ?? null,
-                            'importe_total'    => $rowJ[4] ?? 0,
-                            'importe_pagado'   => $rowJ[6] ?? 0,
-                            'total_recaudacion'=> $rowJ[7] ?? 0,
+                            'serie'             => strtoupper(trim((string) ($rowJ[1] ?? ''))),
+                            'numero'            => trim((string) ($rowJ[2] ?? '')),
+                            'fecha_emision'     => $rowJ[3] ?? null,
+                            'importe_total'     => $rowJ[4] ?? 0,
+                            'importe_pagado'    => $rowJ[6] ?? 0,
+                            'total_recaudacion' => $rowJ[7] ?? 0,
                         ];
                         $j++;
                         continue;
                     }
 
-                    // Fila de subtotal (solo col H tiene valor numérico, A está vacía)
-                    $colA = trim((string) ($rowJ[0] ?? ''));
-                    $colH = $rowJ[7] ?? null;
-                    if (empty($colA) && is_numeric($colH)) {
+                    // Subtotal: col A vacía + col H con número o fórmula
+                    $colA    = trim((string) ($rowJ[0] ?? ''));
+                    $colH    = $rowJ[7] ?? null;
+                    $colHStr = trim((string) ($colH ?? ''));
+                    if (
+                        empty($colA) && $colH !== null && $colH !== ''
+                        && (is_numeric($colH) || str_starts_with($colHStr, '='))
+                    ) {
                         $j++;
                         break;
                     }
 
-                    // Fila de "TOTAL DE RETENCIONES" → fin del archivo
+                    // Fin del archivo
                     $colE = strtolower(trim((string) ($rowJ[4] ?? '')));
                     if (str_contains($colE, 'total de retenciones')) {
                         break 2;
@@ -320,32 +379,30 @@ class ImportarRetencionesController extends Controller
     }
 
     /**
-     * Extrae RUC y razón social del texto "RUC 20123456789 - NOMBRE EMPRESA S.A.C."
+     * Extrae RUC y razón social de "RUC 20XXXXXXXXX - NOMBRE EMPRESA S.A.C."
+     * Retorna ['20XXXXXXXXX', 'NOMBRE EMPRESA S.A.C.']
      */
     private function parsearEmisor(string $texto): array
     {
-        // Quitar prefijo "RUC" y espacios extra
-        $texto = preg_replace('/\s+/', ' ', trim($texto));
+        $texto = trim(preg_replace('/\s+/', ' ', $texto));
 
         if (preg_match('/RUC\s+(\d{11})\s*-\s*(.+)/i', $texto, $m)) {
             return [trim($m[1]), trim($m[2])];
         }
 
-        // Fallback: sin RUC reconocible
         return ['', $texto];
     }
 
     /**
-     * Convierte valor del Excel a float (soporta "S/ 1234.56", "1,234.56", 1234.56).
+     * Convierte valor del Excel a float.
+     * Soporta: "S/ 1234.56", "1,234.56", 1234.56
      */
     private function parseMonto(mixed $v): float
     {
         if (is_int($v) || is_float($v)) return abs((float) $v);
         $s = trim((string) $v);
         if ($s === '') return 0.0;
-        // Quitar símbolos de moneda y espacios
         $s = preg_replace('/[S\/\$\s]/i', '', $s);
-        // Normalizar separadores: si tiene coma como decimal
         if (preg_match('/,\d{1,2}$/', $s)) {
             $s = str_replace(['.', ','], ['', '.'], $s);
         } else {
@@ -356,7 +413,8 @@ class ImportarRetencionesController extends Controller
     }
 
     /**
-     * Convierte fecha del Excel (string DD/MM/YYYY o número serial) a "Y-m-d".
+     * Convierte fecha del Excel a "Y-m-d".
+     * Soporta: "DD/MM/YYYY", número serial Excel, DateTimeInterface.
      */
     private function parsearFecha(mixed $v): ?string
     {
@@ -374,9 +432,7 @@ class ImportarRetencionesController extends Controller
 
         $s = trim((string) $v);
 
-        // DD/MM/YYYY
         try { return Carbon::createFromFormat('d/m/Y', $s)->format('Y-m-d'); } catch (\Throwable) {}
-        // YYYY-MM-DD
         try { return Carbon::parse($s)->format('Y-m-d'); } catch (\Throwable) {}
 
         return null;
