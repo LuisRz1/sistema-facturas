@@ -5,13 +5,22 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const app = express();
 app.use(express.json());
 
+const PORT = process.env.PORT || 3001;
 let listo = false;
 
 const client = new Client({
     authStrategy: new LocalAuth({ clientId: 'facturacion-local' }),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process'
+        ]
     }
 });
 
@@ -45,7 +54,6 @@ app.get('/status', (req, res) => {
     res.json({ ok: true, listo });
 });
 
-// ─── Enviar mensaje de texto, imagen o documento PDF ─────────────────────────
 app.post('/send-message', async (req, res) => {
     try {
         const { phone, message, imageUrl, documentUrl, fileName } = req.body;
@@ -58,58 +66,84 @@ app.post('/send-message', async (req, res) => {
             return res.status(400).json({ ok: false, error: 'phone es obligatorio' });
         }
 
-        const chatId = `${phone}@c.us`;
+        const phoneClean = String(phone).replace(/\D/g, '');
+        const chatId = `${phoneClean}@c.us`;
 
-        // ── CASO 1: Documento PDF (reporte financiero) ────────────────────────
         if (documentUrl) {
             try {
                 console.log(`[DOC] Enviando PDF a ${chatId}: ${documentUrl}`);
                 const media = await MessageMedia.fromUrl(documentUrl, { unsafeMime: true });
 
-                // Asignar nombre de archivo legible al receptor
                 if (fileName) {
                     media.filename = fileName;
                 }
 
                 const sentMessage = await client.sendMessage(chatId, media, {
-                    sendMediaAsDocument: true,   // <-- clave: envía como archivo, no como imagen
+                    sendMediaAsDocument: true,
                     caption: message || '',
                 });
 
-                return res.json({ ok: true, id: sentMessage.id._serialized, tipo: 'documento' });
+                return res.json({
+                    ok: true,
+                    id: sentMessage.id._serialized,
+                    tipo: 'documento'
+                });
             } catch (docError) {
                 console.error('Error enviando documento:', docError.message);
-                return res.status(500).json({ ok: false, error: docError.message, tipo: 'documento' });
+                return res.status(500).json({
+                    ok: false,
+                    error: docError.message,
+                    tipo: 'documento'
+                });
             }
         }
 
-        // ── CASO 2: Imagen (comprobante de pago) ──────────────────────────────
         if (imageUrl) {
             try {
                 const media = await MessageMedia.fromUrl(imageUrl, { unsafeMime: true });
-                const sentMessage = await client.sendMessage(chatId, media, { caption: message });
-                return res.json({ ok: true, id: sentMessage.id._serialized, tipo: 'imagen' });
+                const sentMessage = await client.sendMessage(chatId, media, {
+                    caption: message || ''
+                });
+
+                return res.json({
+                    ok: true,
+                    id: sentMessage.id._serialized,
+                    tipo: 'imagen'
+                });
             } catch (imgError) {
                 console.error('Error enviando imagen, enviando solo texto:', imgError.message);
-                const textoConUrl = `${message}\n\n📎 Ver comprobante:\n${imageUrl}`;
-                const sentMessage = await client.sendMessage(chatId, textoConUrl);
-                return res.json({ ok: true, id: sentMessage.id._serialized, tipo: 'texto_fallback', warning: imgError.message });
+                const textoConUrl = `${message || ''}\n\nVer comprobante:\n${imageUrl}`;
+                const sentMessage = await client.sendMessage(chatId, textoConUrl.trim());
+
+                return res.json({
+                    ok: true,
+                    id: sentMessage.id._serialized,
+                    tipo: 'texto_fallback',
+                    warning: imgError.message
+                });
             }
         }
 
-        // ── CASO 3: Texto simple ──────────────────────────────────────────────
         if (!message) {
-            return res.status(400).json({ ok: false, error: 'Se requiere message, imageUrl o documentUrl' });
+            return res.status(400).json({
+                ok: false,
+                error: 'Se requiere message, imageUrl o documentUrl'
+            });
         }
 
         const sentMessage = await client.sendMessage(chatId, message);
-        return res.json({ ok: true, id: sentMessage.id._serialized, tipo: 'texto' });
 
+        return res.json({
+            ok: true,
+            id: sentMessage.id._serialized,
+            tipo: 'texto'
+        });
     } catch (error) {
+        console.error('Error general:', error);
         return res.status(500).json({ ok: false, error: error.message });
     }
 });
 
-app.listen(3001, () => {
-    console.log('Worker WhatsApp escuchando en http://localhost:3001');
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Worker WhatsApp escuchando en puerto ${PORT}`);
 });

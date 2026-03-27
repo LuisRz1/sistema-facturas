@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Http;
 
 class WhatsAppGatewayService
 {
-    private string $gatewayUrl = 'http://localhost:3001/send-message';
+    private string $gatewayUrl = 'https://whastapp-production.up.railway.app/send-message';
 
     /**
      * Envía un mensaje de texto (con imagen opcional adjunta).
