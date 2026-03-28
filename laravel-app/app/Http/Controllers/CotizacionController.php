@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Schema;
 
 class CotizacionController extends Controller
 {
@@ -72,6 +73,8 @@ class CotizacionController extends Controller
         $validated = $request->validate([
             'tipo_cotizacion'   => 'required|in:MAQUINARIA,AGREGADO',
             'id_cliente'        => 'required|integer|exists:cliente,id_cliente',
+            'id_maquinaria'     => 'nullable|required_if:tipo_cotizacion,MAQUINARIA|integer|exists:maquinaria,id_maquinaria',
+            'id_agregado'       => 'nullable|required_if:tipo_cotizacion,AGREGADO|integer|exists:agregado,id_agregado',
             'numero_valorizacion' => 'required|string|max:20',
             'obra'              => 'required|string|max:250',
             'periodo_inicio'    => 'required|date',
@@ -80,8 +83,8 @@ class CotizacionController extends Controller
 
         $id = DB::table('cotizacion')->insertGetId([
             'id_cliente'          => $validated['id_cliente'],
-            'id_maquinaria'       => $validated['tipo_cotizacion'] === 'MAQUINARIA' ? ($request->input('id_maquinaria') ?: null) : null,
-            'id_agregado'         => $validated['tipo_cotizacion'] === 'AGREGADO'   ? ($request->input('id_agregado')   ?: null) : null,
+            'id_maquinaria'       => $validated['tipo_cotizacion'] === 'MAQUINARIA' ? ($validated['id_maquinaria'] ?? null) : null,
+            'id_agregado'         => $validated['tipo_cotizacion'] === 'AGREGADO'   ? ($validated['id_agregado'] ?? null) : null,
             'tipo_cotizacion'     => $validated['tipo_cotizacion'],
             'numero_valorizacion' => $validated['numero_valorizacion'],
             'obra'                => $validated['obra'],
@@ -138,6 +141,8 @@ class CotizacionController extends Controller
         $validated = $request->validate([
             'tipo_cotizacion'     => 'required|in:MAQUINARIA,AGREGADO',
             'id_cliente'          => 'required|integer|exists:cliente,id_cliente',
+            'id_maquinaria'       => 'nullable|required_if:tipo_cotizacion,MAQUINARIA|integer|exists:maquinaria,id_maquinaria',
+            'id_agregado'         => 'nullable|required_if:tipo_cotizacion,AGREGADO|integer|exists:agregado,id_agregado',
             'numero_valorizacion' => 'required|string|max:20',
             'obra'                => 'required|string|max:250',
             'periodo_inicio'      => 'required|date',
@@ -145,14 +150,14 @@ class CotizacionController extends Controller
         ]);
 
         DB::table('cotizacion')->where('id_cotizacion', $id)->update([
-            'id_cliente'          => $request->input('id_cliente'),
-            'id_maquinaria'       => $request->input('tipo_cotizacion') === 'MAQUINARIA' ? $request->input('id_maquinaria') : null,
-            'id_agregado'         => $request->input('tipo_cotizacion') === 'AGREGADO'   ? $request->input('id_agregado')   : null,
-            'tipo_cotizacion'     => $request->input('tipo_cotizacion'),
-            'numero_valorizacion' => $request->input('numero_valorizacion'),
-            'obra'                => $request->input('obra'),
-            'periodo_inicio'      => $request->input('periodo_inicio'),
-            'periodo_fin'         => $request->input('periodo_fin'),
+            'id_cliente'          => $validated['id_cliente'],
+            'id_maquinaria'       => $validated['tipo_cotizacion'] === 'MAQUINARIA' ? ($validated['id_maquinaria'] ?? null) : null,
+            'id_agregado'         => $validated['tipo_cotizacion'] === 'AGREGADO'   ? ($validated['id_agregado'] ?? null) : null,
+            'tipo_cotizacion'     => $validated['tipo_cotizacion'],
+            'numero_valorizacion' => $validated['numero_valorizacion'],
+            'obra'                => $validated['obra'],
+            'periodo_inicio'      => $validated['periodo_inicio'],
+            'periodo_fin'         => $validated['periodo_fin'],
             'fecha_actualizacion' => now(),
         ]);
 
@@ -232,7 +237,7 @@ class CotizacionController extends Controller
                 ->store("cotizaciones/partes/{$cotizacion->id_cotizacion}", 'public');
         }
 
-        $rowId = DB::table('maquinaria_cotizacion')->insertGetId([
+        $insertData = [
             'id_cotizacion'    => $cotizacion->id_cotizacion,
             'id_chofer'        => $v['id_chofer'],
             'id_maquinaria'    => $v['id_maquinaria'],
@@ -246,10 +251,15 @@ class CotizacionController extends Controller
             'precio_hora'      => $v['precio_hora'],
             'total_fila'       => $totalFila,
             'n_parte_diario'   => $v['n_parte_diario'] ?? null,
-            'ruta_parte_diario'=> $rutaParteDiario,
             'activo'           => 1,
             'fecha_creacion'   => now(),
-        ]);
+        ];
+
+        if ($this->tableHasColumn('maquinaria_cotizacion', 'ruta_parte_diario')) {
+            $insertData['ruta_parte_diario'] = $rutaParteDiario;
+        }
+
+        $rowId = DB::table('maquinaria_cotizacion')->insertGetId($insertData);
 
         $this->recalcularTotales($cotizacion->id_cotizacion);
 
@@ -295,7 +305,7 @@ class CotizacionController extends Controller
                 ->store("cotizaciones/partes/{$cotizacion->id_cotizacion}", 'public');
         }
 
-        $rowId = DB::table('agregado_cotizacion')->insertGetId([
+        $insertData = [
             'id_cotizacion'    => $cotizacion->id_cotizacion,
             'id_chofer'        => $v['id_chofer'],
             'id_agregado'      => $v['id_agregado'],
@@ -307,11 +317,18 @@ class CotizacionController extends Controller
             'total_fila'       => $totalFila,
             'n_parte_diario'   => $v['n_parte_diario'] ?? null,
             'grr'              => $v['grr'] ?? null,
-            'ruta_grr'         => $rutaGrr,
-            'ruta_parte_diario'=> $rutaParteDiario,
             'activo'           => 1,
             'fecha_creacion'   => now(),
-        ]);
+        ];
+
+        if ($this->tableHasColumn('agregado_cotizacion', 'ruta_grr')) {
+            $insertData['ruta_grr'] = $rutaGrr;
+        }
+        if ($this->tableHasColumn('agregado_cotizacion', 'ruta_parte_diario')) {
+            $insertData['ruta_parte_diario'] = $rutaParteDiario;
+        }
+
+        $rowId = DB::table('agregado_cotizacion')->insertGetId($insertData);
 
         $this->recalcularTotales($cotizacion->id_cotizacion);
 
@@ -357,8 +374,10 @@ class CotizacionController extends Controller
             ]);
 
             if ($request->hasFile('imagen_parte_diario')) {
-                $updateData['ruta_parte_diario'] = $request->file('imagen_parte_diario')
-                    ->store("cotizaciones/partes/{$idCotizacion}", 'public');
+                if ($this->tableHasColumn('maquinaria_cotizacion', 'ruta_parte_diario')) {
+                    $updateData['ruta_parte_diario'] = $request->file('imagen_parte_diario')
+                        ->store("cotizaciones/partes/{$idCotizacion}", 'public');
+                }
             }
 
             DB::table('maquinaria_cotizacion')
@@ -385,12 +404,16 @@ class CotizacionController extends Controller
             ]);
 
             if ($request->hasFile('archivo_grr')) {
-                $updateData['ruta_grr'] = $request->file('archivo_grr')
-                    ->store("cotizaciones/grr/{$idCotizacion}", 'public');
+                if ($this->tableHasColumn('agregado_cotizacion', 'ruta_grr')) {
+                    $updateData['ruta_grr'] = $request->file('archivo_grr')
+                        ->store("cotizaciones/grr/{$idCotizacion}", 'public');
+                }
             }
             if ($request->hasFile('imagen_parte_diario')) {
-                $updateData['ruta_parte_diario'] = $request->file('imagen_parte_diario')
-                    ->store("cotizaciones/partes/{$idCotizacion}", 'public');
+                if ($this->tableHasColumn('agregado_cotizacion', 'ruta_parte_diario')) {
+                    $updateData['ruta_parte_diario'] = $request->file('imagen_parte_diario')
+                        ->store("cotizaciones/partes/{$idCotizacion}", 'public');
+                }
             }
 
             DB::table('agregado_cotizacion')
@@ -499,5 +522,15 @@ class CotizacionController extends Controller
             'base_sin_igv' => $c->base_sin_igv,
             'total_igv'    => $c->total_igv,
         ];
+    }
+
+    private function tableHasColumn(string $table, string $column): bool
+    {
+        static $cache = [];
+        $key = $table . '::' . $column;
+        if (!array_key_exists($key, $cache)) {
+            $cache[$key] = Schema::hasColumn($table, $column);
+        }
+        return $cache[$key];
     }
 }

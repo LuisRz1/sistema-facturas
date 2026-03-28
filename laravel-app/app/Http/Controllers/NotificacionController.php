@@ -38,7 +38,7 @@ class NotificacionController extends Controller
 
         $mensaje = "Estimado cliente:\n\n"
             . "Le informamos que la factura *{$factura->serie}-{$factura->numero}* se encuentra {$estadoLabel}.\n\n"
-            . "📋 *Detalle:*\n"
+            . "*Detalle:*\n"
             . "• Fecha de vencimiento: {$factura->fecha_vencimiento}\n"
             . "• Monto pendiente: {$factura->moneda} " . number_format($montoPendiente, 2) . "\n\n"
             . "Le solicitamos realizar el pago al BCP dentro del plazo indicado.\n"

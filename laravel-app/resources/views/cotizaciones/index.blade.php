@@ -116,6 +116,20 @@
 
         </form>
 
+        <div class="filter-bar" style="justify-content:flex-end;border-top:1px solid var(--border);">
+            <form method="POST" action="{{ route('cotizaciones.export-excel-bulk') }}">
+                @csrf
+                <input type="hidden" name="search" value="{{ $search }}">
+                <input type="hidden" name="tipo" value="{{ $tipo }}">
+                <input type="hidden" name="id_cliente" value="{{ $cliente }}">
+                <input type="hidden" name="fecha_desde" value="{{ $desde }}">
+                <input type="hidden" name="fecha_hasta" value="{{ $hasta }}">
+                <button type="submit" class="btn btn-primary">
+                    Exportar Excel (según filtros)
+                </button>
+            </form>
+        </div>
+
         <div style="overflow-x:auto;">
             <table id="cotTable">
                 <thead>

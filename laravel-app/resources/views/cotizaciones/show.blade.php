@@ -331,7 +331,9 @@
                                 <select class="row-input" id="rMaquinaria" name="id_maquinaria" required>
                                     <option value="">— Maquinaria —</option>
                                     @foreach($maquinarias as $m)
-                                        <option value="{{ $m->id_maquinaria }}">{{ $m->nombre }}</option>
+                                        <option value="{{ $m->id_maquinaria }}" {{ (int)($cotizacion->id_maquinaria ?? 0) === (int)$m->id_maquinaria ? 'selected' : '' }}>
+                                            {{ $m->nombre }}
+                                        </option>
                                     @endforeach
                                 </select>
                             </div>
@@ -421,7 +423,9 @@
                                 <select class="row-input" id="rAgregado" name="id_agregado" required>
                                     <option value="">— Agregado —</option>
                                     @foreach($agregados as $a)
-                                        <option value="{{ $a->id_agregado }}">{{ $a->nombre }}</option>
+                                        <option value="{{ $a->id_agregado }}" {{ (int)($cotizacion->id_agregado ?? 0) === (int)$a->id_agregado ? 'selected' : '' }}>
+                                            {{ $a->nombre }}
+                                        </option>
                                     @endforeach
                                 </select>
                             </div>
@@ -580,6 +584,31 @@
                                    value="{{ $cotizacion->numero_valorizacion }}">
                         </div>
                     </div>
+                    @if($esMaquinaria)
+                        <div class="form-group" style="margin-bottom:14px;">
+                            <label class="form-label">Maquinaria General *</label>
+                            <select name="id_maquinaria" class="form-input" required>
+                                <option value="">— Seleccionar maquinaria —</option>
+                                @foreach($maquinarias as $m)
+                                    <option value="{{ $m->id_maquinaria }}" {{ (int)($cotizacion->id_maquinaria ?? 0) === (int)$m->id_maquinaria ? 'selected' : '' }}>
+                                        {{ $m->nombre }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @else
+                        <div class="form-group" style="margin-bottom:14px;">
+                            <label class="form-label">Agregado General *</label>
+                            <select name="id_agregado" class="form-input" required>
+                                <option value="">— Seleccionar agregado —</option>
+                                @foreach($agregados as $a)
+                                    <option value="{{ $a->id_agregado }}" {{ (int)($cotizacion->id_agregado ?? 0) === (int)$a->id_agregado ? 'selected' : '' }}>
+                                        {{ $a->nombre }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                    @endif
                     <div class="form-group" style="margin-bottom:14px;">
                         <label class="form-label">Obra *</label>
                         <input type="text" name="obra" class="form-input" id="editHeaderObra" value="{{ $cotizacion->obra }}">
@@ -758,6 +787,15 @@
             fd.append('_token', CSRF);
             try {
                 const res  = await fetch(BASE_URL, { method: 'POST', body: fd });
+                const ct   = (res.headers.get('content-type') || '').toLowerCase();
+                if (!ct.includes('application/json')) {
+                    const raw = await res.text();
+                    const msg = raw.includes('SQLSTATE')
+                        ? raw.match(/SQLSTATE[^<\n]+/)?.[0]
+                        : `Respuesta no JSON (HTTP ${res.status})`;
+                    throw new Error(msg || `HTTP ${res.status}`);
+                }
+
                 const data = await res.json();
                 if (!data.success) { showToast(data.message || 'Error al guardar.', false); return; }
 

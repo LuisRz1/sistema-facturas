@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -57,6 +57,15 @@ class CotizacionExportController extends Controller
             if ($request->filled('id_cliente'))  $query->where('id_cliente', $request->id_cliente);
             if ($request->filled('fecha_desde')) $query->where('periodo_inicio', '>=', $request->fecha_desde);
             if ($request->filled('fecha_hasta')) $query->where('periodo_fin', '<=', $request->fecha_hasta);
+            if ($request->filled('search')) {
+                $search = trim((string)$request->search);
+                $query->join('cliente as cl', 'cl.id_cliente', '=', 'cotizacion.id_cliente')
+                    ->where(function ($q) use ($search) {
+                        $q->where('cotizacion.obra', 'like', "%{$search}%")
+                            ->orWhere('cotizacion.numero_valorizacion', 'like', "%{$search}%")
+                            ->orWhere('cl.razon_social', 'like', "%{$search}%");
+                    });
+            }
             $ids = $query->pluck('id_cotizacion')->toArray();
         }
 
@@ -65,7 +74,11 @@ class CotizacionExportController extends Controller
         }
 
         $spreadsheet = new Spreadsheet();
-        $first = true;
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Valorizaciones');
+
+        $startRow = 1;
+        $rendered = 0;
 
         foreach ($ids as $id) {
             $cotizacion = $this->getCotizacionWithDetails($id);
@@ -73,19 +86,13 @@ class CotizacionExportController extends Controller
 
             $filas = $this->getFilas($cotizacion);
 
-            if ($first) {
-                $sheet = $spreadsheet->getActiveSheet();
-                $first = false;
-            } else {
-                $sheet = $spreadsheet->createSheet();
-            }
+            $endRow = $this->appendCotizacionBlock($sheet, $cotizacion, $filas, $startRow);
+            $startRow = $endRow + 6; // 5 blank rows between blocks
+            $rendered++;
+        }
 
-            $sheetTitle = substr(
-                $cotizacion->numero_valorizacion . '-' . Str::limit($cotizacion->obra, 15, ''),
-                0, 31
-            );
-            $sheet->setTitle($sheetTitle);
-            $this->buildSheet($sheet, $cotizacion, $filas);
+        if ($rendered === 0) {
+            return back()->with('error', 'No se encontraron cotizaciones válidas para exportar.');
         }
 
         $filename = 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.xlsx';
@@ -100,13 +107,24 @@ class CotizacionExportController extends Controller
     ): void {
         $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
         $itemNombre   = $esMaquinaria
-            ? ($cotizacion->maquinaria_nombre ?? 'MAQUINARIA')
-            : ($cotizacion->agregado_nombre   ?? 'AGREGADO');
+            ? trim((string)($cotizacion->maquinaria_nombre ?? ''))
+            : trim((string)($cotizacion->agregado_nombre ?? ''));
+
+        if ($itemNombre === '' && $filas->isNotEmpty()) {
+            $itemNombre = $esMaquinaria
+                ? trim((string)($filas->first()->maquinaria_nombre ?? ''))
+                : trim((string)($filas->first()->agregado_nombre ?? ''));
+        }
+
+        if ($itemNombre === '') {
+            $itemNombre = $esMaquinaria ? 'MAQUINARIA' : 'AGREGADO';
+        }
 
         $periodoInicio = \Carbon\Carbon::parse($cotizacion->periodo_inicio)
             ->locale('es')->isoFormat('D [DE] MMMM [DEL] Y');
         $periodoFin    = \Carbon\Carbon::parse($cotizacion->periodo_fin)
             ->locale('es')->isoFormat('D [DE] MMMM [DEL] Y');
+        $correlativoVal = $this->extraerCorrelativoValorizacion((string)($cotizacion->numero_valorizacion ?? ''));
 
         // ── Column widths ────────────────────────────────────────────────
         if ($esMaquinaria) {
@@ -166,7 +184,8 @@ class CotizacionExportController extends Controller
 
         // ── Row 6: VALORIZACION + PERIODO ────────────────────────────────
         $tipoLabel = $esMaquinaria ? 'ALQUILER DE ' : '';
-        $valLabel  = strtoupper($tipoLabel . $itemNombre) . ' - ' . $cotizacion->numero_valorizacion;
+        $itemConCorrelativo = strtoupper($itemNombre) . ($correlativoVal !== '' ? ' - ' . $correlativoVal : '');
+        $valLabel  = strtoupper($tipoLabel) . $itemConCorrelativo;
 
         $sheet->setCellValue('B6', 'VALORIZACION:');
         $sheet->getStyle('B6')->getFont()->setBold(true)->setUnderline(true);
@@ -214,7 +233,7 @@ class CotizacionExportController extends Controller
 
         // ── Row 11: Item name ─────────────────────────────────────────────
         $sheet->mergeCells("B11:{$lastCol}11");
-        $sheet->setCellValue('B11', '1.-' . strtoupper($itemNombre));
+        $sheet->setCellValue('B11', '1.-' . $itemConCorrelativo);
         $this->styleCenter($sheet, "B11:{$lastCol}11");
         $sheet->getStyle("B11:{$lastCol}11")->getFont()->setBold(true);
         $sheet->getStyle("B11:{$lastCol}11")
@@ -336,21 +355,15 @@ class CotizacionExportController extends Controller
             ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 
         // ── Summary box: BASE / IGV / TOTAL ──────────────────────────────
-        $s1 = $totalRow + 2;
+        $s1 = $totalRow + 1;
         $s2 = $s1 + 1;
         $s3 = $s2 + 1;
 
         if ($esMaquinaria) {
-            $valCol = 'J'; $lblCol = 'L'; $numCol = 'M';
+            $lblCol = 'L'; $numCol = 'M';
         } else {
-            $valCol = 'H'; $lblCol = 'I'; $numCol = 'J';
+            $lblCol = 'I'; $numCol = 'J';
         }
-
-        // Optional: repeat total on left
-        $sheet->setCellValue("{$valCol}{$s1}", (float) $cotizacion->total);
-        $sheet->getStyle("{$valCol}{$s1}")->getNumberFormat()->setFormatCode('#,##0.00');
-        $sheet->setCellValue("{$valCol}{$s2}", 0);
-        $sheet->getStyle("{$valCol}{$s2}")->getNumberFormat()->setFormatCode('#,##0.00');
 
         // Summary labels + values
         foreach ([
@@ -370,6 +383,94 @@ class CotizacionExportController extends Controller
         $sheet->getStyle("{$numCol}{$s3}")->getFont()->setBold(true);
         $sheet->getStyle("{$numCol}{$s3}")->getFill()
             ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFFC0');
+    }
+
+    private function extraerCorrelativoValorizacion(string $numeroValorizacion): string
+    {
+        $numeroValorizacion = trim($numeroValorizacion);
+        if ($numeroValorizacion === '') {
+            return '';
+        }
+
+        $partes = preg_split('/\s*-\s*/', $numeroValorizacion);
+        $primera = trim((string)($partes[0] ?? ''));
+
+        return $primera !== '' ? $primera : $numeroValorizacion;
+    }
+
+    private function appendCotizacionBlock(
+        \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $targetSheet,
+        object $cotizacion,
+        \Illuminate\Support\Collection $filas,
+        int $startRow
+    ): int {
+        $tmpSpreadsheet = new Spreadsheet();
+        $tmpSheet = $tmpSpreadsheet->getActiveSheet();
+        $this->buildSheet($tmpSheet, $cotizacion, $filas);
+
+        $highestRow = $tmpSheet->getHighestRow();
+        $highestCol = $tmpSheet->getHighestColumn();
+        $highestColIdx = Coordinate::columnIndexFromString($highestCol);
+
+        foreach (range(1, $highestColIdx) as $colIdx) {
+            $col = Coordinate::stringFromColumnIndex($colIdx);
+            $width = $tmpSheet->getColumnDimension($col)->getWidth();
+            if ($width > 0) {
+                $targetSheet->getColumnDimension($col)->setWidth($width);
+            }
+        }
+
+        foreach (range(1, $highestRow) as $row) {
+            $targetRow = $startRow + $row - 1;
+            $rowHeight = $tmpSheet->getRowDimension($row)->getRowHeight();
+            if ($rowHeight > 0) {
+                $targetSheet->getRowDimension($targetRow)->setRowHeight($rowHeight);
+            }
+
+            foreach (range(1, $highestColIdx) as $colIdx) {
+                $col = Coordinate::stringFromColumnIndex($colIdx);
+                $cell = $tmpSheet->getCell($col . $row);
+                $targetCell = $col . $targetRow;
+                $targetSheet->setCellValueExplicit($targetCell, $cell->getValue(), $cell->getDataType());
+
+                $xfIndex = $cell->getXfIndex();
+                $style = $tmpSpreadsheet->getCellXfByIndex($xfIndex);
+                if ($style !== null) {
+                    $targetSheet->duplicateStyle($style, $targetCell);
+                }
+            }
+        }
+
+        foreach ($tmpSheet->getMergeCells() as $mergedRange) {
+            $targetSheet->mergeCells($this->offsetRangeRows($mergedRange, $startRow - 1));
+        }
+
+        $tmpSpreadsheet->disconnectWorksheets();
+        unset($tmpSpreadsheet);
+
+        return $startRow + $highestRow - 1;
+    }
+
+    private function offsetRangeRows(string $range, int $offset): string
+    {
+        if (!str_contains($range, ':')) {
+            return $this->offsetCellRow($range, $offset);
+        }
+
+        [$start, $end] = explode(':', $range);
+        return $this->offsetCellRow($start, $offset) . ':' . $this->offsetCellRow($end, $offset);
+    }
+
+    private function offsetCellRow(string $cell, int $offset): string
+    {
+        if (!preg_match('/^([A-Z]+)(\d+)$/i', $cell, $m)) {
+            return $cell;
+        }
+
+        $col = strtoupper($m[1]);
+        $row = (int)$m[2] + $offset;
+
+        return $col . $row;
     }
 
     // ── DB helpers ─────────────────────────────────────────────────────────

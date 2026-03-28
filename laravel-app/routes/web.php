@@ -14,6 +14,7 @@ use App\Http\Controllers\ImportarRetencionesController;
 use App\Http\Controllers\CotizacionController;
 use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\CotizacionExportController;
+use App\Http\Controllers\ConfiguracionController;
 
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────────────
@@ -86,6 +87,10 @@ Route::middleware('auth')->group(function () {
 
 
     // ── COTIZACIONES ────────────────────────────────────────────────
+    // Excel export para cotizaciones (debe ir antes de /cotizaciones/{id})
+    Route::post('/cotizaciones/export-excel-bulk',
+        [CotizacionExportController::class, 'exportExcelBulk'])->name('cotizaciones.export-excel-bulk');
+
     Route::get('/cotizaciones',
         [CotizacionController::class, 'index'])->name('cotizaciones.index');
     Route::get('/cotizaciones/create',
@@ -93,21 +98,21 @@ Route::middleware('auth')->group(function () {
     Route::post('/cotizaciones',
         [CotizacionController::class, 'store'])->name('cotizaciones.store');
     Route::get('/cotizaciones/{id}',
-        [CotizacionController::class, 'show'])->name('cotizaciones.show');
+        [CotizacionController::class, 'show'])->whereNumber('id')->name('cotizaciones.show');
     Route::post('/cotizaciones/{id}',
-        [CotizacionController::class, 'update'])->name('cotizaciones.update');
+        [CotizacionController::class, 'update'])->whereNumber('id')->name('cotizaciones.update');
     Route::delete('/cotizaciones/{id}',
-        [CotizacionController::class, 'destroy'])->name('cotizaciones.destroy');
+        [CotizacionController::class, 'destroy'])->whereNumber('id')->name('cotizaciones.destroy');
     Route::get('/cotizaciones/{id}/print',
-        [CotizacionController::class, 'print'])->name('cotizaciones.print');
+        [CotizacionController::class, 'print'])->whereNumber('id')->name('cotizaciones.print');
 
     // Rows AJAX
     Route::post('/cotizaciones/{id}/rows',
-        [CotizacionController::class, 'storeRow'])->name('cotizaciones.rows.store');
+        [CotizacionController::class, 'storeRow'])->whereNumber('id')->name('cotizaciones.rows.store');
     Route::post('/cotizaciones/{id}/rows/{rowId}',
-        [CotizacionController::class, 'updateRow'])->name('cotizaciones.rows.update');
+        [CotizacionController::class, 'updateRow'])->whereNumber('id')->whereNumber('rowId')->name('cotizaciones.rows.update');
     Route::delete('/cotizaciones/{id}/rows/{rowId}',
-        [CotizacionController::class, 'destroyRow'])->name('cotizaciones.rows.destroy');
+        [CotizacionController::class, 'destroyRow'])->whereNumber('id')->whereNumber('rowId')->name('cotizaciones.rows.destroy');
 
     // Catálogos (Chofer, Maquinaria, Agregado)
     Route::get('/catalogos', [CatalogosController::class, 'index'])->name('catalogos.index');
@@ -121,11 +126,19 @@ Route::middleware('auth')->group(function () {
     Route::post('/catalogos/agregados/{id}',   [CatalogosController::class, 'updateAgregado'])->name('catalogos.agregados.update');
     Route::delete('/catalogos/agregados/{id}', [CatalogosController::class, 'destroyAgregado'])->name('catalogos.agregados.destroy');
 
-// Excel export para cotizaciones
     Route::get('/cotizaciones/{id}/export-excel',
-        [CotizacionExportController::class, 'exportExcel'])->name('cotizaciones.export-excel');
-    Route::post('/cotizaciones/export-excel-bulk',
-        [CotizacionExportController::class, 'exportExcelBulk'])->name('cotizaciones.export-excel-bulk');
+        [CotizacionExportController::class, 'exportExcel'])->whereNumber('id')->name('cotizaciones.export-excel');
+
+    // Configuración
+    Route::get('/configuracion', [ConfiguracionController::class, 'index'])->name('configuracion.index');
+    Route::get('/configuracion/whatsapp/status', [ConfiguracionController::class, 'whatsappStatus'])->name('configuracion.whatsapp.status');
+    Route::get('/configuracion/whatsapp/qr',     [ConfiguracionController::class, 'whatsappQr'])->name('configuracion.whatsapp.qr');
+    Route::post('/configuracion/whatsapp/logout',[ConfiguracionController::class, 'whatsappLogout'])->name('configuracion.whatsapp.logout');
+
+// Retenciones: ruta de confirmación (AGREGAR junto con la ruta de importar)
+    Route::post('/facturas/importar-retenciones/confirmar',
+        [ImportarRetencionesController::class, 'confirmar']
+    )->name('facturas.importar.retenciones.confirmar');
 
     // ── USUARIOS ───────────────────────────────────────────────────────
     Route::get('/usuarios',         [UsuarioController::class, 'index']  )->name('usuarios.index');

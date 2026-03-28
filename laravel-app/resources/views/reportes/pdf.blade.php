@@ -170,7 +170,7 @@
 <div class="no-print">
     <span class="hint">Reporte por empresa</span>
     <button class="btn-print" onclick="window.print()">🖨 Imprimir / PDF</button>
-    <button class="btn-excel" onclick="exportarExcel()">📊 Exportar Excel</button>
+    <button class="btn-excel" onclick="exportarExcel()">Exportar Excel</button>
     <button class="btn-close" onclick="window.close()">Cerrar</button>
 
     <div class="send-inline">
@@ -185,8 +185,8 @@
                 </option>
             @endforeach
         </select>
-        <button class="btn-send-wa"   id="btnEnvWA"   onclick="enviarReporte('whatsapp')" disabled>📱 WhatsApp</button>
-        <button class="btn-send-mail" id="btnEnvMail" onclick="enviarReporte('correo')"   disabled>✉ Correo</button>
+        <button class="btn-send-wa"   id="btnEnvWA"   onclick="enviarReporte('whatsapp')" disabled>WhatsApp</button>
+        <button class="btn-send-mail" id="btnEnvMail" onclick="enviarReporte('correo')"   disabled>Correo</button>
         <div class="send-result-bar" id="sendResultBar"></div>
     </div>
 </div>

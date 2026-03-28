@@ -77,11 +77,8 @@ class ImportarFacturasController extends Controller
         try {
             foreach ($filas as $numFila => $f) {
 
-                // ANULADO = SI → omitir
-                if (strtoupper(trim((string)($f['AF'] ?? ''))) === 'SI') {
-                    $omitidas++;
-                    continue;
-                }
+                $esAnulado = strtoupper(trim((string)($f['AF'] ?? ''))) === 'SI';
+
 
                 // Fila vacía
                 if (empty($f['E']) && empty($f['F'])) continue;
@@ -172,17 +169,20 @@ class ImportarFacturasController extends Controller
                     $importeTotal = -abs($importeTotal);
                 }
 
-                // ── Monto pendiente inicial ────────────────────────────────
-                if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
+                // Para notas de crédito sin factura vinculada: estado = ANULADO
+                $estadoFinal = $estado;
+                if ($esAnulado) {
+                    $estadoFinal = 'ANULADO';
+                } elseif ($esNotaCredito && (empty($serieModificada) || $numeroModificada <= 0)) {
+                    $estadoFinal = 'ANULADO';
+                }
+
+                if ($estadoFinal === 'ANULADO') {
+                    $montoPendiente = 0;
+                } elseif (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
                     $montoPendiente = $importeTotal;
                 } else {
                     $montoPendiente = max(0, $importeTotal - $montoRecaudacion);
-                }
-
-                // Para notas de crédito sin factura vinculada: estado = ANULADO
-                $estadoFinal = $estado;
-                if ($esNotaCredito && (empty($serieModificada) || $numeroModificada <= 0)) {
-                    $estadoFinal = 'ANULADO';
                 }
 
                 // ── Insertar Factura ───────────────────────────────────────

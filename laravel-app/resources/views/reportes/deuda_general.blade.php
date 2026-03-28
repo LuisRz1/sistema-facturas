@@ -107,7 +107,7 @@
 <div class="no-print">
     <span class="hint">Reporte de Deuda General</span>
     <button class="btn-print" onclick="window.print()">🖨 Imprimir / PDF</button>
-    <button class="btn-excel" onclick="exportarExcel()">📊 Exportar Excel</button>
+    <button class="btn-excel" onclick="exportarExcel()">Exportar Excel</button>
     <button class="btn-close" onclick="window.close()">Cerrar</button>
 
     <div class="send-inline">

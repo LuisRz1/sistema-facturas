@@ -755,7 +755,7 @@
                         <span class="estado-chip chip-pendiente"      id="rChipPendiente" onclick="toggleEstado('PENDIENTE',this)">Pendiente</span>
                         <span class="estado-chip chip-vencido"        id="rChipVencido"   onclick="toggleEstado('VENCIDO',this)">Vencido</span>
                         <span class="estado-chip chip-parcial"        id="rChipParcial"   onclick="toggleEstado('PAGO PARCIAL',this)">Pago Parcial</span>
-                        <span class="estado-chip chip-det"            id="rChipDet"       onclick="toggleEstado('POR VALIDAR DETRACCION',this)">Por Validar Det.</span>
+                        <span class="estado-chip chip-det"         id="rChipDet"         onclick="toggleEstado('DIFERENCIA PENDIENTE',this)">Diferencia Pendiente</span>
                     </div>
                 </div>
 

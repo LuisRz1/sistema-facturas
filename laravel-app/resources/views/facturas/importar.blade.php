@@ -130,6 +130,166 @@
         <a href="{{ route('facturas.index') }}" class="btn btn-ghost">← Volver</a>
     </div>
 
+    {{-- ── PREVIEW EDITABLE RETENCIONES ── --}}
+    @if(session('resumen_tipo') === 'retencion_preview' && session('ret_preview'))
+        @php $preview = session('ret_preview'); @endphp
+        <div class="card" style="margin-bottom:24px;max-width:1100px;">
+            <div style="padding:18px 24px;border-bottom:1px solid #ede9fe;background:#f5f3ff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <div>
+                    <p style="font-weight:800;font-size:15px;color:#4c1d95;margin:0;">🟣 Vista Previa de Retenciones — Revisa y Edita antes de Confirmar</p>
+                    <p style="font-size:12px;color:#6d28d9;margin:4px 0 0;">
+                        {{ collect($preview)->where('encontrada', true)->count() }} facturas encontradas ·
+                        {{ collect($preview)->where('encontrada', false)->count() }} no encontradas.
+                        Puedes corregir serie, número y montos antes de importar.
+                    </p>
+                </div>
+                <div style="display:flex;gap:8px;">
+                <span style="background:#d1fae5;color:#065f46;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;">
+                    ✓ {{ collect($preview)->where('encontrada', true)->count() }} OK
+                </span>
+                    <span style="background:#fee2e2;color:#7f1d1d;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;">
+                    ✗ {{ collect($preview)->where('encontrada', false)->count() }} No encontradas
+                </span>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ route('facturas.importar.retenciones.confirmar') }}">
+                @csrf
+                <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+                        <thead>
+                        <tr style="background:#4c1d95;color:#fff;">
+                            <th style="padding:8px 10px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">#</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Serie</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Número</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;min-width:160px;">Emisor</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">RUC Emisor</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;text-align:right;">Importe</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;text-align:right;">Retención S/</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;text-align:right;">Imp. Pagado</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">F. Retención</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">F. Emisión</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Estado DB</th>
+                            <th style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;text-align:center;">Omitir</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @foreach($preview as $idx => $p)
+                            @php $enc = $p['encontrada']; @endphp
+                            <tr style="border-bottom:1px solid #f3f4f6;background:{{ $enc ? '#fff' : '#fff1f2' }};">
+                                <td style="padding:6px 10px;color:#94a3b8;font-size:10px;">{{ $idx + 1 }}</td>
+
+                                {{-- Serie (editable if not found) --}}
+                                <td style="padding:4px 6px;">
+                                    <input type="text" name="filas[{{ $idx }}][serie]"
+                                           value="{{ $p['serie_excel'] }}"
+                                           style="width:72px;height:30px;border:1.5px solid {{ $enc ? '#e2e8f0' : '#fca5a5' }};border-radius:6px;font-size:11px;padding:0 7px;font-family:monospace;font-weight:700;color:{{ $enc ? '#7c3aed' : '#dc2626' }};">
+                                </td>
+
+                                {{-- Número (editable if not found) --}}
+                                <td style="padding:4px 6px;">
+                                    <input type="text" name="filas[{{ $idx }}][numero]"
+                                           value="{{ $p['numero_excel'] }}"
+                                           style="width:90px;height:30px;border:1.5px solid {{ $enc ? '#e2e8f0' : '#fca5a5' }};border-radius:6px;font-size:11px;padding:0 7px;font-family:monospace;font-weight:700;color:{{ $enc ? '#7c3aed' : '#dc2626' }};">
+                                    @if($enc && $p['serie_db'] && $p['serie_db'] !== $p['serie_excel'])
+                                        <div style="font-size:8px;color:#059669;">↳ DB: {{ $p['serie_db'] }}</div>
+                                    @endif
+                                </td>
+
+                                {{-- Emisor --}}
+                                <td style="padding:4px 6px;">
+                                    <input type="text" name="filas[{{ $idx }}][emisor]"
+                                           value="{{ $p['emisor'] }}"
+                                           style="width:100%;min-width:140px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;">
+                                </td>
+
+                                {{-- RUC Emisor --}}
+                                <td style="padding:4px 6px;">
+                                    <input type="text" name="filas[{{ $idx }}][ruc_emisor]"
+                                           value="{{ $p['ruc_emisor'] }}"
+                                           style="width:110px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;font-family:monospace;">
+                                </td>
+
+                                {{-- Importe --}}
+                                <td style="padding:4px 6px;text-align:right;">
+                                    <input type="number" name="filas[{{ $idx }}][importe_excel]"
+                                           value="{{ $p['importe_excel'] ?? 0 }}" step="0.01" min="0"
+                                           style="width:90px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;text-align:right;color:#0f172a;font-weight:700;">
+                                </td>
+
+                                {{-- Retención --}}
+                                <td style="padding:4px 6px;text-align:right;">
+                                    <input type="number" name="filas[{{ $idx }}][total_retencion]"
+                                           value="{{ $p['total_retencion'] }}" step="0.01" min="0"
+                                           style="width:80px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;text-align:right;color:#7c3aed;font-weight:700;">
+                                </td>
+
+                                {{-- Imp. Pagado --}}
+                                <td style="padding:4px 6px;text-align:right;">
+                                    <input type="number" name="filas[{{ $idx }}][importe_pagado]"
+                                           value="{{ $p['importe_pagado'] }}" step="0.01" min="0"
+                                           style="width:80px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;text-align:right;color:#059669;">
+                                </td>
+
+                                {{-- Fecha retención --}}
+                                <td style="padding:4px 6px;">
+                                    <input type="date" name="filas[{{ $idx }}][fecha_recaudacion]"
+                                           value="{{ $p['fecha_recaudacion'] }}"
+                                           style="height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;">
+                                </td>
+
+                                {{-- Fecha emisión --}}
+                                <td style="padding:4px 6px;">
+                                    <input type="date" name="filas[{{ $idx }}][fecha_emision]"
+                                           value="{{ $p['fecha_emision'] }}"
+                                           style="height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;">
+                                </td>
+
+                                {{-- Estado DB --}}
+                                <td style="padding:6px 10px;">
+                                    @if($enc)
+                                        <span style="background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;">
+                                        ✓ {{ $p['estado_actual'] }}
+                                    </span>
+                                    @else
+                                        <span style="background:#fee2e2;color:#7f1d1d;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;">
+                                        ✗ No encontrada
+                                    </span>
+                                    @endif
+                                </td>
+
+                                {{-- Omitir --}}
+                                <td style="padding:4px 6px;text-align:center;">
+                                    <input type="checkbox" name="filas[{{ $idx }}][omitir]" value="1"
+                                           style="width:16px;height:16px;accent-color:#dc2626;cursor:pointer;"
+                                           title="Marcar para omitir esta fila">
+                                </td>
+
+                                {{-- Hidden fields --}}
+                                <input type="hidden" name="filas[{{ $idx }}][porcentaje]" value="{{ $p['porcentaje'] }}">
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="padding:14px 18px;background:#f5f3ff;border-top:1px solid #ddd6fe;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                    <p style="font-size:11px;color:#6d28d9;margin:0;">
+                        ⚠ Puedes editar <strong>serie, número y montos</strong> directamente en la tabla.
+                        Marca "Omitir" en las filas que no deseas importar.
+                        Las facturas con serie/número corregido se buscarán al confirmar.
+                    </p>
+                    <div style="display:flex;gap:8px;">
+                        <a href="{{ route('facturas.importar') }}" class="btn btn-ghost" style="font-size:13px;">Cancelar</a>
+                        <button type="submit" class="btn btn-primary" style="background:#7c3aed;border-color:#7c3aed;">
+                            ✓ Confirmar e Importar Retenciones
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    @endif
+
     {{-- ── RESULTADO RETENCIONES ── --}}
     @if(session('resumen_tipo') === 'retencion' && session('resumen'))
         @php $r = session('resumen'); @endphp
@@ -142,10 +302,14 @@
                 </div>
             </div>
 
-            <div class="result-grid" style="grid-template-columns:repeat(4,1fr);">
+            <div class="result-grid" style="grid-template-columns:repeat(5,1fr);">
                 <div class="result-box verde">
                     <div class="num">{{ $r['procesadas'] }}</div>
                     <div class="lbl">Retenciones registradas</div>
+                </div>
+                <div class="result-box azul">
+                    <div class="num">{{ $r['duplicadas'] ?? 0 }}</div>
+                    <div class="lbl">Duplicadas</div>
                 </div>
                 <div class="result-box rojo">
                     <div class="num">{{ $r['no_encontradas'] }}</div>
@@ -196,7 +360,7 @@
                             </thead>
                             <tbody>
                             @foreach($r['resultados'] as $res)
-                                <tr style="{{ $res['accion'] === 'NO_ENCONTRADA' ? 'background:#fff1f2;' : '' }}">
+                                <tr style="{{ in_array($res['accion'], ['NO_ENCONTRADA','NO_IMPORTADA']) ? 'background:#fff1f2;' : (str_starts_with($res['accion'], 'DUPLICADA') ? 'background:#fffbeb;' : '') }}">
                                     <td style="font-family:'DM Mono',monospace;font-weight:700;font-size:11px;color:#7c3aed;">
                                         {{ $res['serie'] }}-{{ $res['numero'] }}
                                         @if(!empty($res['serie_real']))
@@ -212,7 +376,10 @@
                                         @endif
                                     </td>
                                     <td class="r">
-                                        {{ $res['importe'] ? 'S/ '.number_format($res['importe'],2) : '—' }}
+                                        @php
+                                            $importeMostrar = $res['importe'] ?? ($res['importe_excel'] ?? 0);
+                                        @endphp
+                                        {{ $importeMostrar > 0 ? 'S/ '.number_format($importeMostrar,2) : '—' }}
                                     </td>
                                     <td class="r" style="color:#7c3aed;font-weight:700;">
                                         S/ {{ number_format($res['retencion'],2) }}
@@ -232,18 +399,13 @@
                                             </span>
                                     </td>
                                     <td>
-                                        @if($res['accion'] === 'RETENCION_REGISTRADA')
+                                        @if(in_array($res['accion'], ['RETENCION_REGISTRADA','FACTURA_CREADA_Y_RETENCION_REGISTRADA']))
                                             <span class="badge-ok">✓ OK</span>
+                                        @elseif(in_array($res['accion'], ['DUPLICADA_EXISTENTE','DUPLICADA_EN_ARCHIVO']))
+                                            <span style="display:inline-flex;align-items:center;justify-content:center;min-width:90px;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:700;background:#fef3c7;color:#92400e;border:1px solid #fde68a;">↻ Duplicada</span>
                                         @else
-                                            @if($res['accion'] === 'NO_ENCONTRADA')
-                                                <span class="badge-miss">✗ No encontrada</span>
-                                                <a href="{{ route('facturas.index') }}?search={{ $res['serie'] }}-{{ $res['numero'] }}"
-                                                   style="font-size:9px;color:#1d4ed8;text-decoration:underline;margin-left:4px;">
-                                                    Buscar →
-                                                </a>
-                                            @endif
+                                            <span class="badge-miss">✗ No encontrada</span>
                                         @endif
-
                                     </td>
                                 </tr>
                             @endforeach

@@ -208,7 +208,8 @@ class FacturaController extends Controller
         $estado = $this->calcularEstado(
             $factura, $montoAbonado, $montoPendiente,
             $totalRecaudacion, $tipoRecaudacion,
-            (bool) ($validated['validar_detraccion'] ?? false)
+            (bool) ($validated['validar_detraccion'] ?? false),
+            $fechaRecaudacion
         );
 
         if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
@@ -236,8 +237,14 @@ class FacturaController extends Controller
 
     private function calcularEstado(
         Factura $factura, float $montoAbonado, float $montoPendiente,
-        float $totalRecaudacion, ?string $tipoRecaudacion, bool $validarDetraccion
+        float $totalRecaudacion, ?string $tipoRecaudacion, bool $validarDetraccion,
+        ?string $fechaRecaudacion
     ): string {
+        if ($tipoRecaudacion === 'RETENCION' && $totalRecaudacion > 0 && !empty($fechaRecaudacion)) {
+            if ($montoPendiente <= 0) return 'PAGADA';
+            return 'DIFERENCIA PENDIENTE';
+        }
+
         if ($tipoRecaudacion === 'AUTODETRACCION' && $totalRecaudacion > 0) {
             if ($montoPendiente <= 0) return 'PAGADA';
             return 'DIFERENCIA PENDIENTE';
