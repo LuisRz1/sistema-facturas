@@ -362,7 +362,7 @@
                                 <div class="row-input-lbl">Imagen Parte Diario</div>
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <button type="button" class="file-btn" id="btnImgParte" onclick="document.getElementById('inputImgParte').click()">
-                                        📷 Adjuntar imagen
+                                        Adjuntar imagen
                                     </button>
                                     <input type="file" id="inputImgParte" name="imagen_parte_diario" accept="image/*" style="display:none;" onchange="onFileSelected(this,'btnImgParte','📷')">
                                 </div>
@@ -454,7 +454,7 @@
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
                     <div style="flex:1;">
                         <div style="font-weight:800;font-size:13px;color:#92400e;margin-bottom:4px;">
-                            👻 Fila fantasma detectada — Hay un salto en las horas del horómetro
+                            Fila fantasma detectada — Hay un salto en las horas del horómetro
                         </div>
                         <div id="phantomDesc" style="font-size:12px;color:#78350f;"></div>
                     </div>

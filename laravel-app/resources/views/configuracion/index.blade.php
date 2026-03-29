@@ -84,7 +84,7 @@
 
                 <div id="stateConectado">
                     <div style="text-align:center;padding:20px 0;">
-                        <div style="font-size:52px;margin-bottom:12px;">📱</div>
+                        <div style="font-size:52px;margin-bottom:12px;"></div>
                         <div style="font-size:16px;font-weight:800;color:#065f46;margin-bottom:6px;">WhatsApp Listo para Envío</div>
                         <div style="font-size:13px;color:var(--text-muted);">La sesión está activa. Los mensajes y reportes se enviarán correctamente.</div>
                     </div>
@@ -101,7 +101,7 @@
 
                 <div id="stateQR">
                     <div class="warn-box">
-                        📱 <strong>Escanea el QR con WhatsApp</strong> para conectar la sesión de envío de mensajes.<br>
+                        <strong>Escanea el QR con WhatsApp</strong> para conectar la sesión de envío de mensajes.<br>
                         Abre WhatsApp → Dispositivos vinculados → Vincular un dispositivo.
                     </div>
                     <div class="qr-container">
@@ -132,12 +132,12 @@
 
                 <div id="stateError">
                     <div style="text-align:center;padding:20px 0;">
-                        <div style="font-size:48px;margin-bottom:12px;">⚠️</div>
+                        <div style="font-size:48px;margin-bottom:12px;"></div>
                         <div style="font-size:15px;font-weight:700;color:#dc2626;margin-bottom:6px;">Worker no disponible</div>
                         <div style="font-size:12px;color:var(--text-muted);max-width:360px;margin:0 auto;" id="errorDetailText">No se pudo conectar con el worker de WhatsApp.</div>
                     </div>
                     <div class="info-box">
-                        💡 Asegúrate de que el worker esté corriendo:<br>
+                        Asegúrate de que el worker esté corriendo:<br>
                         <code>cd whatsapp-worker && node server.js</code>
                     </div>
                     <div style="display:flex;justify-content:center;margin-top:16px;">
@@ -281,7 +281,7 @@
                     badge.innerHTML        = '<span class="status-dot dot-red"></span> Sin conexión';
                     badge.style.background = '#fee2e2';
                     badge.style.color      = '#dc2626';
-                    iconWrap.innerHTML     = '⚠️';
+                    iconWrap.innerHTML     = '';
                     iconWrap.className     = 'wa-icon red';
                     statusText.textContent = 'Worker no disponible';
                     document.getElementById('errorDetailText').textContent = data.error || 'El worker no responde en el puerto 3001';
@@ -294,7 +294,7 @@
                     badge.innerHTML        = '<span class="status-dot dot-green"></span> Conectado';
                     badge.style.background = '#d1fae5';
                     badge.style.color      = '#065f46';
-                    iconWrap.innerHTML     = '✅';
+                    iconWrap.innerHTML     = '';
                     iconWrap.className     = 'wa-icon green';
                     statusText.textContent = 'WhatsApp listo para envío';
                     stopQrPoll(); stopQrTimer();
@@ -303,7 +303,7 @@
                     badge.innerHTML        = '<span class="status-dot dot-amber"></span> Esperando QR';
                     badge.style.background = '#fef3c7';
                     badge.style.color      = '#92400e';
-                    iconWrap.innerHTML     = '📷';
+                    iconWrap.innerHTML     = '';
                     iconWrap.className     = 'wa-icon amber';
                     statusText.textContent = 'Escanea el QR para conectar';
                     showState('QR');
@@ -369,7 +369,7 @@
                     placeholder.style.display = 'flex';
                 }
             } catch(e) {
-                placeholder.innerHTML = `<span style="color:#dc2626;font-size:12px;text-align:center;">❌ Error: ${e.message}</span>`;
+                placeholder.innerHTML = `<span style="color:#dc2626;font-size:12px;text-align:center;">Error: ${e.message}</span>`;
                 placeholder.style.display = 'flex';
             } finally {
                 if (btn) btn.disabled = false;

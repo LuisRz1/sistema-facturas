@@ -15,6 +15,7 @@ use App\Http\Controllers\CotizacionController;
 use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\CotizacionExportController;
 use App\Http\Controllers\ConfiguracionController;
+use App\Http\Controllers\ImportarClientesController;
 
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────────────
@@ -78,6 +79,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/facturas/importar/procesar',
         [ImportarFacturasController::class, 'importar']
     )->name('facturas.importar.procesar');
+
+    // ── IMPORTAR CLIENTES ─────────────────────────────────────────────
+    Route::get('/clientes/importar',  [ImportarClientesController::class, 'index'])
+        ->name('clientes.importar');
+
+    Route::post('/clientes/importar', [ImportarClientesController::class, 'importar'])
+        ->name('clientes.importar.procesar');
 
     // ── CLIENTES ───────────────────────────────────────────────────────
     Route::get('/clientes',         [ClienteController::class, 'index']  )->name('clientes.index');

@@ -150,7 +150,7 @@
                     <tr>
                         <td>
                             <span class="tipo-badge {{ $cot->tipo_cotizacion === 'MAQUINARIA' ? 'tipo-maquinaria' : 'tipo-agregado' }}">
-                                {{ $cot->tipo_cotizacion === 'MAQUINARIA' ? '⚙' : '🪨' }}
+                                {{ $cot->tipo_cotizacion === 'MAQUINARIA' ? '' : '' }}
                                 {{ $cot->tipo_cotizacion }}
                             </span>
                         </td>
@@ -183,7 +183,7 @@
                                 <a href="{{ route('cotizaciones.show', $cot->id_cotizacion) }}" class="action-btn" title="Ver / Gestionar filas">
                                     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                                 </a>
-                                <a href="{{ route('cotizaciones.print', $cot->id_cotizacion) }}" class="action-btn" title="Imprimir" target="_blank">
+                                <a href="{{ route('cotizaciones.export-excel', $cot->id_cotizacion) }}" class="action-btn" title="Imprimir" target="_blank">
                                     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                                 </a>
                                 <button type="button" class="action-btn danger" title="Eliminar"

@@ -1,73 +1,95 @@
 const express = require('express');
 const qrcode = require('qrcode-terminal');
-const QRCode = require('qrcode'); // npm install qrcode
+const QRCode = require('qrcode');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
-let listo  = false;
-let qrActual = null; // stores the latest QR string
+let listo    = false;
+let qrActual = null;
+let client   = null;
 
-const client = new Client({
-    authStrategy: new LocalAuth({ clientId: 'facturacion-local' }),
-    puppeteer: {
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process'
-        ]
+// ── Crear / Recrear el cliente WhatsApp ──────────────────────────────────
+function crearCliente() {
+    if (client) {
+        try { client.removeAllListeners(); } catch(e) {}
     }
-});
 
-client.on('qr', (qr) => {
-    qrActual = qr;
-    console.log('\nEscanea este QR con WhatsApp:\n');
-    qrcode.generate(qr, { small: true });
-});
-
-client.on('authenticated', () => {
-    qrActual = null;
-    console.log('Sesión autenticada');
-});
-
-client.on('ready', () => {
-    listo    = true;
-    qrActual = null;
-    console.log('WhatsApp listo');
-});
-
-client.on('auth_failure', (msg) => {
     listo    = false;
     qrActual = null;
-    console.error('Fallo de autenticación:', msg);
-});
 
-client.on('disconnected', (reason) => {
-    listo    = false;
-    qrActual = null;
-    console.log('WhatsApp desconectado:', reason);
-});
+    client = new Client({
+        authStrategy: new LocalAuth({ clientId: 'facturacion-local' }),
+        puppeteer: {
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process'
+            ]
+        }
+    });
 
-client.initialize();
+    client.on('qr', (qr) => {
+        qrActual = qr;
+        console.log('\nEscanea este QR con WhatsApp:\n');
+        qrcode.generate(qr, { small: true });
+    });
+
+    client.on('authenticated', () => {
+        qrActual = null;
+        console.log('Sesión autenticada');
+    });
+
+    client.on('ready', () => {
+        listo    = true;
+        qrActual = null;
+        console.log('WhatsApp listo');
+    });
+
+    client.on('auth_failure', (msg) => {
+        listo    = false;
+        qrActual = null;
+        console.error('Fallo de autenticación:', msg);
+        // Reintentar en 5 segundos
+        setTimeout(() => crearCliente(), 5000);
+    });
+
+    client.on('disconnected', (reason) => {
+        listo    = false;
+        qrActual = null;
+        console.log('WhatsApp desconectado:', reason);
+        // Si fue desconectado (no por logout manual), reinicializar para mostrar QR
+        if (reason !== 'LOGOUT') {
+            setTimeout(() => crearCliente(), 3000);
+        }
+    });
+
+    client.initialize().catch(err => {
+        console.error('Error al inicializar:', err.message);
+        setTimeout(() => crearCliente(), 5000);
+    });
+}
+
+// Iniciar al arrancar
+crearCliente();
 
 // ── GET /status ───────────────────────────────────────────────────────────
 app.get('/status', (req, res) => {
     res.json({
-        ok        : true,
+        ok          : true,
         listo,
-        esperandoQr: qrActual !== null,
+        esperandoQr : qrActual !== null,
     });
 });
 
 // ── GET /qr ───────────────────────────────────────────────────────────────
-// Returns { ok, qr_data_url } where qr_data_url is a base64 PNG data URL
 app.get('/qr', async (req, res) => {
     if (listo) {
         return res.json({ ok: true, listo: true, message: 'Ya conectado, no se necesita QR.' });
@@ -84,13 +106,38 @@ app.get('/qr', async (req, res) => {
 });
 
 // ── POST /logout ──────────────────────────────────────────────────────────
+// Cierra la sesión actual Y reinicializa el cliente para generar nuevo QR
 app.post('/logout', async (req, res) => {
     try {
-        await client.logout();
         listo    = false;
         qrActual = null;
-        res.json({ ok: true, message: 'Sesión cerrada. Se generará nuevo QR al reiniciar.' });
+
+        if (client) {
+            try {
+                await client.logout();
+                console.log('Sesión cerrada, destruyendo cliente...');
+            } catch(e) {
+                console.log('Error en logout (ignorado):', e.message);
+            }
+
+            try {
+                await client.destroy();
+                console.log('Cliente destruido.');
+            } catch(e) {
+                console.log('Error en destroy (ignorado):', e.message);
+            }
+        }
+
+        // Esperar un momento y reinicializar para generar nuevo QR
+        console.log('Reinicializando cliente para nuevo QR...');
+        setTimeout(() => crearCliente(), 2000);
+
+        res.json({ ok: true, message: 'Sesión cerrada. Generando nuevo QR en 2 segundos...' });
+
     } catch (err) {
+        console.error('Error en logout:', err.message);
+        // Intentar reinicializar de todas formas
+        setTimeout(() => crearCliente(), 3000);
         res.status(500).json({ ok: false, error: err.message });
     }
 });
