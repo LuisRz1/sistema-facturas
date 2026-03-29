@@ -65,24 +65,24 @@
                 <div class="tipo-grid">
                     <div class="tipo-card" id="cardMaq" onclick="selTipo('MAQUINARIA')">
                         <span class="tipo-check" id="chkMaq"></span>
-                        <span class="tipo-icon">⚙️</span>
+                        <span class="tipo-icon"></span>
                         <span class="tipo-label" style="color:#92400e;">Maquinaria</span>
                         <p class="tipo-desc">Alquiler de volquetes, cisternas, motoniveladoras, etc. Se cobra por horas trabajadas.</p>
                     </div>
                     <div class="tipo-card" id="cardAgr" onclick="selTipo('AGREGADO')">
                         <span class="tipo-check" id="chkAgr"></span>
-                        <span class="tipo-icon">🪨</span>
+                        <span class="tipo-icon"></span>
                         <span class="tipo-label" style="color:#065f46;">Agregados</span>
                         <p class="tipo-desc">Arena gruesa, eliminación de desmonte, suministro de agua, etc. Se cobra por m³.</p>
                     </div>
                 </div>
                 @error('tipo_cotizacion')
-                <p style="color:#dc2626;font-size:12px;margin-top:8px;">⚠ {{ $message }}</p>
+                <p style="color:#dc2626;font-size:12px;margin-top:8px;"> {{ $message }}</p>
                 @enderror
 
                 {{-- ② SELECCIÓN ESPECÍFICA --}}
                 <div class="item-selector" id="selectorMaq">
-                    <label>⚙️ Maquinaria de esta cotización *</label>
+                    <label>Maquinaria de esta cotización *</label>
                     <select name="id_maquinaria" id="selMaquinaria" class="form-input"
                             style="border-color:var(--gold-b);">
                         <option value="">— Seleccionar maquinaria —</option>
@@ -102,7 +102,7 @@
                 </div>
 
                 <div class="item-selector" id="selectorAgr">
-                    <label>🪨 Tipo de Agregado de esta cotización *</label>
+                    <label>Tipo de Agregado de esta cotización *</label>
                     <select name="id_agregado" id="selAgregado" class="form-input"
                             style="border-color:var(--gold-b);">
                         <option value="">— Seleccionar agregado —</option>

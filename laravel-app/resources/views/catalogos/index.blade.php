@@ -64,13 +64,13 @@
     {{-- ── TABS ── --}}
     <div class="tabs-bar">
         <button class="tab-btn active" onclick="switchTab('choferes',this)">
-            🧑‍✈️ Choferes <span class="tab-cnt" id="cntChofer">{{ $choferes->count() }}</span>
+            Choferes <span class="tab-cnt" id="cntChofer">{{ $choferes->count() }}</span>
         </button>
         <button class="tab-btn" onclick="switchTab('maquinarias',this)">
-            ⚙️ Maquinaria <span class="tab-cnt" id="cntMaq">{{ $maquinarias->count() }}</span>
+            Maquinaria <span class="tab-cnt" id="cntMaq">{{ $maquinarias->count() }}</span>
         </button>
         <button class="tab-btn" onclick="switchTab('agregados',this)">
-            🪨 Agregados <span class="tab-cnt" id="cntAgr">{{ $agregados->count() }}</span>
+            Agregados <span class="tab-cnt" id="cntAgr">{{ $agregados->count() }}</span>
         </button>
     </div>
 
