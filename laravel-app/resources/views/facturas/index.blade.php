@@ -20,6 +20,18 @@
         @keyframes rowIn    { from { opacity:0; transform:translateX(-8px);  } to { opacity:1; transform:translateX(0); } }
         @keyframes chipPop  { 0% { opacity:0; transform:scale(0.85); } 100% { opacity:1; transform:scale(1); } }
 
+        /* ── RESALTADO ÚLTIMA FACTURA EDITADA ── */
+        .fila-last-edited {
+            background: linear-gradient(90deg, #fef3c7 0%, #fde68a 40%, #fef3c7 100%) !important;
+            border-left: 3px solid #f5c842 !important;
+            animation: highlightFade 7s ease-out forwards;
+        }
+        @keyframes highlightFade {
+            0%   { background: linear-gradient(90deg, #fde68a 0%, #fbbf24 40%, #fde68a 100%) !important; }
+            60%  { background: linear-gradient(90deg, #fef3c7 0%, #fde68a 40%, #fef3c7 100%) !important; }
+            100% { background: transparent !important; border-left-color: transparent !important; }
+        }
+
         .page-header { animation:fadeDown .5s ease-out; }
 
         .filter-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; animation:slideUp .55s ease-out .15s both; }
@@ -77,20 +89,23 @@
         .legend-item { display:flex; align-items:center; gap:6px; }
         .legend-dot  { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
 
-        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px; }
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:20px; }
         .stat-card  { background:#fff; border:1.5px solid var(--gold-b); border-radius:12px; padding:16px; display:flex; align-items:center; gap:12px; transition:all .2s; animation:chipPop .4s ease-out both; }
         .stat-card:nth-child(1) { animation-delay:.1s; }
         .stat-card:nth-child(2) { animation-delay:.17s; }
         .stat-card:nth-child(3) { animation-delay:.24s; }
         .stat-card:nth-child(4) { animation-delay:.31s; }
+        .stat-card:nth-child(5) { animation-delay:.38s; }
         .stat-card:hover { border-color:var(--gold); box-shadow:0 4px 12px rgba(245,200,66,0.12); transform:translateY(-2px); }
         .stat-icon  { width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; }
         .stat-card.blue  .stat-icon { background:#dbeafe; color:#1d4ed8; }
         .stat-card.amber .stat-icon { background:#fef3c7; color:var(--gold); }
         .stat-card.green .stat-icon { background:#d1fae5; color:#059669; }
         .stat-card.red   .stat-icon { background:#fee2e2; color:#dc2626; }
+        .stat-card.purple .stat-icon { background:#ede9fe; color:#7c3aed; }
         .stat-label { font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
         .stat-value { font-size:16px; font-weight:700; color:var(--text-primary); font-family:'DM Mono',monospace; }
+        .stat-sub   { font-size:10px; color:#9ca3af; margin-top:2px; }
 
         .monto-pendiente-cell { color:#dc2626; font-weight:700; font-family:'DM Mono',monospace; font-size:12px; }
         .monto-pendiente-zero { color:#059669; font-family:'DM Mono',monospace; font-size:12px; }
@@ -222,13 +237,46 @@
         </div>
     </div>
 
-    {{-- ── STATS ── --}}
-    {{-- facturasParaTotales excluye NC huérfanas (factura enlazada no existe) y ANULADO sin crédito --}}
+    {{-- ── BANNER IMPORTACIÓN EXITOSA ── --}}
+    @if(session('resumen_importacion'))
+        @php $ri = session('resumen_importacion'); @endphp
+        <div style="display:flex;align-items:center;gap:14px;background:#d1fae5;border:1.5px solid #6ee7b7;border-radius:12px;padding:14px 20px;margin-bottom:16px;animation:slideUp .4s ease-out;">
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="#059669" stroke-width="2.5" style="flex-shrink:0;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+
+            <div style="flex:1;">
+                <strong style="color:#065f46;font-size:13px;">
+                    ✓ Importación completada — {{ $ri['insertadas'] }} factura(s) insertada(s)
+                    @if(($ri['duplicadas'] ?? 0) > 0)
+                        , {{ $ri['duplicadas'] }} duplicadas omitidas
+                    @endif
+                </strong>
+
+                <div style="font-size:11px;color:#047857;margin-top:2px;">
+                    Mostrando facturas del período importado · Tipo de recaudación:
+                    <strong>{{ $ri['tipo_recaudacion'] }}</strong>
+
+                    @if(!empty($ri['errores']))
+                        — {{ count($ri['errores']) }} fila(s) con error
+                    @endif
+                </div>
+            </div>
+
+            <span style="background:#059669;color:#fff;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;white-space:nowrap;">
+            {{ $ri['tipo_recaudacion'] }}
+        </span>
+        </div>
+    @endif
+
+    {{-- ── STATS (5 cards) ── --}}
     @php
-        $total             = $facturasParaTotales->sum('importe_total');
-        $pendiente         = $facturasParaTotales->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
-        $pagada            = $facturasParaTotales->where('estado','PAGADA')->sum('importe_total');
-        $recaudacionTotal  = $facturasParaTotales->sum('monto_recaudacion') ?? 0;
+        $total              = $facturasParaTotales->sum('importe_total');
+        $pendiente          = $facturasParaTotales->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
+        $pagada             = $facturasParaTotales->where('estado','PAGADA')->sum('importe_total');
+        $recaudacionTotal   = $facturasParaTotales->sum('monto_recaudacion') ?? 0;
+        // Recaudación depositada = la que ya tiene fecha_recaudacion confirmada
+        $recaudacionPagada  = $facturasParaTotales->filter(fn($f) => !empty($f->fecha_recaudacion))->sum('monto_recaudacion') ?? 0;
         $totalPendienteReal = $pendiente;
     @endphp
     <div class="stats-grid">
@@ -247,6 +295,19 @@
         <div class="stat-card red">
             <div class="stat-icon"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg></div>
             <div><div class="stat-label">Monto de Recaudación</div><div class="stat-value">S/ {{ number_format($recaudacionTotal,2) }}</div></div>
+        </div>
+        <div class="stat-card purple" style="border-left-color:#7c3aed;">
+            <div class="stat-icon" style="background:#ede9fe;color:#7c3aed;">
+                <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            </div>
+            <div>
+                <div class="stat-label" style="color:#7c3aed;">Recaud. Depositada</div>
+                <div class="stat-value" style="color:#7c3aed;">S/ {{ number_format($recaudacionPagada,2) }}</div>
+                @php $recaudPendReg = $recaudacionTotal - $recaudacionPagada; @endphp
+                @if($recaudPendReg > 0)
+                    <div class="stat-sub">Sin confirmar: S/ {{ number_format($recaudPendReg,2) }}</div>
+                @endif
+            </div>
         </div>
     </div>
 
@@ -355,21 +416,25 @@
                         $ultimaNotifWa     = $factura->ultima_notif_wa ?? null;
                         $ultimaNotifCorreo = $factura->ultima_notif_correo ?? null;
 
-                        // Usar el array pre-computado del controlador (sin queries inline)
                         $esAnuladoHuerfano = ($factura->estado === 'ANULADO')
                             || in_array((int) $factura->id_factura, $orphanFacturaIds);
 
-                        // Relación crédito para mostrar en columna ABONADO
                         $creditoInfo     = DB::table('credito')->where('id_factura', $factura->id_factura)->first();
                         $creditoAsociado = DB::table('credito')
                             ->where('serie_doc_modificado', $factura->serie)
                             ->where('numero_doc_modificado', $factura->numero)
                             ->first();
+
+                        // Resaltado de última factura editada (desde session flash)
+                        $isLastEdited = session('last_edited_factura_id') == $factura->id_factura;
                     @endphp
-                    <tr data-cliente="{{ $factura->id_cliente }}" data-estado="{{ $estado }}"
+                    <tr data-cliente="{{ $factura->id_cliente }}"
+                        data-estado="{{ $estado }}"
                         data-moneda="{{ $factura->moneda }}"
                         data-recaudacion="{{ $tipoRecaudacion ?: 'SIN' }}"
                         data-search="{{ strtolower($factura->serie.'-'.$factura->numero.' '.($factura->razon_social ?? '').($factura->usuario_nombre ?? '')) }}"
+                        data-id="{{ $factura->id_factura }}"
+                        @if($isLastEdited) class="fila-last-edited" @endif
                         @if($esAnuladoHuerfano) style="text-decoration: line-through; opacity: 0.6;" @endif>
 
                         <td><div class="serie-num">{{ $factura->serie }}-{{ str_pad($factura->numero,8,'0',STR_PAD_LEFT) }}</div></td>
@@ -735,13 +800,13 @@
                     <div class="reporte-tipo-grid">
                         <div class="reporte-tipo-card active" id="rTipoGeneral" onclick="selReporteTipo('general')">
                             <span class="rtc-check" id="rChkGeneral">✓</span>
-                            <span class="rtc-icon"></span>
+                            <span class="rtc-icon">📊</span>
                             <span class="rtc-title">Deuda General</span>
                             <p class="rtc-desc">Resumen por cliente sin desglose de facturas individuales</p>
                         </div>
                         <div class="reporte-tipo-card" id="rTipoDetallado" onclick="selReporteTipo('detallado')">
                             <span class="rtc-check" id="rChkDetallado"></span>
-                            <span class="rtc-icon"></span>
+                            <span class="rtc-icon">📋</span>
                             <span class="rtc-title">Por Cliente con Facturas</span>
                             <p class="rtc-desc">Facturas detalladas agrupadas por cliente con montos y estados</p>
                         </div>
@@ -801,6 +866,16 @@
             let facturaImporte  = 0;
             let facturaMoneda   = 'S/';
             const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+
+            // ── Auto-scroll a la última factura editada ──────────────────────────
+            document.addEventListener('DOMContentLoaded', function() {
+                const highlighted = document.querySelector('.fila-last-edited');
+                if (highlighted) {
+                    setTimeout(() => {
+                        highlighted.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 400);
+                }
+            });
 
             function setRango(tipo) {
                 const hoy = new Date();
@@ -1064,7 +1139,8 @@
                     formData.append('comprobante', file); formData.append('_token', CSRF);
                     try { await fetch(`/facturas/${facturaActualId}/upload-comprobante`, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } }); } catch(e) {}
                 }
-                cerrarModalPago(); location.reload();
+                cerrarModalPago();
+                location.reload();
             }
 
             function mostrarPreviewPago(event) {
@@ -1111,12 +1187,32 @@
             function cerrarModalEditar() { document.getElementById('modalEditarOverlay').classList.remove('open'); }
             function guardarFactura(event) {
                 event.preventDefault();
-                const datos = { fecha_emision: document.getElementById('editFechaEmision').value, fecha_vencimiento: document.getElementById('editFechaVencimiento').value, estado: document.getElementById('editEstado').value, glosa: document.getElementById('editGlosa').value, forma_pago: document.getElementById('editFormaPago').value, importe_total: document.getElementById('editImporteTotal').value, monto_igv: document.getElementById('editMontoIgv').value, subtotal_gravado: document.getElementById('editSubtotalGravado').value };
-                fetch(`/facturas/${facturaActualId}`, { method:'PUT', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':CSRF}, body:JSON.stringify(datos) })
-                    .then(r=>r.json()).then(data=>{
-                    if(data.success){ cerrarModalEditar(); showToastFactura(`✓ Factura ${data.factura_num||''} actualizada.`); setTimeout(() => location.reload(), 1500); }
-                    else showToastFactura(data.message||'No se pudo guardar', false);
-                }).catch(err=>showToastFactura('Error: '+err.message, false));
+                const datos = {
+                    fecha_emision:     document.getElementById('editFechaEmision').value,
+                    fecha_vencimiento: document.getElementById('editFechaVencimiento').value,
+                    estado:            document.getElementById('editEstado').value,
+                    glosa:             document.getElementById('editGlosa').value,
+                    forma_pago:        document.getElementById('editFormaPago').value,
+                    importe_total:     document.getElementById('editImporteTotal').value,
+                    monto_igv:         document.getElementById('editMontoIgv').value,
+                    subtotal_gravado:  document.getElementById('editSubtotalGravado').value
+                };
+                fetch(`/facturas/${facturaActualId}`, {
+                    method:'PUT',
+                    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':CSRF},
+                    body:JSON.stringify(datos)
+                })
+                    .then(r=>r.json())
+                    .then(data=>{
+                        if(data.success){
+                            cerrarModalEditar();
+                            showToastFactura(`✓ Factura ${data.factura_num||''} actualizada.`);
+                            setTimeout(() => location.reload(), 1200);
+                        } else {
+                            showToastFactura(data.message||'No se pudo guardar', false);
+                        }
+                    })
+                    .catch(err=>showToastFactura('Error: '+err.message, false));
             }
 
             // ── Modal Editar Cliente ──────────────────────────────────────────
@@ -1134,9 +1230,20 @@
             function cerrarModalEditarCliente() { document.getElementById('modalEditarClienteOverlay').classList.remove('open'); }
             function guardarCliente(event) {
                 event.preventDefault();
-                const datos = { razon_social: document.getElementById('editRazonSocial').value, ruc: document.getElementById('editRuc').value, celular: document.getElementById('editCelular').value, correo: document.getElementById('editCorreo').value, direccion_fiscal: document.getElementById('editDireccionFiscal').value };
-                fetch(`/facturas/${facturaActualId}/cliente`, { method:'PUT', headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':CSRF}, body:JSON.stringify(datos) })
-                    .then(r=>r.json()).then(data=>{ if(data.success){ cerrarModalEditarCliente(); location.reload(); } else alert('Error: '+(data.message||'')); })
+                const datos = {
+                    razon_social:     document.getElementById('editRazonSocial').value,
+                    ruc:              document.getElementById('editRuc').value,
+                    celular:          document.getElementById('editCelular').value,
+                    correo:           document.getElementById('editCorreo').value,
+                    direccion_fiscal: document.getElementById('editDireccionFiscal').value
+                };
+                fetch(`/facturas/${facturaActualId}/cliente`, {
+                    method:'PUT',
+                    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':CSRF},
+                    body:JSON.stringify(datos)
+                })
+                    .then(r=>r.json())
+                    .then(data=>{ if(data.success){ cerrarModalEditarCliente(); location.reload(); } else alert('Error: '+(data.message||'')); })
                     .catch(err=>alert('Error: '+err.message));
             }
 

@@ -65,12 +65,13 @@ class ImportarFacturasController extends Controller
 
         unset($filas[1]); // quitar cabecera
 
-        $idUsuario  = Auth::id();
-        $insertadas = 0;
-        $omitidas   = 0;
-        $duplicadas = 0;
-        $errores    = [];
-        $numFila    = null;
+        $idUsuario        = Auth::id();
+        $insertadas       = 0;
+        $omitidas         = 0;
+        $duplicadas       = 0;
+        $errores          = [];
+        $numFila          = null;
+        $fechasImportadas = []; // Para determinar el rango de fechas a mostrar
 
         DB::beginTransaction();
 
@@ -78,7 +79,6 @@ class ImportarFacturasController extends Controller
             foreach ($filas as $numFila => $f) {
 
                 $esAnulado = strtoupper(trim((string)($f['AF'] ?? ''))) === 'SI';
-
 
                 // Fila vacía
                 if (empty($f['E']) && empty($f['F'])) continue;
@@ -89,7 +89,6 @@ class ImportarFacturasController extends Controller
                 $importeTotal     = $this->monto($f['Y'] ?? 0);
                 $moneda           = trim((string)($f['N'] ?? 'PEN'));
 
-                // Monto recaudación (columna AE) y porcentaje (columna AC)
                 $montoRecaudacion = $this->monto($f['AE'] ?? 0);
                 $porcentajeExcel  = $this->monto($f['AC'] ?? 0);
 
@@ -97,7 +96,6 @@ class ImportarFacturasController extends Controller
                     $porcentajeExcel = 0;
                 }
 
-                // ── Verificar indicador de recaudación (columna AI) ────────
                 $indicadorExcel = strtoupper(trim((string)($f['AI'] ?? '')));
                 $tieneIndicador = (strpos($indicadorExcel, 'SI') !== false ||
                     strpos($indicadorExcel, 'DETRACCION') !== false ||
@@ -107,15 +105,12 @@ class ImportarFacturasController extends Controller
                     ? $tipoRecaudacion
                     : null;
 
-                // ── Estado inicial ─────────────────────────────────────────
                 $estado = 'PENDIENTE';
 
-                // ── Glosa y fechas ─────────────────────────────────────────
                 $glosa            = $this->transformarGlosa(trim((string)($f['AG'] ?? '')));
                 $fechaEmision     = $this->parsearFecha($f['B'] ?? null);
                 $fechaVencimiento = $this->parsearFecha($f['C'] ?? null);
 
-                // ── Cliente: buscar o crear ────────────────────────────────
                 $ruc         = trim((string)($f['J'] ?? ''));
                 $razonSocial = trim((string)($f['K'] ?? ''));
 
@@ -143,7 +138,6 @@ class ImportarFacturasController extends Controller
                     }
                 }
 
-                // ── Duplicado ──────────────────────────────────────────────
                 $serie  = trim((string)($f['E'] ?? ''));
                 $numero = (int) trim((string)($f['F'] ?? '0'));
 
@@ -152,7 +146,6 @@ class ImportarFacturasController extends Controller
                     continue;
                 }
 
-                // ── DETECTAR NOTA DE CRÉDITO (serie FC01) ──────────────────
                 $esNotaCredito   = strtoupper($serie) === 'FC01';
                 $serieModificada  = null;
                 $numeroModificada = null;
@@ -165,11 +158,9 @@ class ImportarFacturasController extends Controller
                         ? (int) trim((string)($f[$colNumeroModificado] ?? '0'))
                         : 0;
 
-                    // El importe de la nota de crédito es NEGATIVO
                     $importeTotal = -abs($importeTotal);
                 }
 
-                // Para notas de crédito sin factura vinculada: estado = ANULADO
                 $estadoFinal = $estado;
                 if ($esAnulado) {
                     $estadoFinal = 'ANULADO';
@@ -185,7 +176,6 @@ class ImportarFacturasController extends Controller
                     $montoPendiente = max(0, $importeTotal - $montoRecaudacion);
                 }
 
-                // ── Insertar Factura ───────────────────────────────────────
                 $idFactura = DB::table('factura')->insertGetId([
                     'serie'             => $serie,
                     'numero'            => $numero,
@@ -208,11 +198,6 @@ class ImportarFacturasController extends Controller
                     'monto_pendiente'   => $montoPendiente,
                 ]);
 
-                // ── Registrar relación de nota de crédito ──────────────────
-                // SOLO se registra la relación en la tabla credito.
-                // NO se modifica el monto_pendiente ni el estado de la factura enlazada.
-                // Si la factura enlazada no existe → la nota aparece tachada en reportes
-                // y es excluida de totales (lógica en el controlador de facturas y reportes).
                 if ($esNotaCredito && !empty($serieModificada) && $numeroModificada > 0) {
                     DB::table('credito')->insert([
                         'id_factura'            => $idFactura,
@@ -222,13 +207,17 @@ class ImportarFacturasController extends Controller
                     ]);
                 }
 
-                // ── Insertar recaudación si aplica ─────────────────────────
                 if ($montoRecaudacion > 0 && $tipoRecaudacionFila !== null) {
                     DB::table('recaudacion')->insert([
                         'id_factura'        => $idFactura,
                         'porcentaje'        => $porcentajeExcel,
                         'total_recaudacion' => $montoRecaudacion,
                     ]);
+                }
+
+                // Guardar la fecha de emisión para determinar el rango de la redirección
+                if ($fechaEmision) {
+                    $fechasImportadas[] = $fechaEmision;
                 }
 
                 $insertadas++;
@@ -242,6 +231,23 @@ class ImportarFacturasController extends Controller
                 'Error en fila ' . ($numFila ?? '?') . ': ' . $e->getMessage() .
                 ' [' . basename($e->getFile()) . ':' . $e->getLine() . ']'
             )->withInput();
+        }
+
+        // Si se insertaron facturas, redirigir a la lista con el rango de fechas importadas
+        if ($insertadas > 0 && !empty($fechasImportadas)) {
+            $filtroDesde = min($fechasImportadas);
+            $filtroHasta = max($fechasImportadas);
+
+            return redirect()->route('facturas.index', [
+                'fecha_desde' => $filtroDesde,
+                'fecha_hasta' => $filtroHasta,
+            ])->with('resumen_importacion', [
+                'insertadas'       => $insertadas,
+                'omitidas'         => $omitidas,
+                'duplicadas'       => $duplicadas,
+                'errores'          => $errores,
+                'tipo_recaudacion' => $tipoRecaudacion,
+            ]);
         }
 
         return redirect()->route('facturas.importar')->with('resumen', [

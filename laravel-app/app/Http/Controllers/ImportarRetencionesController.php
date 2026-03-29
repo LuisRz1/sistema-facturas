@@ -8,14 +8,6 @@ use Illuminate\Support\Facades\Auth;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Carbon\Carbon;
 
-/**
- * Importa el Excel oficial de Retenciones SUNAT.
- *
- * FLUJO:
- *   1. POST /facturas/importar-retenciones/procesar  → parsea Excel, guarda resultado en sesión, redirige a vista
- *   2. Vista muestra tabla EDITABLE de los resultados detectados
- *   3. POST /facturas/importar-retenciones/confirmar → toma los datos editados y los aplica a la BD
- */
 class ImportarRetencionesController extends Controller
 {
     // ── PASO 1: Parsear Excel y guardar preview en sesión ─────────────────
@@ -59,12 +51,10 @@ class ImportarRetencionesController extends Controller
                 $fechaEmision   = $this->parsearFecha($fila['fecha_emision']);
                 $importeExcel   = $this->parseMonto($fila['importe_total']);
 
-                // Try to find the factura
                 $factura       = ($serie && $numero > 0) ? $this->buscarFactura($serie, $numero) : null;
                 $serieRealEnDB = $factura ? $factura->serie : null;
 
                 $preview[] = [
-                    // From Excel (editable)
                     'serie_excel'      => $serie,
                     'numero_excel'     => $numero > 0 ? str_pad($numero, 8, '0', STR_PAD_LEFT) : '',
                     'fecha_emision'    => $fechaEmision,
@@ -75,18 +65,15 @@ class ImportarRetencionesController extends Controller
                     'porcentaje'       => $porcentaje,
                     'emisor'           => $razonSocial,
                     'ruc_emisor'       => $rucEmisor,
-                    // Found in DB
                     'id_factura'       => $factura?->id_factura,
                     'serie_db'         => $serieRealEnDB,
                     'estado_actual'    => $factura?->estado,
                     'importe_db'       => $factura?->importe_total,
-                    // Status
                     'encontrada'       => $factura !== null,
                 ];
             }
         }
 
-        // Store in session for the confirm step
         session(['ret_preview' => $preview]);
 
         return redirect()->route('facturas.importar')
@@ -111,6 +98,7 @@ class ImportarRetencionesController extends Controller
         $errores         = [];
         $resultados      = [];
         $facturasVistas  = [];
+        $fechasImportadas = []; // Para rango de redirección
 
         $idUsuarioActual = Auth::id();
         if (!$idUsuarioActual) {
@@ -120,7 +108,6 @@ class ImportarRetencionesController extends Controller
         DB::beginTransaction();
         try {
             foreach ($filas as $idx => $fila) {
-                // Skip rows marked to skip
                 if (!empty($fila['omitir'])) continue;
 
                 $serie  = strtoupper(trim($fila['serie']  ?? ''));
@@ -158,7 +145,6 @@ class ImportarRetencionesController extends Controller
                 }
                 $facturasVistas[$claveFactura] = true;
 
-                // Create/find client by RUC if present.
                 $idCliente = null;
                 if (!empty($rucEmisor)) {
                     $clienteExistente = DB::table('cliente')->where('ruc', $rucEmisor)->first();
@@ -190,7 +176,6 @@ class ImportarRetencionesController extends Controller
                     }
                 }
 
-                // Find factura (may have been corrected in the edit form)
                 $factura = $this->buscarFactura($serie, $numero);
 
                 if (!$factura) {
@@ -264,7 +249,6 @@ class ImportarRetencionesController extends Controller
                     $factura->importe_total = $importeExcel;
                 }
 
-                // Upsert recaudacion
                 DB::table('recaudacion')->updateOrInsert(
                     ['id_factura' => $factura->id_factura],
                     [
@@ -290,6 +274,13 @@ class ImportarRetencionesController extends Controller
                         'estado'              => $estadoNuevo,
                         'fecha_actualizacion' => now(),
                     ]);
+
+                // Guardar fecha para el rango de redirección
+                if (!empty($fechaEmision)) {
+                    $fechasImportadas[] = $fechaEmision;
+                } elseif (!empty($factura->fecha_emision)) {
+                    $fechasImportadas[] = $factura->fecha_emision;
+                }
 
                 $procesadas++;
                 $resultados[] = [
@@ -319,6 +310,23 @@ class ImportarRetencionesController extends Controller
         }
 
         session()->forget('ret_preview');
+
+        // Si se procesaron retenciones, redirigir a facturas con el rango de fechas
+        if ($procesadas > 0 && !empty($fechasImportadas)) {
+            $filtroDesde = min($fechasImportadas);
+            $filtroHasta = max($fechasImportadas);
+
+            return redirect()->route('facturas.index', [
+                'fecha_desde' => $filtroDesde,
+                'fecha_hasta' => $filtroHasta,
+            ])->with('resumen_importacion', [
+                'insertadas'       => $procesadas,
+                'omitidas'         => 0,
+                'duplicadas'       => $duplicadas,
+                'errores'          => $errores,
+                'tipo_recaudacion' => 'RETENCION',
+            ]);
+        }
 
         return redirect()->route('facturas.importar')->with('resumen', [
             'procesadas'       => $procesadas,

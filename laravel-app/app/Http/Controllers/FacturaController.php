@@ -63,10 +63,6 @@ class FacturaController extends Controller
             ]);
         }));
 
-        // ── Pre-computar notas de crédito huérfanas ──────────────────────
-        // Una nota de crédito es "huérfana" si tiene registro en `credito`
-        // pero la factura a la que apunta (serie+numero) no existe en BD.
-        // Estas notas aparecen tachadas en la vista y se excluyen de totales.
         $facturaIds    = $facturasCollection->pluck('id_factura')->toArray();
         $creditosPorId = DB::table('credito')
             ->whereIn('id_factura', $facturaIds)
@@ -84,15 +80,10 @@ class FacturaController extends Controller
             }
         }
 
-        // Facturas que cuentan para los totales:
-        //   - excluir estado ANULADO sin registro en credito
-        //   - excluir notas de crédito cuya factura enlazada no existe
         $facturasParaTotales = $facturasCollection->reject(function ($f) use ($orphanFacturaIds) {
-            // Excluir si está en la lista de huérfanas
             if (in_array((int) $f->id_factura, $orphanFacturaIds)) {
                 return true;
             }
-            // Excluir ANULADO que no tiene registro en credito (no es NC ligada)
             if ($f->estado === 'ANULADO') {
                 return !DB::table('credito')->where('id_factura', $f->id_factura)->exists();
             }
@@ -153,11 +144,15 @@ class FacturaController extends Controller
         $factura->update($validated);
         $num = $factura->serie . '-' . str_pad($factura->numero, 8, '0', STR_PAD_LEFT);
 
+        // Flash para resaltar la última factura editada al recargar
+        session()->flash('last_edited_factura_id', $id);
+
         return response()->json([
-            'success'     => true,
-            'message'     => "Factura {$num} actualizada correctamente.",
-            'factura_num' => $num,
-            'factura'     => $factura,
+            'success'        => true,
+            'message'        => "Factura {$num} actualizada correctamente.",
+            'factura_num'    => $num,
+            'factura'        => $factura,
+            'last_edited_id' => $id,
         ]);
     }
 
@@ -188,7 +183,6 @@ class FacturaController extends Controller
         $cuentaPago       = $validated['cuenta_pago'] ?? null;
         $importeTotal     = (float) $factura->importe_total;
 
-        // Gestionar tabla recaudacion
         if ($tipoRecaudacion && $totalRecaudacion > 0) {
             DB::table('recaudacion')->updateOrInsert(
                 ['id_factura' => $id],
@@ -226,12 +220,16 @@ class FacturaController extends Controller
             'fecha_actualizacion'=> now(),
         ]);
 
+        // Flash para resaltar la última factura editada al recargar
+        session()->flash('last_edited_factura_id', $id);
+
         return response()->json([
             'success'         => true,
             'estado'          => $estado,
             'monto_abonado'   => $montoAbonado,
             'monto_pendiente' => $montoPendiente,
             'message'         => "Pago procesado. Estado: {$estado}",
+            'last_edited_id'  => $id,
         ]);
     }
 
