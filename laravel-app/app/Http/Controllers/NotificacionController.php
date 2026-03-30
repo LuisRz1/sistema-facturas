@@ -250,4 +250,19 @@ class NotificacionController extends Controller
             'fecha_actualizacion' => now(),
         ];
     }
+
+    public function testCorreo()
+{
+    try {
+        \Mail::raw('Correo de prueba', function ($m) {
+            $m->to('dianacs78@hotmail.com')
+              ->subject('Prueba Laravel');
+        });
+
+        return "Correo enviado correctamente";
+    } catch (\Exception $e) {
+        return $e->getMessage();
+    }
+}
+
 }
