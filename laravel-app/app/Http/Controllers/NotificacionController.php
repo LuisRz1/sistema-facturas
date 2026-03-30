@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Storage;
 class NotificacionController extends Controller
 {
     // Estados que indican pago pendiente (unificados con nueva DB)
-    private const ESTADOS_PENDIENTES = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION'];
+    private const ESTADOS_PENDIENTES = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE', 'POR VALIDAR DETRACCION'];
 
     // ─── COBRANZA: FACTURAS PENDIENTES ───────────────────────────────────────
 
@@ -21,7 +21,7 @@ class NotificacionController extends Controller
         $factura = Factura::with('cliente')->findOrFail($id);
 
         if (!in_array($factura->estado, self::ESTADOS_PENDIENTES)) {
-            return back()->with('error', 'Solo se puede enviar a facturas pendientes de pago.');
+            return back()->with('error', 'Solo se puede enviar a facturas en estado pendiente de pago.');
         }
 
         if (!$factura->cliente) {
@@ -34,18 +34,8 @@ class NotificacionController extends Controller
             return back()->with('error', 'El cliente no tiene celular registrado.');
         }
 
-        $montoPendiente = $factura->monto_pendiente > 0 ? $factura->monto_pendiente : $factura->importe_total;
-        $estadoLabel    = $factura->estado === 'PAGO PARCIAL' ? 'con pago parcial' : 'pendiente de pago';
-
-        $mensaje = "Estimado cliente:\n\n"
-            . "Le informamos que la factura *{$factura->serie}-{$factura->numero}* se encuentra {$estadoLabel}.\n\n"
-            . "*Detalle:*\n"
-            . "• Fecha de vencimiento: {$factura->fecha_vencimiento}\n"
-            . "• Monto pendiente: {$factura->moneda} " . number_format($montoPendiente, 2) . "\n\n"
-            . "Le solicitamos realizar el pago al BCP dentro del plazo indicado.\n"
-            . "Asimismo, no olvidar el abono de la detracción en el Banco de la Nación, de corresponder.\n\n"
-            . "_Si ya realizó el pago, por favor omita este mensaje._\n\n"
-            . "Atentamente,\nSistema de Facturación";
+        $contenido = $this->buildMensajeCobranza($factura);
+        $mensaje   = $contenido['mensaje'];
 
         $resultado = $gateway->enviar($factura->cliente->celular, $mensaje);
 
@@ -69,7 +59,7 @@ class NotificacionController extends Controller
         $factura = Factura::with('cliente')->findOrFail($id);
 
         if (!in_array($factura->estado, self::ESTADOS_PENDIENTES)) {
-            return back()->with('error', 'Solo se puede enviar correo a facturas pendientes de pago.');
+            return back()->with('error', 'Solo se puede enviar correo a facturas en estado pendiente de pago.');
         }
 
         if (!$factura->cliente?->correo) {
@@ -77,18 +67,9 @@ class NotificacionController extends Controller
             return back()->with('error', 'El cliente no tiene correo registrado.');
         }
 
-        $montoPendiente = $factura->monto_pendiente > 0 ? $factura->monto_pendiente : $factura->importe_total;
-        $asunto  = "Recordatorio de pago - Factura {$factura->serie}-{$factura->numero}";
-        $mensaje = "Estimado cliente:\n\n"
-            . "Por medio del presente, le recordamos que la factura {$factura->serie}-{$factura->numero} "
-            . "se encuentra pendiente de pago.\n\n"
-            . "Detalle:\n"
-            . "Fecha de vencimiento: {$factura->fecha_vencimiento}\n"
-            . "Monto pendiente: {$factura->moneda} " . number_format($montoPendiente, 2) . "\n\n"
-            . "Le solicitamos efectuar el pago al BCP dentro de la fecha establecida.\n"
-            . "Asimismo, no olvidar el depósito de la detracción en el Banco de la Nación, de corresponder.\n\n"
-            . "Si el pago ya fue realizado, agradeceremos hacer caso omiso a esta comunicación.\n\n"
-            . "Atentamente,\nSistema de Facturación";
+        $contenido = $this->buildMensajeCobranza($factura);
+        $asunto    = $contenido['asunto'];
+        $mensaje   = $contenido['mensaje'];
 
         try {
             Mail::raw($mensaje, fn($m) => $m->to($factura->cliente->correo)->subject($asunto));
@@ -214,6 +195,56 @@ class NotificacionController extends Controller
     }
 
     // ─── HELPER PRIVADO ───────────────────────────────────────────────────────
+
+    private function buildMensajeCobranza(Factura $factura): array
+    {
+        $numero = $factura->serie . '-' . $factura->numero;
+        $fechaVenc = $factura->fecha_vencimiento ?: 'No registrada';
+        $montoPendiente = $factura->monto_pendiente > 0 ? $factura->monto_pendiente : $factura->importe_total;
+        $montoTxt = $factura->moneda . ' ' . number_format((float) $montoPendiente, 2);
+
+        $asunto = "Recordatorio de pago - Factura {$numero}";
+        $estadoLinea = 'se encuentra pendiente de pago.';
+        $accionLinea = 'Le solicitamos regularizar el pago dentro del plazo correspondiente.';
+
+        switch ($factura->estado) {
+            case 'VENCIDO':
+                $asunto = "Factura vencida - {$numero}";
+                $estadoLinea = 'se encuentra vencida y pendiente de regularización.';
+                $accionLinea = 'Solicitamos regularizar el pago a la brevedad.';
+                break;
+            case 'PAGO PARCIAL':
+                $asunto = "Pago parcial registrado - Saldo pendiente {$numero}";
+                $estadoLinea = 'registra un pago parcial y mantiene saldo pendiente.';
+                $accionLinea = 'Solicitamos completar el pago del saldo pendiente.';
+                break;
+            case 'DIFERENCIA PENDIENTE':
+                $asunto = "Diferencia pendiente por regularizar - {$numero}";
+                $estadoLinea = 'presenta una diferencia pendiente por regularización.';
+                $accionLinea = 'Solicitamos regularizar la diferencia pendiente informada.';
+                break;
+            case 'POR VALIDAR DETRACCION':
+                $asunto = "Validación de detracción pendiente - {$numero}";
+                $estadoLinea = 'se encuentra con detracción pendiente de validación.';
+                $accionLinea = 'Solicitamos enviar o confirmar la constancia de detracción para su validación.';
+                break;
+        }
+
+        $mensaje = "Estimado cliente:\n\n"
+            . "Le informamos que la factura {$numero} {$estadoLinea}\n\n"
+            . "Detalle:\n"
+            . "Fecha de vencimiento: {$fechaVenc}\n"
+            . "Monto pendiente: {$montoTxt}\n"
+            . "Estado: {$factura->estado}\n\n"
+            . $accionLinea . "\n"
+            . "Si ya realizó la regularización, por favor omitir este mensaje.\n\n"
+            . "Atentamente,\nSistema de Facturación";
+
+        return [
+            'asunto' => $asunto,
+            'mensaje' => $mensaje,
+        ];
+    }
 
     private function baseNotif(
         int     $idFactura,

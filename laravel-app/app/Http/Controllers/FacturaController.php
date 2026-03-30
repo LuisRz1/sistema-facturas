@@ -249,20 +249,23 @@ class FacturaController extends Controller
         float $totalRecaudacion, ?string $tipoRecaudacion, bool $validarDetraccion,
         ?string $fechaRecaudacion
     ): string {
+        // Regla principal solicitada: solo cuando pendiente es 0 pasa a PAGADA.
+        if ($montoPendiente <= 0) return 'PAGADA';
+
+        // Si existe abono y aun queda saldo, debe quedar en PAGO PARCIAL.
+        if ($montoAbonado > 0) return 'PAGO PARCIAL';
+
         if ($tipoRecaudacion === 'RETENCION' && $totalRecaudacion > 0 && !empty($fechaRecaudacion)) {
-            if ($montoPendiente <= 0) return 'PAGADA';
             return 'DIFERENCIA PENDIENTE';
         }
 
         if ($tipoRecaudacion === 'AUTODETRACCION' && $totalRecaudacion > 0) {
-            if ($montoPendiente <= 0) return 'PAGADA';
             return 'DIFERENCIA PENDIENTE';
         }
 
         if ($tipoRecaudacion === 'AUTODETRACCION') return 'PENDIENTE';
 
         if ($tipoRecaudacion === 'DETRACCION' && $validarDetraccion) {
-            if ($montoPendiente <= 0) return 'PAGADA';
             return 'DIFERENCIA PENDIENTE';
         }
 
@@ -271,8 +274,7 @@ class FacturaController extends Controller
             return 'PENDIENTE';
         }
 
-        if ($montoPendiente <= 0) return 'PAGADA';
-        return 'PAGO PARCIAL';
+        return 'PENDIENTE';
     }
 
     public function enviarReporteVencidosUsuario(Request $request): JsonResponse
