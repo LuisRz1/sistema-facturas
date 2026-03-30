@@ -174,14 +174,14 @@ class FacturaController extends Controller
             'cuenta_pago'           => 'nullable|string|max:255',
         ]);
 
-        $montoAbonado     = (float) ($validated['monto_abonado'] ?? 0);
-        $totalRecaudacion = (float) ($validated['total_recaudacion'] ?? 0);
+        $montoAbonado     = round((float) ($validated['monto_abonado'] ?? 0), 2);
+        $totalRecaudacion = round((float) ($validated['total_recaudacion'] ?? 0), 2);
         $tipoRecaudacion  = $validated['tipo_recaudacion'] ?? $factura->tipo_recaudacion;
         $porcentaje       = $validated['porcentaje_recaudacion'] ?? null;
         $fechaAbono       = $validated['fecha_abono'] ?? null;
         $fechaRecaudacion = $validated['fecha_recaudacion'] ?? null;
         $cuentaPago       = $validated['cuenta_pago'] ?? null;
-        $importeTotal     = (float) $factura->importe_total;
+        $importeTotal     = round((float) $factura->importe_total, 2);
 
         if ($tipoRecaudacion && $totalRecaudacion > 0) {
             DB::table('recaudacion')->updateOrInsert(
@@ -197,7 +197,7 @@ class FacturaController extends Controller
             $totalRecaudacion = 0;
         }
 
-        $montoPendiente = max(0, $importeTotal - $montoAbonado - $totalRecaudacion);
+        $montoPendiente = round(max(0, $importeTotal - $montoAbonado - $totalRecaudacion), 2);
 
         $estado = $this->calcularEstado(
             $factura, $montoAbonado, $montoPendiente,

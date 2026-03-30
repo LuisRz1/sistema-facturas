@@ -207,34 +207,18 @@
         </div>
     </div>
 
-    {{-- ── LEYENDA DE ESTADOS ── --}}
-    <div class="estados-legend">
-        <span class="legend-title">Leyenda:</span>
-        <div class="legend-item">
-            <span class="legend-dot" style="background:#f59e0b;"></span>
-            <span class="badge badge-pendiente" style="font-size:10px;">PENDIENTE</span>
-            <span style="font-size:11px;color:var(--text-muted);">— Sin monto abonado registrado</span>
-        </div>
-        <div class="legend-item">
-            <span class="legend-dot" style="background:#ef4444;"></span>
-            <span class="badge badge-vencido" style="font-size:10px;">VENCIDO</span>
-            <span style="font-size:11px;color:var(--text-muted);">— Plazo de pago superado</span>
-        </div>
-        <div class="legend-item">
-            <span class="legend-dot" style="background:#22c55e;"></span>
-            <span class="badge badge-pagada" style="font-size:10px;">PAGADA</span>
-            <span style="font-size:11px;color:var(--text-muted);">— Abono + recaudación = importe total</span>
-        </div>
-        <div class="legend-item">
-            <span class="legend-dot" style="background:#818cf8;"></span>
-            <span class="badge badge-pago_parcial" style="font-size:10px;">PAGO PARCIAL</span>
-            <span style="font-size:11px;color:var(--text-muted);">— Monto abonado menor al total</span>
-        </div>
-        <div class="legend-item">
-            <span class="legend-dot" style="background:#be185d;"></span>
-            <span class="badge badge-diferencia_pend" style="font-size:10px;">DIFERENCIA PENDIENTE</span>
-            <span style="font-size:11px;color:var(--text-muted);">— Detracción validada, falta diferencia</span>
-        </div>
+    {{-- ── BOTÓN LEYENDA ── --}}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+        <button type="button" onclick="document.getElementById('modalLeyenda').classList.add('open')"
+                style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;
+                       font-size:12px;font-weight:600;cursor:pointer;border:1.5px solid #fce8a8;
+                       background:#fffbeb;color:#92400e;transition:all .15s;">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Ver Leyenda de Estados
+        </button>
     </div>
 
     {{-- ── BANNER IMPORTACIÓN EXITOSA ── --}}
@@ -1253,4 +1237,82 @@
         </script>
     @endpush
 
+    {{-- ══ MODAL LEYENDA ══ --}}
+    <div class="modal-overlay" id="modalLeyenda">
+        <div class="modal" style="max-width:560px;">
+            <div class="modal-header" style="background:linear-gradient(135deg,#f5c842 0%,#e8b820 100%);">
+                <h2 style="color:#000;font-size:17px;">Leyenda de Estados</h2>
+                <p style="color:rgba(0,0,0,.6);">Significado de cada estado de factura en el sistema</p>
+                <button onclick="document.getElementById('modalLeyenda').classList.remove('open')"
+                        style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;opacity:.6;">×</button>
+            </div>
+            <div class="modal-body" style="padding:24px;">
+                <div style="display:flex;flex-direction:column;gap:12px;">
+
+                    <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:#fef3c7;border-radius:10px;border:1px solid #fde68a;">
+                        <span class="badge badge-pendiente" style="flex-shrink:0;margin-top:1px;">PENDIENTE</span>
+                        <div>
+                            <div style="font-size:13px;font-weight:700;color:#92400e;">Sin monto abonado registrado</div>
+                            <div style="font-size:12px;color:#92400e;margin-top:2px;">La factura no tiene ningún pago ni detracción registrada. Puede estar dentro o fuera del plazo de vencimiento.</div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:#fee2e2;border-radius:10px;border:1px solid #fca5a5;">
+                        <span class="badge badge-vencido" style="flex-shrink:0;margin-top:1px;">VENCIDO</span>
+                        <div>
+                            <div style="font-size:13px;font-weight:700;color:#7f1d1d;">Plazo de pago superado</div>
+                            <div style="font-size:12px;color:#7f1d1d;margin-top:2px;">La fecha de vencimiento ya pasó y la factura sigue sin pago registrado. Requiere gestión de cobranza urgente.</div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:#d1fae5;border-radius:10px;border:1px solid #a7f3d0;">
+                        <span class="badge badge-pagada" style="flex-shrink:0;margin-top:1px;">PAGADA</span>
+                        <div>
+                            <div style="font-size:13px;font-weight:700;color:#065f46;">Abono + recaudación = importe total</div>
+                            <div style="font-size:12px;color:#065f46;margin-top:2px;">La suma de los abonos y la detracción/retención cubre el importe total. Factura completamente cancelada.</div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:#e0e7ff;border-radius:10px;border:1px solid #c7d2fe;">
+                        <span class="badge badge-pago_parcial" style="flex-shrink:0;margin-top:1px;">PAGO PARCIAL</span>
+                        <div>
+                            <div style="font-size:13px;font-weight:700;color:#3730a3;">Monto abonado es menor al total</div>
+                            <div style="font-size:12px;color:#3730a3;margin-top:2px;">Se registró un abono directo pero queda un saldo pendiente por cobrar. El campo "Pendiente" muestra cuánto falta.</div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:#fce7f3;border-radius:10px;border:1.5px solid #fbcfe8;">
+                        <span class="badge badge-diferencia_pend" style="flex-shrink:0;margin-top:1px;">DIFERENCIA PENDIENTE</span>
+                        <div>
+                            <div style="font-size:13px;font-weight:700;color:#9d174d;">Detracción/retención validada, falta diferencia</div>
+                            <div style="font-size:12px;color:#9d174d;margin-top:2px;">La recaudación (detracción o retención) fue registrada y validada, pero no cubre el 100% del importe. El cliente debe pagar la diferencia.</div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:#f1f5f9;border-radius:10px;border:1px solid #cbd5e1;">
+                        <span class="badge badge-anulada" style="flex-shrink:0;margin-top:1px;">ANULADO</span>
+                        <div>
+                            <div style="font-size:13px;font-weight:700;color:#475569;">Factura anulada o nota de crédito</div>
+                            <div style="font-size:12px;color:#475569;margin-top:2px;">La factura fue anulada en Nubefact, o es una Nota de Crédito (serie FC01). Las filas tachadas son NC sin factura original en el sistema.</div>
+                        </div>
+                    </div>
+
+                </div>
+
+                {{-- Nota sobre recaudación --}}
+                <div style="margin-top:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;font-size:12px;color:#92400e;">
+                    <strong>Tipos de Recaudación:</strong><br>
+                    • <strong>Detracción</strong>: El cliente deposita un % al Banco de la Nación antes de pagar. Se valida con el Excel del BN.<br>
+                    • <strong>Retención</strong>: El cliente retiene un % al momento del pago y lo declara a SUNAT.<br>
+                    • <strong>Autodetracción</strong>: El propio emisor hace el depósito de detracción.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary"
+                        onclick="document.getElementById('modalLeyenda').classList.remove('open')">
+                    Entendido
+                </button>
+            </div>
+        </div>
+    </div>
 @endsection
