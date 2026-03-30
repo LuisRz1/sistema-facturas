@@ -26,9 +26,19 @@
             border-left: 3px solid #f5c842 !important;
             animation: highlightFade 7s ease-out forwards;
         }
+        .fila-masivo-updated {
+            background: linear-gradient(90deg, #ecfdf3 0%, #bbf7d0 40%, #ecfdf3 100%) !important;
+            border-left: 3px solid #16a34a !important;
+            animation: highlightMassivoFade 10s ease-out forwards;
+        }
         @keyframes highlightFade {
             0%   { background: linear-gradient(90deg, #fde68a 0%, #fbbf24 40%, #fde68a 100%) !important; }
             60%  { background: linear-gradient(90deg, #fef3c7 0%, #fde68a 40%, #fef3c7 100%) !important; }
+            100% { background: transparent !important; border-left-color: transparent !important; }
+        }
+        @keyframes highlightMassivoFade {
+            0%   { background: linear-gradient(90deg, #bbf7d0 0%, #86efac 40%, #bbf7d0 100%) !important; }
+            60%  { background: linear-gradient(90deg, #ecfdf3 0%, #bbf7d0 40%, #ecfdf3 100%) !important; }
             100% { background: transparent !important; border-left-color: transparent !important; }
         }
 
@@ -178,6 +188,74 @@
         .inline-alert.show  { transform:translateY(0); opacity:1; }
         .inline-alert.ok    { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
         .inline-alert.error { background:#fee2e2; color:#7f1d1d; border:1px solid #fca5a5; }
+
+        .tipo-vista-switch {
+            display: inline-flex;
+            gap: 8px;
+            margin-bottom: 14px;
+            background: #fff;
+            border: 1.5px solid var(--gold-b);
+            border-radius: 10px;
+            padding: 6px;
+        }
+        .tipo-vista-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 7px 14px;
+            border-radius: 8px;
+            border: 1.5px solid transparent;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+            color: var(--gold-xd);
+            text-decoration: none;
+            background: transparent;
+            transition: all .15s;
+        }
+        .tipo-vista-btn:hover {
+            background: var(--gold-l);
+            border-color: var(--gold-b);
+        }
+        .tipo-vista-btn.active {
+            background: var(--gold);
+            border-color: var(--gold-h);
+            color: #000;
+        }
+
+        .masivo-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .masivo-table th,
+        .masivo-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #f3e8c1;
+            font-size: 12px;
+        }
+        .masivo-table th {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            color: var(--gold-xd);
+            background: #fffaf0;
+        }
+        .masivo-total-box {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .masivo-kpi {
+            background: #fff;
+            border: 1.5px solid var(--gold-b);
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .masivo-kpi .lbl { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+        .masivo-kpi .val { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 700; margin-top: 4px; }
     </style>
 @endpush
 
@@ -205,7 +283,22 @@
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 Generar Reporte
             </button>
+            <button type="button" class="btn-generar-reporte" onclick="abrirModalPagoMasivo()" style="padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                Pago Masivo
+            </button>
         </div>
+    </div>
+
+    <div class="tipo-vista-switch">
+        <a href="{{ route('facturas.pj', ['fecha_desde' => $fechaDesde, 'fecha_hasta' => $fechaHasta]) }}"
+           class="tipo-vista-btn {{ $tipoClienteVista === 'PERSONA JURIDICA' ? 'active' : '' }}">
+            Personas Jurídicas
+        </a>
+        <a href="{{ route('facturas.pn', ['fecha_desde' => $fechaDesde, 'fecha_hasta' => $fechaHasta]) }}"
+           class="tipo-vista-btn {{ $tipoClienteVista === 'PERSONA NATURAL' ? 'active' : '' }}">
+            Personas Naturales
+        </a>
     </div>
 
     {{-- ── BOTÓN LEYENDA ── --}}
@@ -297,7 +390,7 @@
     </div>
 
     {{-- ── FILTRO FECHAS ── --}}
-    <form method="GET" action="{{ route('facturas.index') }}" id="frmFiltros">
+    <form method="GET" action="{{ route($facturasRoute ?? 'facturas.index') }}" id="frmFiltros">
         <div class="date-range-wrap">
             <label>Período:</label>
             <input type="date" name="fecha_desde" id="inputDesde" value="{{ $fechaDesde }}" onchange="document.getElementById('frmFiltros').submit()">
@@ -610,6 +703,119 @@
         <span id="toastFacturaTxt"></span>
     </div>
 
+    {{-- ═══════════ MODAL PAGO MASIVO ═══════════ --}}
+    <div class="modal-overlay" id="modalPagoMasivoOverlay">
+        <div class="modal" style="max-width:900px;width:min(900px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
+            <div class="modal-header">
+                <h2>Registrar Pago Masivo</h2>
+                <p>Distribuye una sola transferencia en múltiples facturas del mismo cliente</p>
+                <button onclick="cerrarModalPagoMasivo()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <form id="formPagoMasivo" onsubmit="guardarPagoMasivo(event)" style="display:flex;flex-direction:column;min-height:0;flex:1;">
+                @csrf
+                <div class="modal-body" style="padding:24px;overflow-y:auto;min-height:0;flex:1;">
+                    <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px;">
+                        <div class="form-group">
+                            <label class="form-label">Cliente</label>
+                            <select id="pmCliente" class="form-input" onchange="cargarFacturasPagoMasivo()" required>
+                                <option value="">Seleccionar cliente...</option>
+                                @foreach($clientes as $c)
+                                    <option value="{{ $c->id_cliente }}">{{ $c->razon_social }} ({{ $c->ruc }})</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Monto Transferencia</label>
+                            <input type="number" id="pmMontoTotal" class="form-input" step="0.01" min="0.01" placeholder="0.00" oninput="recalcularPagoMasivo()" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Fecha Abono</label>
+                            <input type="date" id="pmFechaAbono" class="form-input" value="{{ now()->format('Y-m-d') }}" required>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="form-group">
+                            <label class="form-label">Cuenta de Pago</label>
+                            <input type="text" id="pmCuentaPago" class="form-input" placeholder="Ej: BCP / BBVA / Interbank / Yape">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Comprobante (opcional)</label>
+                            <input type="file" id="pmComprobante" class="form-input" accept="image/*,application/pdf">
+                        </div>
+                    </div>
+
+                    <div style="margin-top:14px;border:1.5px solid var(--gold-b);border-radius:10px;padding:10px;background:#fff;max-height:320px;overflow:auto;">
+                        <table class="masivo-table">
+                            <thead>
+                            <tr>
+                                <th style="width:52px;">Sel.</th>
+                                <th>Factura</th>
+                                <th>Estado</th>
+                                <th style="text-align:right;">Pendiente</th>
+                                <th style="width:170px;">Monto a aplicar</th>
+                            </tr>
+                            </thead>
+                            <tbody id="pmFacturasBody">
+                            <tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:16px;">Selecciona un cliente para cargar facturas pendientes</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="masivo-total-box">
+                        <div class="masivo-kpi"><div class="lbl">Transferencia</div><div class="val" id="pmKpiTransfer">S/ 0.00</div></div>
+                        <div class="masivo-kpi"><div class="lbl">Asignado</div><div class="val" id="pmKpiAsignado">S/ 0.00</div></div>
+                        <div class="masivo-kpi"><div class="lbl">Diferencia</div><div class="val" id="pmKpiDiferencia">S/ 0.00</div></div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top:1px solid #f3e8c1;background:#fff;position:sticky;bottom:0;">
+                    <button type="button" onclick="cerrarModalPagoMasivo()" class="btn btn-ghost">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnGuardarPagoMasivo">Guardar Pago Masivo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- ═══════════ MODAL RESUMEN PAGO MASIVO ═══════════ --}}
+    <div class="modal-overlay" id="modalPagoMasivoResumenOverlay">
+        <div class="modal" style="max-width:980px;width:min(980px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
+            <div class="modal-header">
+                <h2>Resumen de Pago Masivo</h2>
+                <p>Facturas actualizadas en esta operación</p>
+                <button onclick="cerrarResumenPagoMasivo()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <div class="modal-body" style="padding:20px;overflow-y:auto;min-height:0;flex:1;">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+                    <div class="masivo-kpi"><div class="lbl">Facturas actualizadas</div><div class="val" id="pmrKpiFacturas">0</div></div>
+                    <div class="masivo-kpi"><div class="lbl">Monto aplicado</div><div class="val" id="pmrKpiAplicado">S/ 0.00</div></div>
+                    <div class="masivo-kpi"><div class="lbl">Saldo restante</div><div class="val" id="pmrKpiPendiente">S/ 0.00</div></div>
+                </div>
+
+                <div style="border:1.5px solid var(--gold-b);border-radius:10px;background:#fff;overflow:auto;max-height:52vh;">
+                    <table class="masivo-table">
+                        <thead>
+                        <tr>
+                            <th>Factura</th>
+                            <th>Estado</th>
+                            <th>Estado Nuevo</th>
+                            <th style="text-align:right;">Aplicado</th>
+                            <th style="text-align:right;">Pendiente Antes</th>
+                            <th style="text-align:right;">Pendiente Nuevo</th>
+                        </tr>
+                        </thead>
+                        <tbody id="pmResumenBody">
+                        <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:16px;">Sin datos</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid #f3e8c1;background:#fff;">
+                <button type="button" onclick="cerrarResumenPagoMasivo()" class="btn btn-ghost">Cerrar</button>
+                <button type="button" onclick="cerrarResumenPagoMasivo(true)" class="btn btn-primary">Cerrar y Recargar</button>
+            </div>
+        </div>
+    </div>
+
     {{-- ═══════════ MODAL REGISTRAR PAGO ═══════════ --}}
     <div class="modal-overlay" id="modalPagoOverlay">
         <div class="modal" style="max-width:700px;">
@@ -638,7 +844,17 @@
                         </div>
                         <div class="form-group" style="margin-top:14px;">
                             <label class="form-label">Cuenta de Pago (Referencia)</label>
-                            <input type="text" id="pagoCuentaPago" name="cuenta_pago" class="form-input" placeholder="Ej: Cta. BCP S/ 123456789">
+                            <select id="pagoCuentaPagoPreset" class="form-input" onchange="onCuentaPagoPresetChange()">
+                                <option value="">Seleccionar cuenta...</option>
+                                <option value="BBVA">BBVA</option>
+                                <option value="BCP">BCP</option>
+                                <option value="INTERBANK SOLES">Interbank Soles</option>
+                                <option value="INTERBANK DOLARES">Interbank Dólares</option>
+                                <option value="YAPE">Yape</option>
+                                <option value="OTROS">Otros</option>
+                            </select>
+                            <input type="text" id="pagoCuentaPagoOtro" class="form-input" placeholder="Especifica la cuenta de pago" style="display:none;margin-top:8px;" oninput="syncCuentaPagoFinal()">
+                            <input type="hidden" id="pagoCuentaPago" name="cuenta_pago">
                         </div>
                     </div>
 
@@ -867,9 +1083,62 @@
             let facturaImporte  = 0;
             let facturaMoneda   = 'S/';
             const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+            const PM_FETCH_URL = '{{ route("facturas.pago-masivo.facturas-cliente") }}';
+            const PM_SAVE_URL = '{{ route("facturas.pago-masivo.procesar") }}';
+            const PM_TIPO_CLIENTE = @json($tipoClienteVista);
+            const PM_HIGHLIGHT_KEY = 'facturas_pago_masivo_ids';
+            let pagoMasivoFacturas = [];
+
+            function guardarIdsPagoMasivo(ids = []) {
+                const limpios = (Array.isArray(ids) ? ids : [])
+                    .map(v => Number(v))
+                    .filter(v => Number.isInteger(v) && v > 0);
+                if (!limpios.length) return;
+                sessionStorage.setItem(PM_HIGHLIGHT_KEY, JSON.stringify([...new Set(limpios)]));
+            }
+
+            function aplicarResaltadoPagoMasivo() {
+                const raw = sessionStorage.getItem(PM_HIGHLIGHT_KEY);
+                if (!raw) return false;
+
+                let ids = [];
+                try {
+                    ids = JSON.parse(raw) || [];
+                } catch (e) {
+                    sessionStorage.removeItem(PM_HIGHLIGHT_KEY);
+                    return false;
+                }
+
+                if (!Array.isArray(ids) || !ids.length) {
+                    sessionStorage.removeItem(PM_HIGHLIGHT_KEY);
+                    return false;
+                }
+
+                let firstRow = null;
+                ids.forEach(id => {
+                    const row = document.querySelector(`#facturasBody tr[data-id="${Number(id)}"]`);
+                    if (row) {
+                        row.classList.add('fila-masivo-updated');
+                        if (!firstRow) firstRow = row;
+                    }
+                });
+
+                sessionStorage.removeItem(PM_HIGHLIGHT_KEY);
+
+                if (firstRow) {
+                    setTimeout(() => {
+                        firstRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 300);
+                    showToastFactura('✓ Facturas de pago masivo resaltadas.');
+                }
+
+                return !!firstRow;
+            }
 
             // ── Auto-scroll a la última factura editada ──────────────────────────
             document.addEventListener('DOMContentLoaded', function() {
+                const tuvoMasivo = aplicarResaltadoPagoMasivo();
+                if (tuvoMasivo) return;
                 const highlighted = document.querySelector('.fila-last-edited');
                 if (highlighted) {
                     setTimeout(() => {
@@ -998,6 +1267,220 @@
                 cerrarModalReporte();
             }
 
+            // ── Modal Pago Masivo ───────────────────────────────────────────
+            function abrirModalPagoMasivo() {
+                document.getElementById('pmCliente').value = '';
+                document.getElementById('pmMontoTotal').value = '';
+                document.getElementById('pmFechaAbono').value = '{{ now()->format("Y-m-d") }}';
+                document.getElementById('pmCuentaPago').value = '';
+                document.getElementById('pmComprobante').value = '';
+                pagoMasivoFacturas = [];
+                renderFacturasPagoMasivo();
+                recalcularPagoMasivo();
+                document.getElementById('modalPagoMasivoOverlay').classList.add('open');
+            }
+
+            function cerrarModalPagoMasivo() {
+                document.getElementById('modalPagoMasivoOverlay').classList.remove('open');
+            }
+
+            function abrirResumenPagoMasivo(resumen = []) {
+                const rows = Array.isArray(resumen) ? resumen : [];
+                const tbody = document.getElementById('pmResumenBody');
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:16px;">No hubo cambios para mostrar</td></tr>';
+                    document.getElementById('pmrKpiFacturas').textContent = '0';
+                    document.getElementById('pmrKpiAplicado').textContent = 'S/ 0.00';
+                    document.getElementById('pmrKpiPendiente').textContent = 'S/ 0.00';
+                    document.getElementById('modalPagoMasivoResumenOverlay').classList.add('open');
+                    return;
+                }
+
+                const totalAplicado = rows.reduce((acc, r) => acc + Number(r.monto_aplicado || 0), 0);
+                const totalPendienteNuevo = rows.reduce((acc, r) => acc + Number(r.pendiente_nuevo || 0), 0);
+
+                document.getElementById('pmrKpiFacturas').textContent = String(rows.length);
+                document.getElementById('pmrKpiAplicado').textContent = `S/ ${totalAplicado.toFixed(2)}`;
+                document.getElementById('pmrKpiPendiente').textContent = `S/ ${totalPendienteNuevo.toFixed(2)}`;
+
+                tbody.innerHTML = rows.map(r => {
+                    const montoAplicado = Number(r.monto_aplicado || 0).toFixed(2);
+                    const pendienteAntes = Number(r.pendiente_anterior || 0).toFixed(2);
+                    const pendienteNuevo = Number(r.pendiente_nuevo || 0).toFixed(2);
+                    return `<tr>
+                        <td><strong>${r.factura || '-'}</strong></td>
+                        <td>${r.estado_anterior || '-'}</td>
+                        <td><strong>${r.estado_nuevo || '-'}</strong></td>
+                        <td style="text-align:right;font-family:'DM Mono',monospace;">S/ ${montoAplicado}</td>
+                        <td style="text-align:right;font-family:'DM Mono',monospace;">S/ ${pendienteAntes}</td>
+                        <td style="text-align:right;font-family:'DM Mono',monospace;">S/ ${pendienteNuevo}</td>
+                    </tr>`;
+                }).join('');
+
+                document.getElementById('modalPagoMasivoResumenOverlay').classList.add('open');
+            }
+
+            function cerrarResumenPagoMasivo(recargar = false) {
+                document.getElementById('modalPagoMasivoResumenOverlay').classList.remove('open');
+                if (recargar) {
+                    location.reload();
+                }
+            }
+
+            async function cargarFacturasPagoMasivo() {
+                const idCliente = document.getElementById('pmCliente').value;
+                const tbody = document.getElementById('pmFacturasBody');
+                if (!idCliente) {
+                    pagoMasivoFacturas = [];
+                    renderFacturasPagoMasivo();
+                    return;
+                }
+
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:16px;">Cargando facturas pendientes...</td></tr>';
+                const params = new URLSearchParams({
+                    id_cliente: idCliente,
+                    fecha_desde: document.getElementById('inputDesde').value || '',
+                    fecha_hasta: document.getElementById('inputHasta').value || '',
+                });
+                if (PM_TIPO_CLIENTE) params.append('tipo_cliente', PM_TIPO_CLIENTE);
+
+                try {
+                    const res = await fetch(`${PM_FETCH_URL}?${params.toString()}`, {
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.message || 'No se pudieron cargar facturas.');
+
+                    pagoMasivoFacturas = (data.facturas || []).map(f => ({
+                        id_factura: Number(f.id_factura),
+                        serie: f.serie,
+                        numero: f.numero,
+                        estado: f.estado,
+                        moneda: f.moneda || 'S/',
+                        pendiente: Number(f.monto_pendiente || 0),
+                        selected: false,
+                        monto: 0,
+                    }));
+                    renderFacturasPagoMasivo();
+                    recalcularPagoMasivo();
+                } catch (e) {
+                    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#dc2626;padding:16px;">${e.message}</td></tr>`;
+                }
+            }
+
+            function renderFacturasPagoMasivo() {
+                const tbody = document.getElementById('pmFacturasBody');
+                if (!pagoMasivoFacturas.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:16px;">No hay facturas pendientes para este cliente/rango</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = pagoMasivoFacturas.map((f, idx) => {
+                    const doc = `${f.serie}-${String(f.numero).padStart(8, '0')}`;
+                    const pend = `S/ ${Number(f.pendiente).toFixed(2)}`;
+                    return `<tr>
+                        <td style="text-align:center;"><input type="checkbox" ${f.selected ? 'checked' : ''} onchange="toggleFacturaMasiva(${idx}, this.checked)"></td>
+                        <td><strong>${doc}</strong></td>
+                        <td>${f.estado}</td>
+                        <td style="text-align:right;font-family:'DM Mono',monospace;">${pend}</td>
+                        <td><input type="number" min="0" step="0.01" value="${f.monto ? Number(f.monto).toFixed(2) : ''}" ${f.selected ? '' : 'disabled'} class="form-input" oninput="setMontoFacturaMasiva(${idx}, this.value)"></td>
+                    </tr>`;
+                }).join('');
+            }
+
+            function toggleFacturaMasiva(idx, checked) {
+                const f = pagoMasivoFacturas[idx];
+                if (!f) return;
+                f.selected = checked;
+                f.monto = checked ? Number(f.pendiente.toFixed(2)) : 0;
+                renderFacturasPagoMasivo();
+                recalcularPagoMasivo();
+            }
+
+            function setMontoFacturaMasiva(idx, value) {
+                const f = pagoMasivoFacturas[idx];
+                if (!f) return;
+                const v = Number(value || 0);
+                f.monto = Math.max(0, Math.min(v, f.pendiente));
+                recalcularPagoMasivo();
+            }
+
+            function recalcularPagoMasivo() {
+                const totalTransfer = Number(document.getElementById('pmMontoTotal').value || 0);
+                const totalAsignado = pagoMasivoFacturas
+                    .filter(f => f.selected)
+                    .reduce((acc, f) => acc + Number(f.monto || 0), 0);
+                const diff = totalTransfer - totalAsignado;
+
+                document.getElementById('pmKpiTransfer').textContent = `S/ ${totalTransfer.toFixed(2)}`;
+                document.getElementById('pmKpiAsignado').textContent = `S/ ${totalAsignado.toFixed(2)}`;
+                const diffEl = document.getElementById('pmKpiDiferencia');
+                diffEl.textContent = `S/ ${diff.toFixed(2)}`;
+                diffEl.style.color = Math.abs(diff) < 0.005 ? '#059669' : '#dc2626';
+            }
+
+            async function guardarPagoMasivo(event) {
+                event.preventDefault();
+                const btn = document.getElementById('btnGuardarPagoMasivo');
+                btn.disabled = true;
+                btn.textContent = 'Guardando...';
+
+                const idCliente = document.getElementById('pmCliente').value;
+                const montoTotal = Number(document.getElementById('pmMontoTotal').value || 0);
+                const fechaAbono = document.getElementById('pmFechaAbono').value;
+                const cuentaPago = (document.getElementById('pmCuentaPago').value || '').trim();
+                const detalles = pagoMasivoFacturas
+                    .filter(f => f.selected)
+                    .map(f => ({ id_factura: f.id_factura, monto: Number(Number(f.monto || 0).toFixed(2)) }));
+
+                const toCents = n => Math.round((Number(n) || 0) * 100);
+                const suma = detalles.reduce((acc, d) => acc + Number(d.monto), 0);
+                if (!detalles.length) {
+                    alert('Selecciona al menos una factura para el pago masivo.');
+                    btn.disabled = false; btn.textContent = 'Guardar Pago Masivo';
+                    return;
+                }
+                if (toCents(suma) !== toCents(montoTotal)) {
+                    alert('La suma de facturas seleccionadas debe coincidir con el monto total abonado.');
+                    btn.disabled = false; btn.textContent = 'Guardar Pago Masivo';
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('_token', CSRF);
+                formData.append('id_cliente', idCliente);
+                formData.append('monto_total', montoTotal.toFixed(2));
+                formData.append('fecha_abono', fechaAbono);
+                formData.append('cuenta_pago', cuentaPago);
+                formData.append('detalles', JSON.stringify(detalles));
+                const comp = document.getElementById('pmComprobante').files[0];
+                if (comp) formData.append('comprobante', comp);
+
+                try {
+                    const res = await fetch(PM_SAVE_URL, {
+                        method: 'POST',
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                        body: formData,
+                    });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.message || 'No se pudo registrar el pago masivo.');
+
+                    const idsActualizados = Array.isArray(data.resumen)
+                        ? data.resumen.map(r => Number(r.id_factura)).filter(n => Number.isInteger(n) && n > 0)
+                        : detalles.map(d => Number(d.id_factura)).filter(n => Number.isInteger(n) && n > 0);
+                    guardarIdsPagoMasivo(idsActualizados);
+
+                    cerrarModalPagoMasivo();
+                    showToastFactura(`✓ ${data.facturas_actualizadas || detalles.length} factura(s) actualizadas por pago masivo.`);
+                    abrirResumenPagoMasivo(data.resumen || []);
+                } catch (e) {
+                    alert('Error: ' + e.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Guardar Pago Masivo';
+                }
+            }
+
             // ── Modal Pago ────────────────────────────────────────────────────
             function abrirModalPagoDesdeBtn(btn) {
                 abrirModalPago(
@@ -1022,7 +1505,7 @@
                 document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} · ${moneda} ${parseFloat(importe).toFixed(2)}`;
                 renderComprobanteActual(comprobanteUrl);
                 document.getElementById('pagoFechaAbono').value       = '{{ now()->format("Y-m-d") }}';
-                document.getElementById('pagoCuentaPago').value       = cuentaPago || '';
+                setCuentaPagoDesdeValor(cuentaPago || '');
                 document.getElementById('pagoFechaRecaudacion').value = fechaRec || '';
                 document.getElementById('chkValidarDetraccion').checked = false;
                 if (tipoRec === 'AUTODETRACCION') {
@@ -1043,11 +1526,62 @@
 
             function cerrarModalPago() {
                 document.getElementById('modalPagoOverlay').classList.remove('open');
-                ['pagoMontoAbonado','pagoFechaAbono','pagoCuentaPago','pagoTotalRecaudacion','pagoPorcentaje','pagoTipoRecaudacion','pagoFechaRecaudacion']
+                ['pagoMontoAbonado','pagoFechaAbono','pagoCuentaPago','pagoCuentaPagoPreset','pagoCuentaPagoOtro','pagoTotalRecaudacion','pagoPorcentaje','pagoTipoRecaudacion','pagoFechaRecaudacion']
                     .forEach(id => { document.getElementById(id).value = ''; });
+                document.getElementById('pagoCuentaPagoOtro').style.display = 'none';
                 document.getElementById('comprobanteActualWrap').style.display = 'none';
                 document.getElementById('comprobanteActualView').innerHTML = '';
                 limpiarPreviewPago();
+            }
+
+            const CUENTAS_PAGO_PRESET = ['BBVA', 'BCP', 'INTERBANK SOLES', 'INTERBANK DOLARES', 'YAPE'];
+
+            function setCuentaPagoDesdeValor(valor) {
+                const select = document.getElementById('pagoCuentaPagoPreset');
+                const otro   = document.getElementById('pagoCuentaPagoOtro');
+                const hidden = document.getElementById('pagoCuentaPago');
+                const v = (valor || '').trim();
+
+                hidden.value = v;
+                if (!v) {
+                    select.value = '';
+                    otro.value = '';
+                    otro.style.display = 'none';
+                    return;
+                }
+
+                const upper = v.toUpperCase();
+                if (CUENTAS_PAGO_PRESET.includes(upper)) {
+                    select.value = upper;
+                    otro.value = '';
+                    otro.style.display = 'none';
+                    hidden.value = upper;
+                    return;
+                }
+
+                select.value = 'OTROS';
+                otro.style.display = 'block';
+                otro.value = v;
+            }
+
+            function onCuentaPagoPresetChange() {
+                const select = document.getElementById('pagoCuentaPagoPreset');
+                const otro   = document.getElementById('pagoCuentaPagoOtro');
+                if (select.value === 'OTROS') {
+                    otro.style.display = 'block';
+                    if (!otro.value) otro.focus();
+                } else {
+                    otro.style.display = 'none';
+                    otro.value = '';
+                }
+                syncCuentaPagoFinal();
+            }
+
+            function syncCuentaPagoFinal() {
+                const select = document.getElementById('pagoCuentaPagoPreset').value;
+                const otro   = document.getElementById('pagoCuentaPagoOtro').value.trim();
+                document.getElementById('pagoCuentaPago').value =
+                    select === 'OTROS' ? (otro || '') : (select || '');
             }
 
             function renderComprobanteActual(url) {
@@ -1159,7 +1693,8 @@
                 const tipoRec           = document.getElementById('pagoTipoRecaudacion').value;
                 const validarDet        = document.getElementById('chkValidarDetraccion').checked;
                 const fechaAbono        = document.getElementById('pagoFechaAbono').value || null;
-                const cuentaPago        = document.getElementById('pagoCuentaPago').value || null;
+                const cuentaPagoRaw     = document.getElementById('pagoCuentaPago').value || '';
+                const cuentaPago        = cuentaPagoRaw.trim() || null;
                 let fechaRecaudacion    = document.getElementById('pagoFechaRecaudacion').value || null;
                 if (validarDet && !fechaRecaudacion) fechaRecaudacion = new Date().toISOString().split('T')[0];
                 try {
@@ -1285,7 +1820,7 @@
                     .catch(err=>alert('Error: '+err.message));
             }
 
-            ['modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay'].forEach(id => {
+            ['modalPagoMasivoOverlay','modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay'].forEach(id => {
                 document.getElementById(id)?.addEventListener('click', e => { if(e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
             });
         </script>

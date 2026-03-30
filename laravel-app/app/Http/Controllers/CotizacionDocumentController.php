@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Genera y envía documentos combinados de una Cotización:
@@ -19,11 +20,13 @@ class CotizacionDocumentController extends Controller
     {
         $nodePath = trim((string) @shell_exec('where node 2>NUL'));
         if ($nodePath === '') {
+            Log::warning('GRR merge Node fallback unavailable: node not found in PATH');
             return false;
         }
 
         $scriptPath = base_path('../whatsapp-worker/merge-pdfs.js');
         if (!is_file($scriptPath)) {
+            Log::warning('GRR merge Node fallback unavailable: script not found', ['script' => $scriptPath]);
             return false;
         }
 
@@ -34,6 +37,13 @@ class CotizacionDocumentController extends Controller
         $out = [];
         $code = 1;
         @exec($cmd, $out, $code);
+
+        if ($code !== 0) {
+            Log::warning('GRR merge Node fallback failed', [
+                'code' => $code,
+                'output' => implode("\n", $out),
+            ]);
+        }
 
         return $code === 0 && is_file($outputPath) && filesize($outputPath) > 0;
     }
@@ -140,6 +150,7 @@ class CotizacionDocumentController extends Controller
 
             return file_exists($outputPath) && filesize($outputPath) > 0;
         } catch (\Throwable $e) {
+            Log::warning('GRR merge FPDI failed', ['error' => $e->getMessage()]);
             return false;
         }
     }
@@ -377,6 +388,11 @@ class CotizacionDocumentController extends Controller
             foreach ($pdfPaths as $tmpPdfPath) {
                 @unlink($tmpPdfPath);
             }
+
+            Log::warning('GRR merge failed - using index fallback', [
+                'cotizacion_id' => $id,
+                'pdf_paths_count' => count($pdfPaths),
+            ]);
         }
 
         // Fallback: índice DomPDF con detalles de cada GRR
@@ -406,8 +422,9 @@ class CotizacionDocumentController extends Controller
             <tr><th>#</th><th>N° GRR</th><th>N° Parte Diario</th><th>Fecha</th><th>Placa</th></tr>
             {$rows}
         </table>
-        <p class='nota'>Los archivos GRR originales están adjuntos individualmente en el sistema (botón PDF en cada fila).<br>
-        Para combinar automáticamente varios PDFs en el servidor, instale <strong>qpdf</strong> y agréguelo al PATH del servidor.</p>
+        <p class='nota'>No se pudo combinar automáticamente los GRR en este servidor.<br>
+        Verifique dependencias de despliegue: <strong>setasign/fpdi</strong> (Composer), <strong>Node + pdf-lib + merge-pdfs.js</strong> (fallback), o <strong>qpdf</strong> en PATH.<br>
+        Los GRR originales siguen disponibles individualmente en el sistema (botón PDF por fila).</p>
         </body></html>";
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4');

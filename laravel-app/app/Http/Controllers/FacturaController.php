@@ -19,6 +19,18 @@ class FacturaController extends Controller
     {
         $fechaDesde = $request->input('fecha_desde', now()->startOfMonth()->format('Y-m-d'));
         $fechaHasta = $request->input('fecha_hasta', now()->format('Y-m-d'));
+        $routeName = (string) optional($request->route())->getName();
+
+        $tipoClienteVista = null;
+        if ($routeName === 'facturas.pj') {
+            $tipoClienteVista = 'PERSONA JURIDICA';
+        } elseif ($routeName === 'facturas.pn') {
+            $tipoClienteVista = 'PERSONA NATURAL';
+        }
+
+        $facturasRoute = in_array($routeName, ['facturas.pj', 'facturas.pn'], true)
+            ? $routeName
+            : 'facturas.index';
 
         $selects = [
             'f.id_factura', 'f.serie', 'f.numero',
@@ -46,6 +58,9 @@ class FacturaController extends Controller
             ->leftJoin('usuario as u', 'u.id_usuario', '=', 'f.usuario_creacion')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
+            ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
+                $q->where('c.tipo_cliente', $tipoClienteVista);
+            })
             ->select($selects)
             ->orderByDesc('f.fecha_emision')
             ->orderByDesc('f.numero')
@@ -101,7 +116,12 @@ class FacturaController extends Controller
             return false;
         });
 
-        $clientes = DB::table('cliente')->orderBy('razon_social')->get(['id_cliente', 'razon_social', 'ruc']);
+        $clientes = DB::table('cliente')
+            ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
+                $q->where('tipo_cliente', $tipoClienteVista);
+            })
+            ->orderBy('razon_social')
+            ->get(['id_cliente', 'razon_social', 'ruc']);
         $usuarios = DB::table('usuario')->whereNotNull('celular')->orderBy('nombre')
             ->get(['id_usuario', 'nombre', 'apellido', 'celular', 'correo']);
 
@@ -113,6 +133,8 @@ class FacturaController extends Controller
             'usuarios'            => $usuarios,
             'fechaDesde'          => $fechaDesde,
             'fechaHasta'          => $fechaHasta,
+            'tipoClienteVista'    => $tipoClienteVista,
+            'facturasRoute'       => $facturasRoute,
         ]);
     }
 
@@ -242,6 +264,224 @@ class FacturaController extends Controller
             'message'         => "Pago procesado. Estado: {$estado}",
             'last_edited_id'  => $id,
         ]);
+    }
+
+    public function facturasPendientesCliente(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'id_cliente'   => 'required|integer|exists:cliente,id_cliente',
+            'fecha_desde'  => 'nullable|date',
+            'fecha_hasta'  => 'nullable|date',
+            'tipo_cliente' => 'nullable|string|in:PERSONA JURIDICA,PERSONA NATURAL',
+        ]);
+
+        $fechaDesde = $validated['fecha_desde'] ?? now()->startOfMonth()->format('Y-m-d');
+        $fechaHasta = $validated['fecha_hasta'] ?? now()->format('Y-m-d');
+        $tipoClienteVista = $validated['tipo_cliente'] ?? $this->getTipoClienteByRoute($request);
+
+        $facturas = DB::table('factura as f')
+            ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
+            ->where('f.id_cliente', (int) $validated['id_cliente'])
+            ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
+            ->whereIn('f.estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'])
+            ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
+                $q->where('c.tipo_cliente', $tipoClienteVista);
+            })
+            ->select([
+                'f.id_factura', 'f.serie', 'f.numero', 'f.moneda',
+                'f.estado', 'f.fecha_emision', 'f.importe_total',
+                'f.monto_abonado', 'f.monto_pendiente',
+            ])
+            ->orderBy('f.fecha_emision')
+            ->orderBy('f.numero')
+            ->get();
+
+        return response()->json([
+            'success'  => true,
+            'facturas' => $facturas,
+        ]);
+    }
+
+    public function procesarPagoMasivo(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'id_cliente'   => 'required|integer|exists:cliente,id_cliente',
+            'monto_total'  => 'required|numeric|min:0.01',
+            'fecha_abono'  => 'required|date',
+            'cuenta_pago'  => 'nullable|string|max:255',
+            'detalles'     => 'required',
+            'comprobante'  => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:20480',
+        ]);
+
+        $detallesRaw = $validated['detalles'];
+        $detalles = is_string($detallesRaw)
+            ? json_decode($detallesRaw, true)
+            : $detallesRaw;
+
+        if (!is_array($detalles) || empty($detalles)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Debes seleccionar al menos una factura para el pago masivo.',
+            ], 422);
+        }
+
+        $detallesNorm = collect($detalles)
+            ->map(function ($row) {
+                return [
+                    'id_factura' => (int) ($row['id_factura'] ?? 0),
+                    'monto'      => round((float) ($row['monto'] ?? 0), 2),
+                ];
+            })
+            ->filter(fn($row) => $row['id_factura'] > 0 && $row['monto'] > 0)
+            ->values();
+
+        if ($detallesNorm->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Los montos por factura deben ser mayores a cero.',
+            ], 422);
+        }
+
+        $ids = $detallesNorm->pluck('id_factura');
+        if ($ids->unique()->count() !== $ids->count()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hay facturas repetidas en el detalle del pago masivo.',
+            ], 422);
+        }
+
+        $toCents = fn(float $n): int => (int) round($n * 100);
+        $montoTotal = round((float) $validated['monto_total'], 2);
+        $sumDetalle = round((float) $detallesNorm->sum('monto'), 2);
+
+        if ($toCents($montoTotal) !== $toCents($sumDetalle)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'La suma de facturas seleccionadas debe coincidir con el monto total abonado.',
+            ], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $resumenCambios = [];
+
+            $facturas = Factura::whereIn('id_factura', $ids->all())
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id_factura');
+
+            if ($facturas->count() !== $ids->count()) {
+                throw new \RuntimeException('Una o más facturas no existen o no están disponibles.');
+            }
+
+            $recaudMap = DB::table('recaudacion')
+                ->whereIn('id_factura', $ids->all())
+                ->get(['id_factura', 'total_recaudacion', 'fecha_recaudacion'])
+                ->keyBy('id_factura');
+
+            $rutaComprobanteMasivo = null;
+            if ($request->hasFile('comprobante')) {
+                $tmpPath = $request->file('comprobante')->store('facturas/comprobantes/masivo', 's3');
+                if (!$tmpPath) {
+                    throw new \RuntimeException('No se pudo subir el comprobante del pago masivo.');
+                }
+                $rutaComprobanteMasivo = $tmpPath;
+            }
+
+            $guardarRutaComprobante = $rutaComprobanteMasivo && Schema::hasColumn('factura', 'ruta_comprobante_pago');
+
+            foreach ($detallesNorm as $d) {
+                /** @var Factura $factura */
+                $factura = $facturas->get($d['id_factura']);
+                if (!$factura) {
+                    throw new \RuntimeException('Factura no encontrada en la operación masiva.');
+                }
+
+                if ((int) $factura->id_cliente !== (int) $validated['id_cliente']) {
+                    throw new \RuntimeException('Todas las facturas seleccionadas deben pertenecer al mismo cliente.');
+                }
+
+                if (!in_array($factura->estado, ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'], true)) {
+                    throw new \RuntimeException("La factura {$factura->serie}-{$factura->numero} ya no está disponible para pago masivo.");
+                }
+
+                $pendienteAntes = round((float) $factura->monto_pendiente, 2);
+                if ($toCents($d['monto']) > $toCents($pendienteAntes)) {
+                    throw new \RuntimeException("El monto asignado supera el pendiente de la factura {$factura->serie}-{$factura->numero}.");
+                }
+
+                $estadoAntes = (string) $factura->estado;
+                $abonadoAntes = round((float) $factura->monto_abonado, 2);
+
+                $montoAbonadoNuevo = round((float) $factura->monto_abonado + (float) $d['monto'], 2);
+                $recaudacion = (float) ($recaudMap[$factura->id_factura]->total_recaudacion ?? 0);
+                $fechaRecaudacion = $recaudMap[$factura->id_factura]->fecha_recaudacion ?? null;
+                $montoPendienteNuevo = round(max(0, (float) $factura->importe_total - $montoAbonadoNuevo - $recaudacion), 2);
+
+                $estadoNuevo = $this->calcularEstado(
+                    $factura,
+                    $montoAbonadoNuevo,
+                    $montoPendienteNuevo,
+                    $recaudacion,
+                    $factura->tipo_recaudacion,
+                    false,
+                    $fechaRecaudacion
+                );
+
+                $updateData = [
+                    'monto_abonado'       => $montoAbonadoNuevo,
+                    'monto_pendiente'     => $montoPendienteNuevo,
+                    'estado'              => $estadoNuevo,
+                    'fecha_abono'         => $validated['fecha_abono'],
+                    'cuenta_pago'         => $validated['cuenta_pago'] ?? null,
+                    'fecha_actualizacion' => now(),
+                ];
+
+                if ($guardarRutaComprobante) {
+                    $updateData['ruta_comprobante_pago'] = $rutaComprobanteMasivo;
+                }
+
+                $factura->update($updateData);
+
+                $resumenCambios[] = [
+                    'id_factura' => (int) $factura->id_factura,
+                    'factura' => $factura->serie . '-' . str_pad((string) $factura->numero, 8, '0', STR_PAD_LEFT),
+                    'monto_aplicado' => round((float) $d['monto'], 2),
+                    'estado_anterior' => $estadoAntes,
+                    'estado_nuevo' => $estadoNuevo,
+                    'abonado_anterior' => $abonadoAntes,
+                    'abonado_nuevo' => $montoAbonadoNuevo,
+                    'pendiente_anterior' => $pendienteAntes,
+                    'pendiente_nuevo' => $montoPendienteNuevo,
+                ];
+            }
+
+            DB::commit();
+            return response()->json([
+                'success' => true,
+                'message' => 'Pago masivo registrado correctamente.',
+                'facturas_actualizadas' => $detallesNorm->count(),
+                'resumen' => $resumenCambios,
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    private function getTipoClienteByRoute(Request $request): ?string
+    {
+        $routeName = (string) optional($request->route())->getName();
+        if ($routeName === 'facturas.pj') {
+            return 'PERSONA JURIDICA';
+        }
+        if ($routeName === 'facturas.pn') {
+            return 'PERSONA NATURAL';
+        }
+        return null;
     }
 
     private function calcularEstado(

@@ -333,8 +333,8 @@
                     <th>Factura</th>
                     <th>Glosa</th>
                     <th class="r">Importe</th>
-                    <th class="r">Detrac.</th>
-                    <th>F.Detrac</th>
+                    <th class="r">DETRAC/RENTE</th>
+                    <th>F.DETRAC/F.RETEN</th>
                     <th>Tipo</th>
                     <th class="r">Abonado</th>
                     <th>F.Abono</th>
@@ -476,7 +476,7 @@
     function exportarExcel() {
         const wb   = XLSX.utils.book_new();
         const rows = [
-            ['#','EMPRESA','EMISIÓN','VCTO','FACTURA','GLOSA','IMPORTE','DETRACCIÓN','F.DETRACCION','TIPO','ABONADO','F.ABONO','PENDIENTE','ESTADO']
+            ['#','EMPRESA','EMISIÓN','VCTO','FACTURA','GLOSA','IMPORTE','DETRAC/RENTE','F.DETRAC/F.RETEN','TIPO','ABONADO','F.ABONO','PENDIENTE','ESTADO']
         ];
 
         // Acumuladores de totales (excluyen huérfanas)

@@ -824,7 +824,7 @@ class ReporteController extends Controller
             $sheet->getStyle('A' . $row)->getFont()->setBold(true);
             $row++;
 
-            $headers = ['#', 'Emisión', 'Vcto', 'Factura', 'Glosa', 'Importe', 'Detrac.', 'F.Detrac', 'Tipo', 'Abonado', 'F.Abono', 'Pendiente', 'Estado'];
+            $headers = ['#', 'Emisión', 'Vcto', 'Factura', 'Glosa', 'Importe', 'DETRAC/RENTE', 'F.DETRAC/F.RETEN', 'Tipo', 'Abonado', 'F.Abono', 'Pendiente', 'Estado'];
             foreach ($headers as $col => $header) {
                 $sheet->setCellValue($this->getColumn($col + 1) . $row, $header);
             }

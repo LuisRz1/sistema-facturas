@@ -12,11 +12,13 @@
 
         :root {
             --sidebar-w: 260px;
-            --sidebar-bg: #0f172a;
-            --sidebar-hover: #1e293b;
-            --sidebar-active: #1d4ed8;
-            --sidebar-text: #94a3b8;
-            --sidebar-text-active: #ffffff;
+            --sidebar-bg: #171204;
+            --sidebar-hover: #2b2208;
+            --sidebar-active: #f5c842;
+            --sidebar-text: #d5c082;
+            --sidebar-text-active: #1c1600;
+            --sidebar-border: #3a2c0b;
+            --sidebar-muted: #8e7a42;
             --main-bg: #f1f5f9;
             --card-bg: #ffffff;
             --text-primary: #0f172a;
@@ -63,7 +65,7 @@
 
         .sidebar-brand {
             padding: 20px 20px 16px;
-            border-bottom: 1px solid #1e293b;
+            border-bottom: 1px solid var(--sidebar-border);
             display: flex;
             align-items: center;
             gap: 12px;
@@ -72,15 +74,16 @@
 
         .sidebar-logo {
             width: 36px; height: 36px;
-            background: var(--accent);
+            background: linear-gradient(145deg, #f5c842, #d8a814);
             border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
+            box-shadow: 0 4px 16px rgba(245, 200, 66, .35);
         }
 
-        .sidebar-logo svg { color: #fff; }
+        .sidebar-logo svg { color: #171204; }
 
         .sidebar-brand-text {
             line-height: 1.2;
@@ -96,7 +99,7 @@
 
         .sidebar-brand-text span {
             font-size: 10px;
-            color: var(--sidebar-text);
+            color: var(--sidebar-muted);
             font-weight: 400;
             text-transform: uppercase;
             letter-spacing: .5px;
@@ -111,7 +114,7 @@
         .nav-label {
             font-size: 9px;
             font-weight: 700;
-            color: #475569;
+            color: var(--sidebar-muted);
             text-transform: uppercase;
             letter-spacing: 1.2px;
             padding: 0 8px;
@@ -129,30 +132,33 @@
             color: var(--sidebar-text);
             text-decoration: none;
             font-size: 13.5px;
-            font-weight: 500;
+            font-weight: 600;
             transition: all .18s ease;
             margin-bottom: 2px;
+            border: 1px solid transparent;
         }
 
         .nav-item:hover {
             background: var(--sidebar-hover);
-            color: #fff;
+            border-color: var(--sidebar-border);
+            color: #fff4cf;
         }
 
         .nav-item.active {
-            background: var(--accent);
-            color: #fff;
+            background: var(--sidebar-active);
+            border-color: #e0ad1a;
+            color: var(--sidebar-text-active);
+            box-shadow: 0 6px 18px rgba(245, 200, 66, .28);
         }
 
-        .nav-item svg { flex-shrink: 0; opacity: .85; }
+        .nav-item svg { flex-shrink: 0; opacity: .9; }
         .nav-item.active svg { opacity: 1; }
 
         .sidebar-footer {
             padding: 16px 12px;
-            border-top: 1px solid #1e293b;
+            border-top: 1px solid var(--sidebar-border);
         }
 
-        /* ── MAIN ── */
         .main-wrapper {
             margin-left: var(--sidebar-w);
             flex: 1;
@@ -168,7 +174,7 @@
 
         .topbar {
             background: #fff;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid #f3e4b5;
             padding: 0 32px;
             height: 64px;
             display: flex;
@@ -213,9 +219,9 @@
             width: 48px;
             height: 48px;
             border-radius: 12px;
-            background: var(--sidebar-bg);
+            background: #171204;
             border: none;
-            color: #fff;
+            color: #f5c842;
             cursor: pointer;
             z-index: 99;
             align-items: center;
@@ -225,7 +231,7 @@
         }
 
         .sidebar-toggle-floating:hover {
-            background: var(--sidebar-hover);
+            background: #2b2208;
             transform: scale(1.08);
             box-shadow: 0 6px 28px rgba(0, 0, 0, 0.2);
         }
@@ -261,20 +267,20 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            background: var(--main-bg);
-            border: 1px solid var(--border);
+            background: #fffaf0;
+            border: 1px solid #f3e4b5;
             border-radius: 50px;
             padding: 6px 14px 6px 8px;
         }
 
         .user-avatar {
             width: 30px; height: 30px;
-            background: var(--accent);
+            background: linear-gradient(145deg, #f5c842, #d8a814);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #fff;
+            color: #171204;
             font-size: 12px;
             font-weight: 700;
         }
@@ -593,7 +599,7 @@
             <strong>C.R.C. S.A.C.</strong>
             <span>Gestión Financiera</span>
         </div>
-        <button type="button" onclick="toggleSidebar()" style="position:absolute;right:16px;top:20px;width:32px;height:32px;border:none;background:transparent;color:var(--sidebar-text);cursor:pointer;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:all .2s ease;" onmouseover="this.style.background='var(--sidebar-hover)';this.style.color='#fff';" onmouseout="this.style.background='transparent';this.style.color='var(--sidebar-text)';" title="Cerrar menú">
+        <button type="button" onclick="toggleSidebar()" style="position:absolute;right:16px;top:20px;width:32px;height:32px;border:none;background:transparent;color:var(--sidebar-text);cursor:pointer;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:all .2s ease;" onmouseover="this.style.background='var(--sidebar-hover)';this.style.color='#fff4cf';" onmouseout="this.style.background='transparent';this.style.color='var(--sidebar-text)';" title="Cerrar menú">
             <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -668,23 +674,23 @@
     </nav>
 
     <div class="sidebar-footer">
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:#1e293b;">
-            <div style="width:30px;height:30px;border-radius:50%;background:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:#2b2208;border:1px solid var(--sidebar-border);">
+            <div style="width:30px;height:30px;border-radius:50%;background:var(--sidebar-active);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#171204;flex-shrink:0;">
                 {{ strtoupper(substr(Auth::user()->nombre ?? 'A', 0, 1)) }}
             </div>
             <div style="flex:1;min-width:0;">
-                <div style="font-size:12px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                <div style="font-size:12px;font-weight:600;color:#fff4cf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                     {{ Auth::user()->nombre ?? 'Admin' }} {{ Auth::user()->apellido ?? '' }}
                 </div>
-                <div style="font-size:10px;color:#64748b;">{{ Auth::user()->nombre_usuario ?? '' }}</div>
+                <div style="font-size:10px;color:var(--sidebar-muted);">{{ Auth::user()->nombre_usuario ?? '' }}</div>
             </div>
             <form method="POST" action="{{ route('logout') }}" style="flex-shrink:0;">
                 @csrf
                 <button type="submit"
                         title="Cerrar sesión"
-                        style="background:none;border:none;cursor:pointer;color:#64748b;padding:4px;border-radius:4px;display:flex;align-items:center;"
-                        onmouseover="this.style.color='#ef4444'"
-                        onmouseout="this.style.color='#64748b'">
+                        style="background:none;border:none;cursor:pointer;color:var(--sidebar-muted);padding:4px;border-radius:4px;display:flex;align-items:center;"
+                        onmouseover="this.style.color='#fca5a5'"
+                        onmouseout="this.style.color='var(--sidebar-muted)'">
                     <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                     </svg>

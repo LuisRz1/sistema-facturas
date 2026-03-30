@@ -3,7 +3,61 @@
 @section('breadcrumb', 'Panel Principal')
 
 @push('styles')
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Outfit:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --gold: #F5C518;
+            --gold-light: #FFF3B0;
+            --gold-mid: #FFE166;
+            --gold-dark: #C49A00;
+            --onyx: #111111;
+            --slate: #4A4A4A;
+            --smoke: #F8F8F6;
+            --border-light: #E8E4D9;
+        }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--smoke);
+            color: var(--onyx);
+        }
+        .page-title {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 38px;
+            font-weight: 700;
+            color: var(--onyx);
+        }
+        .page-desc {
+            font-size: 12.5px;
+            color: var(--slate);
+            font-weight: 500;
+        }
+        .btn {
+            font-family: 'Outfit', sans-serif;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            border-radius: 4px;
+        }
+        .btn-outline {
+            background: transparent;
+            color: var(--onyx);
+            border: 1.5px solid var(--border-light);
+        }
+        .btn-outline:hover {
+            border-color: var(--gold);
+            color: var(--gold-dark);
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--slate);
+            border: 1px solid transparent;
+        }
+        .btn-ghost:hover {
+            background: var(--gold-light);
+            color: var(--onyx);
+        }
+
         /* ── PERÍODO SELECTOR ─────────────────────────────────────── */
         .period-bar {
             display: flex;
@@ -11,41 +65,76 @@
             gap: 14px;
             flex-wrap: wrap;
             margin-bottom: 28px;
-            padding: 14px 20px;
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            border-left: 4px solid var(--accent);
+            padding: 14px 22px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+            border-top: 3px solid var(--gold);
         }
         .period-bar label {
-            font-size: 11px;
-            font-weight: 700;
+            font-size: 10px;
+            font-weight: 500;
             text-transform: uppercase;
-            letter-spacing: .08em;
-            color: var(--text-muted);
+            letter-spacing: .16em;
+            color: var(--slate);
             white-space: nowrap;
         }
         .period-bar input[type="date"] {
-            height: 38px;
+            height: 36px;
             padding: 0 12px;
-            border: 1.5px solid var(--border);
-            border-radius: 8px;
+            border: 1.5px solid var(--border-light);
+            border-radius: 4px;
             font-size: 13px;
-            font-family: 'DM Sans', sans-serif;
-            background: #fff;
-            color: var(--text-primary);
+            font-family: 'DM Mono', monospace;
+            background: var(--smoke);
+            color: var(--onyx);
             outline: none;
-            transition: border-color .15s;
+            transition: border-color .15s, background .15s;
             cursor: pointer;
         }
-        .period-bar input[type="date"]:focus { border-color: var(--accent); }
-        .period-bar .sep { color: var(--text-muted); font-weight: 700; }
+        .period-bar input[type="date"]:focus { border-color: var(--gold); background: #fff; }
+        .period-bar .sep { color: var(--gold-dark); font-weight: 900; font-size: 16px; }
         .period-bar .period-info {
             font-size: 12px;
-            color: var(--text-muted);
+            color: var(--slate);
             margin-left: auto;
+            background: var(--gold-light);
+            padding: 5px 14px;
+            border-radius: 20px;
+            border: 1px solid var(--gold-mid);
         }
-        .period-bar .period-info strong { color: var(--text-primary); }
+        .period-bar .period-info strong { color: var(--onyx); font-family: 'DM Mono', monospace; }
+        .tipo-cliente-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px;
+            border: 1.5px solid var(--border-light);
+            border-radius: 6px;
+            background: #fff;
+        }
+        .tipo-btn {
+            height: 30px;
+            padding: 0 12px;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--slate);
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all .15s;
+        }
+        .tipo-btn:hover {
+            color: var(--onyx);
+            background: var(--gold-light);
+        }
+        .tipo-btn.active {
+            background: var(--gold);
+            color: var(--onyx);
+        }
 
         /* ── KPI CARDS ────────────────────────────────────────────── */
         .kpi-grid {
@@ -301,6 +390,21 @@
             <input type="date" name="fecha_hasta" value="{{ $fechaHasta }}"
                    onchange="document.getElementById('frmPeriodo').submit()">
 
+            <label>Cliente:</label>
+            <input type="hidden" name="tipo_cliente" id="tipoClienteInput" value="{{ $tipoCliente }}">
+            <div class="tipo-cliente-toggle">
+                <button type="button"
+                        class="tipo-btn {{ $tipoCliente === 'PERSONA JURIDICA' ? 'active' : '' }}"
+                        onclick="setTipoCliente('PERSONA JURIDICA')">
+                    Persona Jurídica
+                </button>
+                <button type="button"
+                        class="tipo-btn {{ $tipoCliente === 'PERSONA NATURAL' ? 'active' : '' }}"
+                        onclick="setTipoCliente('PERSONA NATURAL')">
+                    Persona Natural
+                </button>
+            </div>
+
             <div style="display:flex;gap:6px;">
                 <button type="button" class="btn btn-ghost btn-sm" onclick="setRango('mes')">Este mes</button>
                 <button type="button" class="btn btn-ghost btn-sm" onclick="setRango('trimestre')">Trimestre</button>
@@ -310,7 +414,8 @@
             <span class="period-info">
             <strong>{{ $kpis->total_facturas }}</strong> facturas ·
             {{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }} al
-            {{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }}
+            {{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }} ·
+            {{ $tipoCliente === 'PERSONA JURIDICA' ? 'PJ' : 'PN' }}
         </span>
         </div>
     </form>
@@ -424,11 +529,13 @@
                 </div>
                 @php
                     $statusMap = [
-                        'PAGADA'    => ['label' => 'Pagadas',   'color' => '#22c55e', 'bg' => '#d1fae5'],
-                        'PENDIENTE' => ['label' => 'Pendientes','color' => '#f59e0b', 'bg' => '#fef3c7'],
-                        'VENCIDA'   => ['label' => 'Vencidas',  'color' => '#ef4444', 'bg' => '#fee2e2'],
-                        'POR_VENCER'=> ['label' => 'Por vencer','color' => '#f97316', 'bg' => '#ffedd5'],
-                        'ANULADA'   => ['label' => 'Anuladas',  'color' => '#94a3b8', 'bg' => '#f1f5f9'],
+                        'PAGADA'               => ['label' => 'Pagadas', 'color' => '#22c55e', 'bg' => '#d1fae5'],
+                        'PENDIENTE'            => ['label' => 'Pendientes', 'color' => '#f59e0b', 'bg' => '#fef3c7'],
+                        'PAGO PARCIAL'         => ['label' => 'Pago parcial', 'color' => '#3b82f6', 'bg' => '#dbeafe'],
+                        'DIFERENCIA PENDIENTE' => ['label' => 'Diferencia', 'color' => '#ec4899', 'bg' => '#fce7f3'],
+                        'POR VALIDAR DETRACCION' => ['label' => 'Por validar', 'color' => '#a855f7', 'bg' => '#f3e8ff'],
+                        'VENCIDO'              => ['label' => 'Vencidas', 'color' => '#ef4444', 'bg' => '#fee2e2'],
+                        'ANULADO'              => ['label' => 'Anuladas', 'color' => '#94a3b8', 'bg' => '#f1f5f9'],
                     ];
                     $totalCount = max(1, $kpis->total_facturas);
                 @endphp
@@ -511,11 +618,13 @@
                     <div class="recent-list">
                         @php
                             $badgeMap = [
-                                'PENDIENTE'  => 'badge-pendiente',
-                                'POR_VENCER' => 'badge-por_vencer',
-                                'VENCIDA'    => 'badge-vencida',
-                                'PAGADA'     => 'badge-pagada',
-                                'ANULADA'    => 'badge-anulada',
+                                'PENDIENTE'            => 'badge-pendiente',
+                                'PAGO PARCIAL'         => 'badge-por_vencer',
+                                'DIFERENCIA PENDIENTE' => 'badge-por_vencer',
+                                'POR VALIDAR DETRACCION' => 'badge-por_vencer',
+                                'VENCIDO'              => 'badge-vencida',
+                                'PAGADA'               => 'badge-pagada',
+                                'ANULADO'              => 'badge-anulada',
                             ];
                         @endphp
                         @foreach($ultimasFacturas as $f)
@@ -559,12 +668,13 @@
             return names[parseInt(m) - 1] + ' ' + y.slice(2);
         }
 
-        Chart.defaults.font.family = "'DM Sans', sans-serif";
-        Chart.defaults.color = '#64748b';
+        Chart.defaults.font.family = "'Outfit', sans-serif";
+        Chart.defaults.color = '#4A4A4A';
 
         // ── BAR CHART: Tendencias ─────────────────────────────────────
         const maxVal = Math.max(...tendenciaData.map(d => d.total));
-        const barColors = tendenciaData.map(d => d.total === maxVal ? '#1d4ed8' : '#93c5fd');
+        const barColors = tendenciaData.map(d => d.total === maxVal ? '#111111' : '#F5C518');
+        const barHover = tendenciaData.map(d => d.total === maxVal ? '#333333' : '#C49A00');
 
         new Chart(document.getElementById('chartTendencias'), {
             type: 'bar',
@@ -573,6 +683,7 @@
                 datasets: [{
                     data: tendenciaData.map(d => d.total),
                     backgroundColor: barColors,
+                    hoverBackgroundColor: barHover,
                     borderRadius: 6,
                     borderSkipped: false,
                 }]
@@ -583,11 +694,11 @@
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: '#0f172a',
-                        titleColor: '#94a3b8',
-                        bodyColor: '#fff',
+                        backgroundColor: '#111111',
+                        titleColor: '#F5C518',
+                        bodyColor: '#ffffff',
                         padding: 12,
-                        cornerRadius: 10,
+                        cornerRadius: 6,
                         callbacks: {
                             label: ctx => ' S/ ' + ctx.parsed.y.toLocaleString('es-PE', {minimumFractionDigits:2})
                         }
@@ -600,7 +711,7 @@
                         ticks: { font: { size: 11 } }
                     },
                     y: {
-                        grid: { color: '#f1f5f9', drawBorder: false },
+                        grid: { color: '#F0EDE6', drawBorder: false },
                         border: { display: false, dash: [4,4] },
                         ticks: {
                             font: { size: 11 },
@@ -614,10 +725,12 @@
         // ── DONUT CHART: Estados ──────────────────────────────────────
         const statusColors = {
             'PAGADA':     '#22c55e',
-            'PENDIENTE':  '#f59e0b',
-            'VENCIDA':    '#ef4444',
-            'POR_VENCER': '#f97316',
-            'ANULADA':    '#cbd5e1',
+            'PENDIENTE':  '#F5C518',
+            'PAGO PARCIAL': '#3b82f6',
+            'DIFERENCIA PENDIENTE': '#ec4899',
+            'POR VALIDAR DETRACCION': '#a855f7',
+            'VENCIDO':    '#ef4444',
+            'ANULADO':    '#cbd5e1',
             'OBSERVADA':  '#a78bfa',
         };
 
@@ -633,7 +746,7 @@
                     data: donutData,
                     backgroundColor: donutColors,
                     borderWidth: 3,
-                    borderColor: '#fff',
+                    borderColor: '#ffffff',
                     hoverOffset: 4,
                 }]
             },
@@ -644,11 +757,11 @@
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: '#0f172a',
-                        titleColor: '#94a3b8',
-                        bodyColor: '#fff',
+                        backgroundColor: '#111111',
+                        titleColor: '#F5C518',
+                        bodyColor: '#ffffff',
                         padding: 10,
-                        cornerRadius: 8,
+                        cornerRadius: 6,
                     }
                 }
             }
@@ -664,6 +777,13 @@
             else                      desde = fmt(new Date(hoy.getFullYear(), 0, 1));
             document.querySelectorAll('#frmPeriodo input[type="date"]')[0].value = desde;
             document.querySelectorAll('#frmPeriodo input[type="date"]')[1].value = hasta;
+            document.getElementById('frmPeriodo').submit();
+        }
+
+        function setTipoCliente(tipo) {
+            const input = document.getElementById('tipoClienteInput');
+            if (!input || input.value === tipo) return;
+            input.value = tipo;
             document.getElementById('frmPeriodo').submit();
         }
     </script>

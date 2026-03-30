@@ -65,9 +65,13 @@ Route::middleware('auth')->group(function () {
 
     // ── FACTURAS ───────────────────────────────────────────────────────
     Route::get('/facturas', [FacturaController::class, 'index'])->name('facturas.index');
+    Route::get('/facturas/persona-juridica', [FacturaController::class, 'index'])->name('facturas.pj');
+    Route::get('/facturas/persona-natural', [FacturaController::class, 'index'])->name('facturas.pn');
     Route::get('/facturas/{id}/edit',  [FacturaController::class, 'edit']  )->name('facturas.edit');
     Route::put('/facturas/{id}',       [FacturaController::class, 'update'])->name('facturas.update');
     Route::post('/facturas/{id}/pago', [FacturaController::class, 'procesarPago'])->name('facturas.pago');
+    Route::get('/facturas/pago-masivo/facturas-cliente', [FacturaController::class, 'facturasPendientesCliente'])->name('facturas.pago-masivo.facturas-cliente');
+    Route::post('/facturas/pago-masivo/procesar', [FacturaController::class, 'procesarPagoMasivo'])->name('facturas.pago-masivo.procesar');
     Route::get('/facturas/{id}/cliente', [FacturaController::class, 'obtenerCliente'])->name('facturas.obtener-cliente');
     Route::put('/facturas/{id}/cliente', [FacturaController::class, 'actualizarCliente'])->name('facturas.actualizar-cliente');
     Route::post('/facturas/{id}/upload-comprobante',
