@@ -88,7 +88,75 @@ class NotificacionController extends Controller
             . "Atentamente,\nSistema de Facturación";
 
         try {
-            Mail::raw($mensaje, fn($m) => $m->to($factura->cliente->correo)->subject($asunto));
+            $html = "
+                <table width='100%' cellpadding='0' cellspacing='0' style='background-color:#f4f6f8; padding:20px;'>
+                <tr>
+                    <td align='center'>
+                    
+                    <table width='600' cellpadding='0' cellspacing='0' style='background:#ffffff; border-radius:10px; overflow:hidden; font-family:Arial, sans-serif;'>
+
+                        <!-- HEADER -->
+                        <tr>
+                        <td style='background:#4CAF50; color:#ffffff; padding:20px; text-align:center; font-size:20px; font-weight:bold;'>
+                            ✅ Confirmación de Pago
+                        </td>
+                        </tr>
+
+                        <!-- BODY -->
+                        <tr>
+                        <td style='padding:20px; color:#333;'>
+
+                            <p style='font-size:14px;'>Estimado cliente,</p>
+
+                            <p style='font-size:14px;'>
+                            Su factura <strong>{$factura->serie}-{$factura->numero}</strong> ha sido pagada correctamente.
+                            </p>
+
+                            <!-- TABLA DETALLE -->
+                            <table width='100%' cellpadding='8' cellspacing='0' style='border-collapse:collapse; margin-top:15px;'>
+
+                            <tr style='background:#f0f0f0;'>
+                                <td><strong>Factura</strong></td>
+                                <td>{$factura->serie}-{$factura->numero}</td>
+                            </tr>
+
+                            <tr>
+                                <td><strong>Fecha de pago</strong></td>
+                                <td>{$fechaPago}</td>
+                            </tr>
+
+                            <tr style='background:#f0f0f0;'>
+                                <td><strong>Monto</strong></td>
+                                <td>{$factura->moneda} " . number_format($factura->importe_total, 2) . "</td>
+                            </tr>
+
+                            <tr>
+                                <td><strong>Estado</strong></td>
+                                <td style='color:green; font-weight:bold;'>✓ PAGADA</td>
+                            </tr>
+
+                            </table>
+
+                            <p style='margin-top:20px; font-size:14px;'>
+                            Gracias por su confianza en nuestros servicios 🙌
+                            </p>
+
+                        </td>
+                        </tr>
+
+                        <!-- FOOTER -->
+                        <tr>
+                        <td style='background:#f4f4f4; text-align:center; padding:15px; font-size:12px; color:#777;'>
+                            Sistema de Facturación
+                        </td>
+                        </tr>
+
+                    </table>
+
+                    </td>
+                </tr>
+                </table>
+                ";
 
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
@@ -197,7 +265,85 @@ class NotificacionController extends Controller
 
         try {
             // ✅ Laravel 12 / Symfony Mailer: usar Mail::raw() para texto plano
-            Mail::raw($mensaje, fn($m) => $m->to($factura->cliente->correo)->subject($asunto));
+            $html = "
+                <table width='100%' cellpadding='0' cellspacing='0' style='background-color:#f4f6f8; padding:20px;'>
+                <tr>
+                    <td align='center'>
+                    
+                    <table width='600' cellpadding='0' cellspacing='0' style='background:#ffffff; border-radius:10px; font-family:Arial, sans-serif;'>
+
+                        <!-- HEADER -->
+                        <tr>
+                        <td style='background:#2c3e50; color:#ffffff; padding:20px; text-align:center; font-size:20px; font-weight:bold;'>
+                             Recordatorio de Pago
+                        </td>
+                        </tr>
+
+                        <!-- BODY -->
+                        <tr>
+                        <td style='padding:20px; color:#333;'>
+
+                            <p style='font-size:14px;'>Estimado cliente,</p>
+
+                            <p style='font-size:14px;'>
+                            Le recordamos que su factura <strong>{$factura->serie}-{$factura->numero}</strong> se encuentra pendiente de pago.
+                            </p>
+
+                            <!-- TABLA -->
+                            <table width='100%' cellpadding='8' cellspacing='0' style='border-collapse:collapse; margin-top:15px;'>
+
+                            <tr style='background:#ecf0f1;'>
+                                <td><strong>Factura</strong></td>
+                                <td>{$factura->serie}-{$factura->numero}</td>
+                            </tr>
+
+                            <tr>
+                                <td><strong>Fecha de vencimiento</strong></td>
+                                <td>{$factura->fecha_vencimiento}</td>
+                            </tr>
+
+                            <tr style='background:#ecf0f1;'>
+                                <td><strong>Monto</strong></td>
+                                <td>{$factura->moneda} " . number_format($factura->importe_total, 2) . "</td>
+                            </tr>
+
+                            <tr>
+                                <td><strong>Estado</strong></td>
+                                <td style='color:#e67e22; font-weight:bold;'>PENDIENTE</td>
+                            </tr>
+
+                            </table>
+
+                            <p style='margin-top:20px; font-size:14px;'>
+                            Por favor realizar el pago en el <strong>BCP</strong> dentro del plazo indicado.
+                            </p>
+
+                            <p style='font-size:12px; color:#888;'>
+                            Si ya realizó el pago, puede ignorar este mensaje.
+                            </p>
+
+                        </td>
+                        </tr>
+
+                        <!-- FOOTER -->
+                        <tr>
+                        <td style='background:#f4f4f4; text-align:center; padding:15px; font-size:12px; color:#777;'>
+                            Sistema de Facturación © " . date('Y') . "
+                        </td>
+                        </tr>
+
+                    </table>
+
+                    </td>
+                </tr>
+                </table>
+                ";
+
+                        Mail::send([], [], function ($m) use ($factura, $asunto, $html) {
+                            $m->to($factura->cliente->correo)
+                            ->subject($asunto)
+                            ->html($html);
+                        });
 
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
