@@ -67,15 +67,43 @@
         .header h1 { font-size:20px; font-weight:900; letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
         .header .sub { font-size:11px; font-weight:700; color:#94a3b8; line-height:1.8; }
 
-        /* ── KPI BAR ── */
-        .kpi-bar { display:flex; gap:0; border-bottom:2px solid #e2e8f0; margin-bottom:20px; }
-        .kpi-box { flex:1; padding:14px 18px; border-right:1px solid #e2e8f0; text-align:center; }
-        .kpi-box:last-child { border-right:none; }
-        .kpi-lbl { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:#64748b; margin-bottom:4px; }
-        .kpi-val { font-size:18px; font-weight:900; font-family:'Courier New',monospace; }
-        .kpi-val.blue  { color:#1d4ed8; }
-        .kpi-val.red   { color:#dc2626; }
-        .kpi-val.amber { color:#d97706; }
+        /* ── DASHBOARD CARDS (DOMPDF friendly) ── */
+        .stats-grid {
+            width:100%;
+            border-collapse:separate;
+            border-spacing:12px 10px;
+            margin:16px 0 18px;
+            table-layout:fixed;
+        }
+        .stats-grid td {
+            border:1px solid #e2e8f0;
+            border-radius:10px;
+            background:#ffffff;
+            padding:10px 12px;
+            vertical-align:middle;
+        }
+        .stats-grid.three td { width:33.33%; }
+        .stats-grid.two td { width:50%; }
+        .stat-label { font-size:8.8px; font-weight:800; text-transform:uppercase; letter-spacing:.55px; color:#64748b; }
+        .stat-value {
+            font-size:16px;
+            font-weight:900;
+            font-family:'Courier New',monospace;
+            color:#0f172a;
+            margin-top:4px;
+            white-space:nowrap;
+        }
+        .stat-sub { font-size:7.5px; color:#94a3b8; margin-top:2px; }
+        .sc-blue   { border-color:#bfdbfe !important; }
+        .sc-amber  { border-color:#fde68a !important; }
+        .sc-green  { border-color:#bbf7d0 !important; }
+        .sc-red    { border-color:#fecaca !important; }
+        .sc-purple { border-color:#ddd6fe !important; }
+        .si-blue   { background:#dbeafe; color:#2563eb; }
+        .si-amber  { background:#fef3c7; color:#d97706; }
+        .si-green  { background:#dcfce7; color:#059669; }
+        .si-red    { background:#fee2e2; color:#dc2626; }
+        .si-purple { background:#ede9fe; color:#7c3aed; }
 
         /* ── TABLE ── */
         .body { padding:24px 32px; }
@@ -109,6 +137,18 @@
         }
         .empresa-table tbody td.r { text-align:right; }
         .empresa-table tbody td.mono { font-family:'Courier New',monospace; font-size:9.5px; }
+        .td-estado { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; line-height:1.15; }
+        .td-glosa { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; line-height:1.2; }
+        .doc-relacion {
+            display:block;
+            margin-top:3px;
+            font-size:8.2px;
+            font-weight:700;
+            color:#7c3aed;
+            white-space:normal;
+            word-break:break-word;
+            line-height:1.15;
+        }
 
         /* Fila NC huérfana: tachado igual que en módulo de facturas */
         .empresa-table tbody tr.nc-huerfana {
@@ -141,7 +181,11 @@
         .abonado { color:#059669; font-weight:700; font-family:'Courier New',monospace; }
         .pendiente-cell { color:#dc2626; font-weight:700; font-family:'Courier New',monospace; }
 
-        .badge { display:inline-block; padding:2px 6px; border-radius:20px; font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; }
+        .badge {
+            display:inline-block; padding:2px 6px; border-radius:20px; font-size:8px;
+            font-weight:800; text-transform:uppercase; letter-spacing:.35px;
+            max-width:100%; white-space:normal; word-break:break-word; line-height:1.1;
+        }
         .b-PENDIENTE             { background:#fef3c7; color:#92400e; }
         .b-VENCIDO               { background:#fee2e2; color:#991b1b; }
         .b-PAGADA                { background:#d1fae5; color:#065f46; }
@@ -200,13 +244,47 @@
     </div>
 </div>
 
-{{-- ── KPIs ── --}}
-<div class="kpi-bar">
-    <div class="kpi-box"><div class="kpi-lbl">Total Facturas</div><div class="kpi-val blue">{{ $resumen['total_facturas'] }}</div></div>
-    <div class="kpi-box"><div class="kpi-lbl">Importe Bruto</div><div class="kpi-val red">S/ {{ number_format($resumen['total_bruto'],2) }}</div></div>
-    <div class="kpi-box"><div class="kpi-lbl">Total Recaudación</div><div class="kpi-val amber">S/ {{ number_format($resumen['total_recaudacion'],2) }}</div></div>
-    <div class="kpi-box"><div class="kpi-lbl">Saldo por Cobrar</div><div class="kpi-val red" style="font-size:16px;">S/ {{ number_format($resumen['saldo_cobrar'],2) }}</div></div>
-</div>
+@php
+    $totalFacturado     = (float) ($dashboard['total_facturado'] ?? 0);
+    $saldoPendiente     = (float) ($dashboard['saldo_pendiente'] ?? 0);
+    $cobrado            = (float) ($dashboard['cobrado'] ?? 0);
+    $montoRecaudacion   = (float) ($dashboard['monto_recaudacion'] ?? 0);
+    $recaudDepositada   = (float) ($dashboard['recaud_depositada'] ?? 0);
+    $recaudSinConfirmar = (float) ($dashboard['recaud_sin_confirmar'] ?? 0);
+@endphp
+
+<table class="stats-grid three">
+    <tr>
+        <td class="sc-blue">
+            <div class="stat-label">Total Facturado</div>
+            <div class="stat-value">S/ {{ number_format($totalFacturado, 2) }}</div>
+        </td>
+        <td class="sc-amber">
+            <div class="stat-label">Saldo Pendiente</div>
+            <div class="stat-value">S/ {{ number_format($saldoPendiente, 2) }}</div>
+        </td>
+        <td class="sc-green">
+            <div class="stat-label">Cobrado</div>
+            <div class="stat-value">S/ {{ number_format($cobrado, 2) }}</div>
+        </td>
+    </tr>
+</table>
+
+<table class="stats-grid two" style="margin-top:0;">
+    <tr>
+        <td class="sc-red">
+            <div class="stat-label">Monto de Recaudación</div>
+            <div class="stat-value">S/ {{ number_format($montoRecaudacion, 2) }}</div>
+        </td>
+        <td class="sc-purple">
+            <div class="stat-label" style="color:#7c3aed;">Recaud. Depositada</div>
+            <div class="stat-value" style="color:#7c3aed;">S/ {{ number_format($recaudDepositada, 2) }}</div>
+            @if($recaudSinConfirmar > 0)
+                <div class="stat-sub">Sin confirmar: S/ {{ number_format($recaudSinConfirmar, 2) }}</div>
+            @endif
+        </td>
+    </tr>
+</table>
 
 <div class="body" id="contenidoReporte">
 
@@ -232,7 +310,11 @@
                 $totEmpresa      = $facturasPorEmpresaParaTotales->sum('importe_total');
                 $totRecEmpresa   = $facturasPorEmpresaParaTotales->sum('monto_recaudacion');
                 $totAbono        = $facturasPorEmpresaParaTotales->sum('monto_abonado');
-                $totPendEmpresa  = $facturasPorEmpresaParaTotales->sum('pendiente_display');
+                $totPendEmpresa  = $facturasPorEmpresaParaTotales->sum(function ($fTot) {
+                    return $fTot->estado === 'DIFERENCIA PENDIENTE'
+                        ? ($fTot->importe_total ?? 0)
+                        : ($fTot->pendiente_display ?? $fTot->monto_pendiente ?? 0);
+                });
             @endphp
 
             <div class="group-title">{{ $empresa }}</div>
@@ -279,8 +361,13 @@
                         <td style="text-align:center;color:#64748b;font-size:9px;">{{ $idx + 1 }}</td>
                         <td class="mono">{{ $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—' }}</td>
                         <td class="mono">{{ $f->fecha_vencimiento ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—' }}</td>
-                        <td class="factura-num">{{ $f->serie }}-{{ str_pad($f->numero, 8, '0', STR_PAD_LEFT) }}</td>
-                        <td style="font-size:9px;">{{ $f->glosa ? Str::limit($f->glosa, 22) : '—' }}</td>
+                        <td class="factura-num">
+                            {{ $f->serie }}-{{ str_pad($f->numero, 8, '0', STR_PAD_LEFT) }}
+                            @if(!empty($f->doc_relacion))
+                                <span class="doc-relacion">{{ $f->doc_relacion }}</span>
+                            @endif
+                        </td>
+                        <td class="td-glosa" style="font-size:9px;">{{ $f->glosa ?? '—' }}</td>
                         <td class="r mono">{{ $f->moneda }} {{ number_format($f->importe_total, 2) }}</td>
                         <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda.' '.number_format($recaudacion, 2) : '—' }}</td>
                         <td class="mono" style="font-size:8.5px;color:#d97706;">
@@ -303,7 +390,7 @@
                                 @endif
                             @endif
                         </td>
-                        <td>
+                        <td class="td-estado">
                             <span class="badge b-{{ $badgeKey }}">{{ str_replace('_', ' ', $f->estado) }}</span>
                             @if($esNcHuerfana)
                                 <span class="badge-nc-huerfana">sin factura</span>
@@ -347,6 +434,7 @@
     const FECHA_HASTA    = '{{ $fechaHasta ?? "" }}';
     const ID_CLIENTE     = '{{ $idCliente ?? "" }}';
     const ESTADOS_FILTRO = {!! $estadosFiltroJson !!};
+    const TIPO_REPORTE   = 'detallado';
     // IDs de NCs huérfanas para exclusión en exportación Excel
     const ORPHAN_IDS     = {!! json_encode($orphanFacturaIds) !!};
 
@@ -370,7 +458,7 @@
         btnWA.disabled = btnMail.disabled = true;
         result.className = 'send-result-bar';
         result.textContent = 'Enviando…';
-        const body = new URLSearchParams({ usuario_id: sel.value, fecha_desde: FECHA_DESDE, fecha_hasta: FECHA_HASTA, _token: CSRF });
+        const body = new URLSearchParams({ usuario_id: sel.value, fecha_desde: FECHA_DESDE, fecha_hasta: FECHA_HASTA, tipo_reporte: TIPO_REPORTE, _token: CSRF });
         if (ID_CLIENTE) body.append('id_cliente', ID_CLIENTE);
         ESTADOS_FILTRO.forEach(e => body.append('estados[]', e));
         try {

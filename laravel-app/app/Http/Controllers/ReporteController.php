@@ -98,6 +98,97 @@ class ReporteController extends Controller
         return $estadosFiltro;
     }
 
+    /**
+     * Replica los indicadores de la pantalla Gestión de Facturas.
+     */
+    private function buildDashboardMetrics(Collection $facturasParaTotales): array
+    {
+        $totalFacturado = (float) $facturasParaTotales->sum('importe_total');
+        $saldoPendiente = (float) $facturasParaTotales
+            ->whereIn('estado', ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE'])
+            ->sum('monto_pendiente');
+        $cobrado = (float) $facturasParaTotales->where('estado', 'PAGADA')->sum('importe_total');
+        $montoRecaudacion = (float) $facturasParaTotales->sum('monto_recaudacion');
+        $recaudDepositada = (float) $facturasParaTotales
+            ->filter(fn($f) => !empty($f->fecha_recaudacion))
+            ->sum('monto_recaudacion');
+
+        return [
+            'total_facturado'      => $totalFacturado,
+            'saldo_pendiente'      => $saldoPendiente,
+            'cobrado'              => $cobrado,
+            'monto_recaudacion'    => $montoRecaudacion,
+            'recaud_depositada'    => $recaudDepositada,
+            'recaud_sin_confirmar' => max($montoRecaudacion - $recaudDepositada, 0),
+        ];
+    }
+
+    /**
+     * Agrega a cada fila un campo doc_relacion con formato:
+     *   SERIE-NUMERO / SERIE-LIGADA-NUMERO-LIGADO
+     * Ejemplo:
+     *   FC01-00000215 / FF01-00006183
+     */
+    private function enriquecerRelacionCredito(Collection $facturas): Collection
+    {
+        if ($facturas->isEmpty()) {
+            return $facturas;
+        }
+
+        $facturaIds = $facturas->pluck('id_factura')->map(fn($id) => (int) $id)->values()->all();
+
+        $creditosDirectos = DB::table('credito')
+            ->whereIn('id_factura', $facturaIds)
+            ->get(['id_factura', 'serie_doc_modificado', 'numero_doc_modificado']);
+
+        $creditosInversosQuery = DB::table('credito')
+            ->select(['id_factura', 'serie_doc_modificado', 'numero_doc_modificado']);
+
+        $facturas->each(function ($f) use ($creditosInversosQuery) {
+            $creditosInversosQuery->orWhere(function ($q) use ($f) {
+                $q->where('serie_doc_modificado', $f->serie)
+                    ->where('numero_doc_modificado', $f->numero);
+            });
+        });
+
+        $creditos = $creditosDirectos
+            ->merge($creditosInversosQuery->get())
+            ->unique(fn($c) => ((int) $c->id_factura) . '|' . $c->serie_doc_modificado . '|' . (int) $c->numero_doc_modificado)
+            ->values();
+
+        $creditoPorFacturaId = $creditos->keyBy(fn($c) => (int) $c->id_factura);
+        $creditoPorDocMod    = $creditos->keyBy(fn($c) => $c->serie_doc_modificado . '|' . (int) $c->numero_doc_modificado);
+
+        $facturasNc = DB::table('factura')
+            ->whereIn('id_factura', $creditos->pluck('id_factura')->map(fn($id) => (int) $id)->unique()->values()->all())
+            ->get(['id_factura', 'serie', 'numero'])
+            ->keyBy(fn($f) => (int) $f->id_factura);
+
+        return $facturas->map(function ($f) use ($creditoPorFacturaId, $creditoPorDocMod, $facturasNc) {
+            $docActual = $f->serie . '-' . str_pad((string) $f->numero, 8, '0', STR_PAD_LEFT);
+            $docLigado = null;
+
+            // Caso 1: esta factura es nota de crédito y modifica otro documento.
+            $creditoInfo = $creditoPorFacturaId->get((int) $f->id_factura);
+            if ($creditoInfo) {
+                $docLigado = $creditoInfo->serie_doc_modificado . '-' . str_pad((string) $creditoInfo->numero_doc_modificado, 8, '0', STR_PAD_LEFT);
+            } else {
+                // Caso 2: esta factura está siendo modificada por una NC.
+                $keyMod = $f->serie . '|' . (int) $f->numero;
+                $creditoAsociado = $creditoPorDocMod->get($keyMod);
+                if ($creditoAsociado) {
+                    $nc = $facturasNc->get((int) $creditoAsociado->id_factura);
+                    if ($nc) {
+                        $docLigado = $nc->serie . '-' . str_pad((string) $nc->numero, 8, '0', STR_PAD_LEFT);
+                    }
+                }
+            }
+
+            $f->doc_relacion = $docLigado ? ($docActual . ' / ' . $docLigado) : null;
+            return $f;
+        });
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
     // ENDPOINTS
     // ══════════════════════════════════════════════════════════════════════════
@@ -121,9 +212,13 @@ class ReporteController extends Controller
             ->get();
 
         $facturas = $facturas->map(function ($f) {
-            $f->neto_caja = $f->importe_total - ($f->monto_recaudacion ?? 0);
+            $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
+            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
+                ? $f->importe_total
+                : $f->monto_pendiente;
             return $f;
         });
+        $facturas = $this->enriquecerRelacionCredito($facturas);
 
         // ── Lógica unificada de huérfanas ──────────────────────────────────
         $orphanFacturaIds   = $this->getOrphanFacturaIds($facturas);
@@ -157,7 +252,7 @@ class ReporteController extends Controller
                 'total_bruto'       => $facturasParaTotales->where('estado', '!=', 'ANULADO')->sum('importe_total'),
                 'total_recaudacion' => $facturasParaTotales->where('estado', '!=', 'ANULADO')->sum('monto_recaudacion'),
                 'total_neto'        => $facturasParaTotales->where('estado', '!=', 'ANULADO')->sum('neto_caja'),
-                'saldo_cobrar'      => $facturasParaTotales->where('estado', '!=', 'ANULADO')->sum('monto_pendiente'),
+                'saldo_cobrar'      => $facturasParaTotales->where('estado', '!=', 'ANULADO')->sum('pendiente_display'),
             ],
         ]);
     }
@@ -189,9 +284,12 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->monto_pendiente;
+            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
+                ? $f->importe_total
+                : $f->monto_pendiente;
             return $f;
         });
+        $facturas = $this->enriquecerRelacionCredito($facturas);
 
         // ── Lógica unificada de huérfanas ──────────────────────────────────
         $orphanFacturaIds    = $this->getOrphanFacturaIds($facturas);
@@ -212,6 +310,7 @@ class ReporteController extends Controller
             'total_neto'        => $facturasParaTotales->sum('neto_caja'),
             'saldo_cobrar'      => $facturasParaTotales->sum('pendiente_display'),
         ];
+        $dashboard = $this->buildDashboardMetrics($facturasParaTotales);
 
         $clienteNombre  = 'TODOS LOS CLIENTES';
         $clienteCelular = null;
@@ -240,6 +339,7 @@ class ReporteController extends Controller
 
         return view('reportes.pdf', compact(
             'facturas', 'facturasAgrupadas', 'facturasAgrupParaTotales', 'resumen',
+            'dashboard',
             'clienteNombre', 'estadoLabel', 'idCliente', 'periodoLabel',
             'fechaDesde', 'fechaHasta', 'clienteCelular', 'clienteCorreo',
             'usuariosDestino', 'todosUsuarios', 'estadosFiltroJson',
@@ -254,6 +354,7 @@ class ReporteController extends Controller
         $estado     = $request->input('estado');
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
+        $tipoReporte = $request->input('tipo_reporte', 'detallado');
 
         $celular = null;
         $nombre  = null;
@@ -281,14 +382,53 @@ class ReporteController extends Controller
             : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE']);
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
+        $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
+        $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
+
+        if ($tipoReporte === 'general') {
+            try {
+                $htmlReporte = $this->deudaGeneral($request)->render();
+                $htmlReporte = preg_replace('/<div class="no-print".*?<\/div>/s', '', $htmlReporte);
+                $htmlReporte = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $htmlReporte);
+                $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($htmlReporte)->setPaper('a4', 'portrait');
+                $pdfContent = $pdf->output();
+            } catch (\Throwable $e) {
+                return response()->json(['success' => false, 'error' => 'No se pudo generar el PDF: ' . $e->getMessage()], 500);
+            }
+
+            $cloudUrl = $this->subirPdfACloudinary($pdfContent, $estadoLabel, $periodoLabel);
+            if (!$cloudUrl) {
+                return response()->json(['success' => false, 'error' => 'No se pudo subir el PDF a Cloudinary.'], 500);
+            }
+
+            $partes        = ['Reporte_Deuda_General'];
+            $partes[]      = preg_replace('/[^A-Za-z0-9]/', '_', $estadoLabel);
+            if ($fechaDesde) $partes[] = str_replace('-', '', $fechaDesde);
+            if ($fechaHasta) $partes[] = 'al_' . str_replace('-', '', $fechaHasta);
+            $nombreArchivo = implode('_', $partes) . '.pdf';
+            $caption       = "*Reporte Deuda General — CRC S.A.C.*\n{$periodoLabel}\nEstado: {$estadoLabel}";
+            $resultado     = $gateway->enviarDocumento($celular, $cloudUrl, $nombreArchivo, $caption);
+
+            return response()->json([
+                'success' => $resultado['ok'],
+                'message' => $resultado['ok']
+                    ? "PDF enviado por WhatsApp a {$nombre} ({$celular})"
+                    : 'No se pudo enviar: ' . ($resultado['error'] ?? 'Error'),
+            ]);
+        }
+
         $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
             ->whereIn('f.estado', $estadosFiltro)
             ->get();
 
         $facturas = $facturas->map(function ($f) {
-            $f->neto_caja = $f->importe_total - ($f->monto_recaudacion ?? 0);
+            $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
+            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
+                ? $f->importe_total
+                : $f->monto_pendiente;
             return $f;
         });
+        $facturas = $this->enriquecerRelacionCredito($facturas);
 
         // ── Lógica unificada de huérfanas ──────────────────────────────────
         $orphanFacturaIds    = $this->getOrphanFacturaIds($facturas);
@@ -296,8 +436,12 @@ class ReporteController extends Controller
 
         $periodoLabel      = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
         $estadoLabel       = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
-        $clienteNombre     = $nombre ?? 'TODOS LOS CLIENTES';
-        $facturasAgrupadas = null;
+        $clienteNombre     = strtoupper($nombre ?? 'TODOS LOS CLIENTES');
+        $facturasAgrupadas = $facturas->groupBy('razon_social')->sortKeys();
+        $facturasAgrupParaTotales = $facturasParaTotales->groupBy('razon_social')->sortKeys();
+        $usuarioDestino    = null;
+        $todosUsuarios     = collect([]);
+        $estadosFiltroJson = json_encode($estadosFiltro);
 
         $resumen = [
             'total_facturas'    => $facturasParaTotales->count(),
@@ -307,13 +451,23 @@ class ReporteController extends Controller
             'total_bruto'       => $facturasParaTotales->sum('importe_total'),
             'total_recaudacion' => $facturasParaTotales->sum('monto_recaudacion'),
             'total_neto'        => $facturasParaTotales->sum('neto_caja'),
-            'saldo_cobrar'      => $facturasParaTotales->sum('monto_pendiente'),
+            'saldo_cobrar'      => $facturasParaTotales->sum('pendiente_display'),
         ];
+        $dashboard = $this->buildDashboardMetrics($facturasParaTotales);
 
         try {
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reportes.pdf_doc', compact(
-                'facturas', 'facturasAgrupadas', 'resumen', 'clienteNombre', 'estadoLabel', 'periodoLabel'
-            ))->setPaper('a4', 'landscape');
+            // Genera el mismo reporte "Por Empresa" que el usuario está viendo en pantalla.
+            $htmlReporte = view('reportes.pdf', compact(
+                'facturas', 'facturasAgrupadas', 'facturasAgrupParaTotales', 'resumen',
+                'dashboard',
+                'clienteNombre', 'estadoLabel', 'idCliente', 'periodoLabel',
+                'usuarioDestino', 'todosUsuarios', 'estadosFiltroJson',
+                'fechaDesde', 'fechaHasta', 'orphanFacturaIds'
+            ))->render();
+            $htmlReporte = preg_replace('/<div class="no-print".*?<\/div>/s', '', $htmlReporte);
+            $htmlReporte = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $htmlReporte);
+
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($htmlReporte)->setPaper('a4', 'landscape');
             $pdfContent = $pdf->output();
         } catch (\Throwable $e) {
             return response()->json(['success' => false, 'error' => 'No se pudo generar el PDF: ' . $e->getMessage()], 500);
@@ -370,6 +524,7 @@ class ReporteController extends Controller
         $estado     = $request->input('estado');
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
+        $tipoReporte = $request->input('tipo_reporte', 'detallado');
 
         $correo = null;
         $nombre = null;
@@ -397,15 +552,35 @@ class ReporteController extends Controller
             : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE']);
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
+        if ($tipoReporte === 'general') {
+            $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
+            $htmlReporte  = $this->deudaGeneral($request)->render();
+            $htmlReporte  = preg_replace('/<div class="no-print".*?<\/div>/s', '', $htmlReporte);
+            $htmlReporte  = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $htmlReporte);
+            $asunto       = "Reporte Deuda General — {$periodoLabel}";
+
+            try {
+                Mail::send([], [], function ($mail) use ($correo, $asunto, $htmlReporte) {
+                    $mail->to($correo)->subject($asunto)->html($htmlReporte);
+                });
+                return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
+            } catch (\Exception $e) {
+                return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
+            }
+        }
+
         $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
             ->whereIn('f.estado', $estadosFiltro)
             ->get();
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->monto_pendiente;
+            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
+                ? $f->importe_total
+                : $f->monto_pendiente;
             return $f;
         });
+        $facturas = $this->enriquecerRelacionCredito($facturas);
 
         // ── Lógica unificada de huérfanas ──────────────────────────────────
         $orphanFacturaIds    = $this->getOrphanFacturaIds($facturas);
@@ -429,12 +604,14 @@ class ReporteController extends Controller
             'total_neto'        => $facturasParaTotales->sum('neto_caja'),
             'saldo_cobrar'      => $facturasParaTotales->sum('pendiente_display'),
         ];
+        $dashboard = $this->buildDashboardMetrics($facturasParaTotales);
 
         // Para el PDF del correo usamos facturasAgrupParaTotales también
         $facturasAgrupParaTotales = $facturasParaTotales->groupBy('razon_social')->sortKeys();
 
         $htmlReporte = view('reportes.pdf', compact(
             'facturas', 'facturasAgrupadas', 'facturasAgrupParaTotales', 'resumen',
+            'dashboard',
             'clienteNombre', 'estadoLabel', 'idCliente', 'periodoLabel',
             'usuarioDestino', 'todosUsuarios', 'estadosFiltroJson',
             'fechaDesde', 'fechaHasta', 'orphanFacturaIds'
@@ -511,6 +688,7 @@ class ReporteController extends Controller
                 'f.id_factura', 'c.id_cliente', 'c.razon_social', 'c.ruc',
                 'f.moneda', 'f.estado', 'f.importe_total', 'f.monto_pendiente',
                 DB::raw('COALESCE(rec.total_recaudacion, 0) AS monto_recaudacion'),
+                'rec.fecha_recaudacion',
             ]);
 
         if ($fechaDesde) $query->where('f.fecha_emision', '>=', $fechaDesde);
@@ -520,20 +698,11 @@ class ReporteController extends Controller
 
         // ── Lógica unificada de huérfanas ──────────────────────────────────
         $orphanFacturaIds = $this->getOrphanFacturaIds($facturas);
+        $facturasParaTotales = $this->filtrarParaTotales($facturas, $orphanFacturaIds);
+        $dashboard = $this->buildDashboardMetrics($facturasParaTotales);
 
         $clientes = [];
-        foreach ($facturas as $f) {
-            // Excluir completamente las NCs huérfanas de cualquier suma
-            if (in_array((int) $f->id_factura, $orphanFacturaIds)) {
-                continue;
-            }
-            // Excluir ANULADO sin credito (no es NC ligada)
-            if ($f->estado === 'ANULADO') {
-                $tieneCredito = DB::table('credito')->where('id_factura', $f->id_factura)->exists();
-                if (!$tieneCredito) {
-                    continue;
-                }
-            }
+        foreach ($facturasParaTotales as $f) {
 
             $id = $f->id_cliente;
             if (!isset($clientes[$id])) {
@@ -593,7 +762,7 @@ class ReporteController extends Controller
         return view('reportes.deuda_general', compact(
             'clientes', 'totalPen', 'totalUsd', 'totalRecaudacionPen', 'totalRecaudacionUsd',
             'totalPendientePen', 'totalPendienteUsd', 'periodoLabel', 'fechaDesde', 'fechaHasta',
-            'estadoLabel', 'usuariosDestino', 'todosUsuarios', 'estadosFiltroJson'
+            'estadoLabel', 'usuariosDestino', 'todosUsuarios', 'estadosFiltroJson', 'dashboard'
         ));
     }
 
@@ -620,7 +789,9 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->monto_pendiente;
+            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
+                ? $f->importe_total
+                : $f->monto_pendiente;
             return $f;
         });
 

@@ -7,6 +7,7 @@ use App\Models\NotificacionFactura;
 use App\Services\WhatsAppGatewayService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 class NotificacionController extends Controller
 {
@@ -134,8 +135,15 @@ class NotificacionController extends Controller
             . "Gracias por su confianza en nuestros servicios.\n\n"
             . "Atentamente,\nSistema de Facturación";
 
-        $mediaUrl  = $factura->ruta_comprobante_pago ?: null;
-        $resultado = $gateway->enviar($factura->cliente->celular, $mensaje, $mediaUrl);
+        $mediaUrl = $this->resolveComprobanteUrl($factura->ruta_comprobante_pago ?: null);
+
+        $isPdf = $mediaUrl && preg_match('/\.pdf(\?|$)/i', $mediaUrl);
+        if ($isPdf) {
+            $fileName = 'Comprobante_' . $factura->serie . '-' . str_pad((string) $factura->numero, 8, '0', STR_PAD_LEFT) . '.pdf';
+            $resultado = $gateway->enviarDocumento($factura->cliente->celular, $mediaUrl, $fileName, $mensaje);
+        } else {
+            $resultado = $gateway->enviar($factura->cliente->celular, $mensaje, $mediaUrl);
+        }
 
         $observacion = $resultado['ok']
             ? ($mediaUrl ? 'Enviado con imagen del comprobante' : 'Enviado sin imagen')
@@ -238,5 +246,49 @@ class NotificacionController extends Controller
             'fecha_creacion'      => now(),
             'fecha_actualizacion' => now(),
         ];
+    }
+
+    private function resolveComprobanteUrl(?string $storedValue): ?string
+    {
+        if (!$storedValue) {
+            return null;
+        }
+
+        $value = trim((string) $storedValue);
+        if ($value === '') {
+            return null;
+        }
+
+        $key = $value;
+        if (preg_match('/^https?:\/\//i', $value)) {
+            $parsedPath = parse_url($value, PHP_URL_PATH) ?? '';
+            $key = ltrim((string) $parsedPath, '/');
+
+            $bucket = (string) config('filesystems.disks.s3.bucket');
+            if ($bucket !== '' && str_starts_with($key, $bucket . '/')) {
+                $key = substr($key, strlen($bucket) + 1);
+            }
+        }
+
+        $key = ltrim($key, '/');
+        if ($key === '') {
+            return null;
+        }
+
+        $disk = Storage::disk('s3');
+
+        try {
+            if (is_object($disk) && method_exists($disk, 'temporaryUrl')) {
+                return call_user_func([$disk, 'temporaryUrl'], $key, now()->addMinutes(60));
+            }
+        } catch (\Throwable $e) {
+            // Fallback below.
+        }
+
+        if (is_object($disk) && method_exists($disk, 'url')) {
+            return call_user_func([$disk, 'url'], $key);
+        }
+
+        return null;
     }
 }

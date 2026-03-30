@@ -149,9 +149,11 @@ class ImportarRetencionesController extends Controller
                 if (!empty($rucEmisor)) {
                     $clienteExistente = DB::table('cliente')->where('ruc', $rucEmisor)->first();
                     if (!$clienteExistente) {
+                        $tipoCliente = $this->inferirTipoCliente($rucEmisor);
                         $idCliente = DB::table('cliente')->insertGetId([
                             'ruc'            => $rucEmisor,
                             'razon_social'   => $razonSocial,
+                            'tipo_cliente'   => $tipoCliente,
                             'estado_contado' => 'SIN_DATOS',
                             'fecha_creacion' => now(),
                         ]);
@@ -169,6 +171,7 @@ class ImportarRetencionesController extends Controller
                         $idCliente = DB::table('cliente')->insertGetId([
                             'ruc'            => '00000000000',
                             'razon_social'   => 'CLIENTE GENERICO',
+                            'tipo_cliente'   => 'PERSONA JURIDICA',
                             'estado_contado' => 'SIN_DATOS',
                             'fecha_creacion' => now(),
                         ]);
@@ -498,6 +501,8 @@ class ImportarRetencionesController extends Controller
     {
         $texto = trim(preg_replace('/\s+/', ' ', $texto));
         if (preg_match('/RUC\s+(\d{11})\s*-\s*(.+)/i', $texto, $m)) return [trim($m[1]), trim($m[2])];
+        if (preg_match('/(?:DNI|DOC)\s+(\d{8})\s*-\s*(.+)/i', $texto, $m)) return [trim($m[1]), trim($m[2])];
+        if (preg_match('/^(\d{8,11})\s*-\s*(.+)$/', $texto, $m)) return [trim($m[1]), trim($m[2])];
         return ['', $texto];
     }
 
@@ -523,5 +528,11 @@ class ImportarRetencionesController extends Controller
         try { return Carbon::createFromFormat('d/m/Y', $s)->format('Y-m-d'); } catch (\Throwable) {}
         try { return Carbon::parse($s)->format('Y-m-d'); } catch (\Throwable) {}
         return null;
+    }
+
+    private function inferirTipoCliente(string $documento): string
+    {
+        $doc = preg_replace('/\D/', '', (string) $documento);
+        return strlen($doc) === 8 ? 'PERSONA NATURAL' : 'PERSONA JURIDICA';
     }
 }

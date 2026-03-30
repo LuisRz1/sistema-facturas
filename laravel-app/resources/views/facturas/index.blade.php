@@ -147,6 +147,7 @@
         .chip-pendiente.active { border-color:#d97706 !important; background:#fef3c7 !important; color:#92400e !important; }
         .chip-vencido.active   { border-color:#dc2626 !important; background:#fee2e2 !important; color:#7f1d1d !important; }
         .chip-parcial.active   { border-color:#4f46e5 !important; background:#e0e7ff !important; color:#3730a3 !important; }
+        .chip-pagada.active    { border-color:#059669 !important; background:#d1fae5 !important; color:#065f46 !important; }
         .chip-det.active       { border-color:#7c3aed !important; background:#fdf4ff !important; color:#6b21a8 !important; }
         .chip-todos.active     { border-color:#059669 !important; background:#d1fae5 !important; color:#065f46 !important; }
 
@@ -545,7 +546,18 @@
                                 </button>
 
                                 <button type="button"
-                                        onclick="abrirModalPago('{{ $factura->id_factura }}', {{ $factura->importe_total }}, '{{ $factura->moneda }}', {{ $montoAbonado }}, {{ $montoRecaudacion }}, {{ $porcentaje }}, '{{ $tipoRecaudacion }}', '{{ $estado }}', '{{ $factura->cuenta_pago ?? '' }}', '{{ $factura->fecha_recaudacion ?? '' }}')"
+                                        data-factura-id="{{ (int) $factura->id_factura }}"
+                                        data-importe="{{ (float) $factura->importe_total }}"
+                                        data-moneda="{{ e((string) $factura->moneda) }}"
+                                        data-monto-abonado="{{ (float) $montoAbonado }}"
+                                        data-monto-recaudacion="{{ (float) $montoRecaudacion }}"
+                                        data-porcentaje="{{ (float) $porcentaje }}"
+                                        data-tipo-rec="{{ e((string) $tipoRecaudacion) }}"
+                                        data-estado="{{ e((string) $estado) }}"
+                                        data-cuenta-pago="{{ e((string) ($factura->cuenta_pago ?? '')) }}"
+                                        data-fecha-recaudacion="{{ e((string) ($factura->fecha_recaudacion ?? '')) }}"
+                                        data-comprobante-url="{{ e((string) ($factura->comprobante_url ?? '')) }}"
+                                        onclick="abrirModalPagoDesdeBtn(this)"
                                         class="action-btn"
                                         title="{{ $estado === 'PAGADA' ? 'Ver/Actualizar pago' : 'Registrar pago' }}"
                                         style="color:{{ $montoAbonado > 0 ? '#1d4ed8' : '#d97706' }};">
@@ -681,6 +693,10 @@
                             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                             Imagen de Comprobante (Opcional)
                         </div>
+                        <div id="comprobanteActualWrap" style="display:none;margin-bottom:12px;padding:10px;border:1px dashed var(--gold-b);border-radius:8px;background:var(--gold-l);">
+                            <div style="font-size:11px;font-weight:700;color:var(--gold-xd);margin-bottom:8px;">Comprobante actual</div>
+                            <div id="comprobanteActualView"></div>
+                        </div>
                         <div id="dropZonePago" onclick="document.getElementById('fileComprobantePago').click()" onmouseover="this.style.borderColor='#1d4ed8';this.style.background='#eff6ff'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#fff'">
                             <svg width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 10px;color:#94a3b8;"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                             <p style="font-size:13px;font-weight:600;margin-bottom:4px;">Arrastra o haz clic para adjuntar</p>
@@ -804,6 +820,7 @@
                         <span class="estado-chip chip-pendiente"      id="rChipPendiente" onclick="toggleEstado('PENDIENTE',this)">Pendiente</span>
                         <span class="estado-chip chip-vencido"        id="rChipVencido"   onclick="toggleEstado('VENCIDO',this)">Vencido</span>
                         <span class="estado-chip chip-parcial"        id="rChipParcial"   onclick="toggleEstado('PAGO PARCIAL',this)">Pago Parcial</span>
+                        <span class="estado-chip chip-pagada"         id="rChipPagada"    onclick="toggleEstado('PAGADA',this)">Pagada</span>
                         <span class="estado-chip chip-det"         id="rChipDet"         onclick="toggleEstado('DIFERENCIA PENDIENTE',this)">Diferencia Pendiente</span>
                     </div>
                 </div>
@@ -982,11 +999,28 @@
             }
 
             // ── Modal Pago ────────────────────────────────────────────────────
-            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, cuentaPago, fechaRec) {
+            function abrirModalPagoDesdeBtn(btn) {
+                abrirModalPago(
+                    parseInt(btn.dataset.facturaId || '0', 10),
+                    parseFloat(btn.dataset.importe || '0'),
+                    btn.dataset.moneda || '',
+                    parseFloat(btn.dataset.montoAbonado || '0'),
+                    parseFloat(btn.dataset.montoRecaudacion || '0'),
+                    parseFloat(btn.dataset.porcentaje || '0'),
+                    btn.dataset.tipoRec || '',
+                    btn.dataset.estado || '',
+                    btn.dataset.cuentaPago || '',
+                    btn.dataset.fechaRecaudacion || '',
+                    btn.dataset.comprobanteUrl || ''
+                );
+            }
+
+            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, cuentaPago, fechaRec, comprobanteUrl = null) {
                 facturaActualId = id;
                 facturaImporte  = parseFloat(importe);
                 facturaMoneda   = moneda;
                 document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} · ${moneda} ${parseFloat(importe).toFixed(2)}`;
+                renderComprobanteActual(comprobanteUrl);
                 document.getElementById('pagoFechaAbono').value       = '{{ now()->format("Y-m-d") }}';
                 document.getElementById('pagoCuentaPago').value       = cuentaPago || '';
                 document.getElementById('pagoFechaRecaudacion').value = fechaRec || '';
@@ -1011,7 +1045,27 @@
                 document.getElementById('modalPagoOverlay').classList.remove('open');
                 ['pagoMontoAbonado','pagoFechaAbono','pagoCuentaPago','pagoTotalRecaudacion','pagoPorcentaje','pagoTipoRecaudacion','pagoFechaRecaudacion']
                     .forEach(id => { document.getElementById(id).value = ''; });
+                document.getElementById('comprobanteActualWrap').style.display = 'none';
+                document.getElementById('comprobanteActualView').innerHTML = '';
                 limpiarPreviewPago();
+            }
+
+            function renderComprobanteActual(url) {
+                const wrap = document.getElementById('comprobanteActualWrap');
+                const view = document.getElementById('comprobanteActualView');
+                if (!url) {
+                    wrap.style.display = 'none';
+                    view.innerHTML = '';
+                    return;
+                }
+
+                const isPdf = /\.pdf(\?|$)/i.test(url);
+                if (isPdf) {
+                    view.innerHTML = `<a href="${url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;font-size:12px;font-weight:700;text-decoration:none;">📄 Ver PDF actual</a>`;
+                } else {
+                    view.innerHTML = `<a href="${url}" target="_blank" style="display:inline-block;"><img src="${url}" alt="Comprobante actual" style="max-width:220px;max-height:140px;border-radius:8px;border:1px solid var(--gold-b);"></a>`;
+                }
+                wrap.style.display = 'block';
             }
 
             function showToastFactura(msg, ok = true) {

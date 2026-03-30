@@ -40,15 +40,42 @@
         .header h1 { font-size:18px; font-weight:900; letter-spacing:1px; text-transform:uppercase; margin-bottom:8px; }
         .header .sub { font-size:11px; font-weight:700; color:#94a3b8; letter-spacing:.4px; line-height:1.8; }
 
-        .kpi-bar { display:flex; gap:0; border-bottom:2px solid #e2e8f0; }
-        .kpi-box { flex:1; padding:16px 20px; border-right:1px solid #e2e8f0; text-align:center; }
-        .kpi-box:last-child { border-right:none; }
-        .kpi-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:#64748b; margin-bottom:4px; }
-        .kpi-value { font-size:20px; font-weight:900; font-family:'Courier New',monospace; }
-        .kpi-value.red   { color:#dc2626; }
-        .kpi-value.amber { color:#d97706; }
-        .kpi-value.blue  { color:#1d4ed8; }
-        .kpi-value.dark  { color:#0f172a; }
+        .stats-grid {
+            width:100%;
+            border-collapse:separate;
+            border-spacing:12px 10px;
+            margin:16px 0 18px;
+            table-layout:fixed;
+        }
+        .stats-grid td {
+            border:1px solid #e2e8f0;
+            border-radius:10px;
+            background:#ffffff;
+            padding:10px 12px;
+            vertical-align:middle;
+        }
+        .stats-grid.three td { width:33.33%; }
+        .stats-grid.two td { width:50%; }
+        .stat-label { font-size:8.8px; font-weight:800; text-transform:uppercase; letter-spacing:.55px; color:#64748b; }
+        .stat-value {
+            font-size:16px;
+            font-weight:900;
+            font-family:'Courier New',monospace;
+            color:#0f172a;
+            margin-top:4px;
+            white-space:nowrap;
+        }
+        .stat-sub { font-size:7.5px; color:#94a3b8; margin-top:2px; }
+        .sc-blue   { border-color:#bfdbfe !important; }
+        .sc-amber  { border-color:#fde68a !important; }
+        .sc-green  { border-color:#bbf7d0 !important; }
+        .sc-red    { border-color:#fecaca !important; }
+        .sc-purple { border-color:#ddd6fe !important; }
+        .si-blue   { background:#dbeafe; color:#2563eb; }
+        .si-amber  { background:#fef3c7; color:#d97706; }
+        .si-green  { background:#dcfce7; color:#059669; }
+        .si-red    { background:#fee2e2; color:#dc2626; }
+        .si-purple { background:#ede9fe; color:#7c3aed; }
 
         .body { padding:20px 32px 32px; }
 
@@ -141,18 +168,46 @@
     $countEmpresas = count($clientes);
     $countVencidas = collect($clientes)->filter(fn($c) => in_array('VENCIDO', $c['estados']))->count();
     $mostrarUsd    = ($totalUsd ?? 0) > 0;
+    $totalFacturado     = (float) ($dashboard['total_facturado'] ?? 0);
+    $saldoPendiente     = (float) ($dashboard['saldo_pendiente'] ?? 0);
+    $cobrado            = (float) ($dashboard['cobrado'] ?? 0);
+    $montoRecaudacion   = (float) ($dashboard['monto_recaudacion'] ?? 0);
+    $recaudDepositada   = (float) ($dashboard['recaud_depositada'] ?? 0);
+    $recaudSinConfirmar = (float) ($dashboard['recaud_sin_confirmar'] ?? 0);
 @endphp
 
-<div class="kpi-bar">
-    <div class="kpi-box"><div class="kpi-label">Empresas con Deuda</div><div class="kpi-value blue">{{ $countEmpresas }}</div></div>
-    <div class="kpi-box"><div class="kpi-label">Total Deuda Bruta (S/)</div><div class="kpi-value red">S/ {{ number_format($totalPen, 2) }}</div></div>
-    @if($mostrarUsd)
-        <div class="kpi-box"><div class="kpi-label">Total Deuda Bruta ($)</div><div class="kpi-value blue">$ {{ number_format($totalUsd, 2) }}</div></div>
-    @endif
-    <div class="kpi-box"><div class="kpi-label">Total Recaudación (S/)</div><div class="kpi-value amber">S/ {{ number_format($totalRecaudacionPen, 2) }}</div></div>
-    <div class="kpi-box"><div class="kpi-label">Saldo Pendiente (S/)</div><div class="kpi-value red" style="font-size:18px;">S/ {{ number_format($totalNetoPen, 2) }}</div></div>
-    <div class="kpi-box"><div class="kpi-label">Con Facturas Vencidas</div><div class="kpi-value" style="color:#991b1b;">{{ $countVencidas }}</div></div>
-</div>
+<table class="stats-grid three">
+    <tr>
+        <td class="sc-blue">
+            <div class="stat-label">Total Facturado</div>
+            <div class="stat-value">S/ {{ number_format($totalFacturado, 2) }}</div>
+        </td>
+        <td class="sc-amber">
+            <div class="stat-label">Saldo Pendiente</div>
+            <div class="stat-value">S/ {{ number_format($saldoPendiente, 2) }}</div>
+        </td>
+        <td class="sc-green">
+            <div class="stat-label">Cobrado</div>
+            <div class="stat-value">S/ {{ number_format($cobrado, 2) }}</div>
+        </td>
+    </tr>
+</table>
+
+<table class="stats-grid two" style="margin-top:0;">
+    <tr>
+        <td class="sc-red">
+            <div class="stat-label">Monto de Recaudación</div>
+            <div class="stat-value">S/ {{ number_format($montoRecaudacion, 2) }}</div>
+        </td>
+        <td class="sc-purple">
+            <div class="stat-label" style="color:#7c3aed;">Recaud. Depositada</div>
+            <div class="stat-value" style="color:#7c3aed;">S/ {{ number_format($recaudDepositada, 2) }}</div>
+            @if($recaudSinConfirmar > 0)
+                <div class="stat-sub">Sin confirmar: S/ {{ number_format($recaudSinConfirmar, 2) }}</div>
+            @endif
+        </td>
+    </tr>
+</table>
 
 <div class="body">
     @if(empty($clientes))
@@ -266,6 +321,7 @@
     const FECHA_DESDE    = '{{ $fechaDesde ?? "" }}';
     const FECHA_HASTA    = '{{ $fechaHasta ?? "" }}';
     const ESTADOS_FILTRO = {!! $estadosFiltroJson !!};
+    const TIPO_REPORTE   = 'general';
 
     function onUsuarioChange() {
         const sel    = document.getElementById('selUsuario');
@@ -287,7 +343,7 @@
         btnWA.disabled = btnMail.disabled = true;
         result.className = 'send-result-bar';
         result.textContent = 'Enviando…';
-        const body = new URLSearchParams({ usuario_id:sel.value, fecha_desde:FECHA_DESDE, fecha_hasta:FECHA_HASTA, _token:CSRF });
+        const body = new URLSearchParams({ usuario_id:sel.value, fecha_desde:FECHA_DESDE, fecha_hasta:FECHA_HASTA, tipo_reporte:TIPO_REPORTE, _token:CSRF });
         ESTADOS_FILTRO.forEach(e => body.append('estados[]', e));
         try {
             const res  = await fetch(canal === 'whatsapp' ? RUTA_WA : RUTA_MAIL, { method:'POST', body });

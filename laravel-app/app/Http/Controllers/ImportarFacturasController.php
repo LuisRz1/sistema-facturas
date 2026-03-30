@@ -122,9 +122,11 @@ class ImportarFacturasController extends Controller
 
                 $cliente = DB::table('cliente')->where('ruc', $ruc)->first();
                 if (!$cliente) {
+                    $tipoCliente = $this->inferirTipoCliente($ruc);
                     $idCliente = DB::table('cliente')->insertGetId([
                         'ruc'            => $ruc,
                         'razon_social'   => $razonSocial,
+                        'tipo_cliente'   => $tipoCliente,
                         'estado_contado' => 'SIN_DATOS',
                         'fecha_creacion' => now(),
                     ]);
@@ -311,5 +313,11 @@ class ImportarFacturasController extends Controller
         try { return Carbon::parse((string)$v)->format('Y-m-d'); }
         catch (\Throwable) {}
         return null;
+    }
+
+    private function inferirTipoCliente(string $documento): string
+    {
+        $doc = preg_replace('/\D/', '', (string) $documento);
+        return strlen($doc) === 8 ? 'PERSONA NATURAL' : 'PERSONA JURIDICA';
     }
 }

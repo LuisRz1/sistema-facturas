@@ -11,6 +11,54 @@ use Illuminate\Support\Facades\Schema;
 class CotizacionController extends Controller
 {
     // ──────────────────────────────────────────────────────────────────────────
+    // HELPERS DE ALMACENAMIENTO S3
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Sube un archivo al disco S3 y devuelve la ruta relativa.
+     * Las carpetas quedan ordenadas así:
+     *   - Partes diario (imagen): cotizaciones/partes/{id}/
+     *   - GRR (PDF/imagen):       cotizaciones/grr/{id}/
+     */
+    private function uploadToS3(Request $request, string $inputName, string $folder): ?string
+    {
+        if (! $request->hasFile($inputName)) {
+            return null;
+        }
+
+        $path = $request->file($inputName)->store($folder, 's3');
+
+        return $path ?: null;
+    }
+
+    private function resolveS3FileUrl(?string $path): ?string
+    {
+        if (!$path) {
+            return null;
+        }
+
+        try {
+            return Storage::disk('s3')->temporaryUrl($path, now()->addMinutes(60));
+        } catch (\Throwable $e) {
+            return Storage::disk('s3')->url($path);
+        }
+    }
+
+    /**
+     * Devuelve la URL pública de un archivo almacenado en S3.
+     * Úsalo en las vistas con: CotizacionController::s3Url($ruta)
+     * o directamente: Storage::disk('s3')->url($ruta)
+     */
+    public static function s3Url(?string $path): ?string
+    {
+        if (! $path) {
+            return null;
+        }
+
+        return Storage::disk('s3')->url($path);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
     // LIST
     // ──────────────────────────────────────────────────────────────────────────
 
@@ -102,7 +150,7 @@ class CotizacionController extends Controller
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // SHOW (management view – also used as edit)
+    // SHOW
     // ──────────────────────────────────────────────────────────────────────────
 
     public function show(int $id)
@@ -112,7 +160,7 @@ class CotizacionController extends Controller
             ->leftJoin('maquinaria as m', 'm.id_maquinaria', '=', 'c.id_maquinaria')
             ->leftJoin('agregado as a', 'a.id_agregado', '=', 'c.id_agregado')
             ->where('c.id_cotizacion', $id)->where('c.activo', 1)
-            ->select('c.*', 'cl.razon_social', 'cl.ruc',
+            ->select('c.*', 'cl.razon_social', 'cl.ruc', 'cl.celular', 'cl.correo', 'cl.direccion_fiscal',
                 'm.nombre as maquinaria_nombre',
                 'a.nombre as agregado_nombre')
             ->first();
@@ -164,6 +212,33 @@ class CotizacionController extends Controller
         return response()->json(['success' => true, 'message' => 'Cotización actualizada.']);
     }
 
+    public function updateCliente(Request $request, int $id)
+    {
+        $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $id)->first();
+        if (!$cotizacion) {
+            return response()->json(['success' => false, 'message' => 'Cotización no encontrada.'], 404);
+        }
+
+        $cliente = DB::table('cliente')->where('id_cliente', $cotizacion->id_cliente)->first();
+        if (!$cliente) {
+            return response()->json(['success' => false, 'message' => 'Cliente no encontrado.'], 404);
+        }
+
+        $validated = $request->validate([
+            'razon_social'     => 'required|string|max:200',
+            'ruc'              => 'required|string|size:11|unique:cliente,ruc,' . $cliente->id_cliente . ',id_cliente',
+            'celular'          => 'nullable|string|max:15',
+            'correo'           => 'nullable|email|max:150',
+            'direccion_fiscal' => 'nullable|string|max:250',
+        ]);
+
+        DB::table('cliente')
+            ->where('id_cliente', $cliente->id_cliente)
+            ->update(array_merge($validated, ['fecha_actualizacion' => now()]));
+
+        return response()->json(['success' => true, 'message' => 'Datos del cliente actualizados correctamente.']);
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // PRINT VIEW
     // ──────────────────────────────────────────────────────────────────────────
@@ -213,6 +288,8 @@ class CotizacionController extends Controller
 
     private function storeMaquinariaRow(Request $request, object $cotizacion)
     {
+        $parteDiarioColumn = $this->getParteDiarioColumn('maquinaria_cotizacion');
+
         $v = $request->validate([
             'id_chofer'      => 'required|integer|exists:chofer,id_chofer',
             'id_maquinaria'  => 'required|integer|exists:maquinaria,id_maquinaria',
@@ -224,18 +301,19 @@ class CotizacionController extends Controller
             'hora_minima'    => 'required|numeric|min:0',
             'precio_hora'    => 'required|numeric|min:0',
             'n_parte_diario' => 'nullable|string|max:50',
+            'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
         ]);
 
         $horasTrabajadas = round($v['hora_fin'] - $v['hora_inicio'], 2);
         $horasEfectivas  = max($horasTrabajadas, (float) $v['hora_minima']);
         $totalFila       = round($horasEfectivas * $v['precio_hora'], 2);
 
-        // Handle parte diario image upload
-        $rutaParteDiario = null;
-        if ($request->hasFile('imagen_parte_diario')) {
-            $rutaParteDiario = $request->file('imagen_parte_diario')
-                ->store("cotizaciones/partes/{$cotizacion->id_cotizacion}", 'public');
-        }
+        // ── Subir imagen parte diario a S3 ─────────────────────────────────
+        $rutaParteDiario = $this->uploadToS3(
+            $request,
+            'imagen_parte_diario',
+            "cotizaciones/partes/{$cotizacion->id_cotizacion}"
+        );
 
         $insertData = [
             'id_cotizacion'    => $cotizacion->id_cotizacion,
@@ -255,8 +333,8 @@ class CotizacionController extends Controller
             'fecha_creacion'   => now(),
         ];
 
-        if ($this->tableHasColumn('maquinaria_cotizacion', 'ruta_parte_diario')) {
-            $insertData['ruta_parte_diario'] = $rutaParteDiario;
+        if ($parteDiarioColumn) {
+            $insertData[$parteDiarioColumn] = $rutaParteDiario;
         }
 
         $rowId = DB::table('maquinaria_cotizacion')->insertGetId($insertData);
@@ -267,8 +345,17 @@ class CotizacionController extends Controller
             ->join('chofer as ch', 'ch.id_chofer', '=', 'mc.id_chofer')
             ->join('maquinaria as m', 'm.id_maquinaria', '=', 'mc.id_maquinaria')
             ->where('mc.id_cotizacion_maqu', $rowId)
-            ->select('mc.*', 'ch.nombres as chofer_nombre', 'm.nombre as maquinaria_nombre')
+            ->select('mc.*', DB::raw("TRIM(CONCAT(ch.nombres,' ',COALESCE(ch.apellido_paterno,''),' ',COALESCE(ch.apellido_materno,''))) as chofer_nombre"), DB::raw("CONCAT(m.nombre, CASE WHEN m.numero_maquina IS NOT NULL AND m.numero_maquina != '' THEN CONCAT(' — ', m.numero_maquina) ELSE '' END) as maquinaria_nombre"))
             ->first();
+
+        if ($row && $parteDiarioColumn === 'ruta_n_parte_diario' && isset($row->ruta_n_parte_diario)) {
+            $row->ruta_parte_diario = $row->ruta_n_parte_diario;
+        }
+
+        // Agregar URL pública de S3 al objeto devuelto
+        if ($row && isset($row->ruta_parte_diario) && $row->ruta_parte_diario !== '') {
+            $row->url_parte_diario = $this->resolveS3FileUrl($row->ruta_parte_diario);
+        }
 
         $totales = $this->getTotales($cotizacion->id_cotizacion);
 
@@ -277,6 +364,8 @@ class CotizacionController extends Controller
 
     private function storeAgregadoRow(Request $request, object $cotizacion)
     {
+        $parteDiarioColumn = $this->getParteDiarioColumn('agregado_cotizacion');
+
         $v = $request->validate([
             'id_chofer'      => 'required|integer|exists:chofer,id_chofer',
             'id_agregado'    => 'required|integer|exists:agregado,id_agregado',
@@ -287,23 +376,25 @@ class CotizacionController extends Controller
             'precio_m3'      => 'required|numeric|min:0',
             'n_parte_diario' => 'nullable|string|max:50',
             'grr'            => 'nullable|string|max:50',
+            'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
+            'archivo_grr'         => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:20480',
         ]);
 
         $totalFila = round($v['m3'] * $v['precio_m3'], 2);
 
-        // Handle GRR PDF upload
-        $rutaGrr = null;
-        if ($request->hasFile('archivo_grr')) {
-            $rutaGrr = $request->file('archivo_grr')
-                ->store("cotizaciones/grr/{$cotizacion->id_cotizacion}", 'public');
-        }
+        // ── Subir imagen parte diario a S3 ─────────────────────────────────
+        $rutaParteDiario = $this->uploadToS3(
+            $request,
+            'imagen_parte_diario',
+            "cotizaciones/partes/{$cotizacion->id_cotizacion}"
+        );
 
-        // Handle parte diario image upload
-        $rutaParteDiario = null;
-        if ($request->hasFile('imagen_parte_diario')) {
-            $rutaParteDiario = $request->file('imagen_parte_diario')
-                ->store("cotizaciones/partes/{$cotizacion->id_cotizacion}", 'public');
-        }
+        // ── Subir PDF/imagen GRR a S3 ──────────────────────────────────────
+        $rutaGrr = $this->uploadToS3(
+            $request,
+            'archivo_grr',
+            "cotizaciones/grr/{$cotizacion->id_cotizacion}"
+        );
 
         $insertData = [
             'id_cotizacion'    => $cotizacion->id_cotizacion,
@@ -324,8 +415,8 @@ class CotizacionController extends Controller
         if ($this->tableHasColumn('agregado_cotizacion', 'ruta_grr')) {
             $insertData['ruta_grr'] = $rutaGrr;
         }
-        if ($this->tableHasColumn('agregado_cotizacion', 'ruta_parte_diario')) {
-            $insertData['ruta_parte_diario'] = $rutaParteDiario;
+        if ($parteDiarioColumn) {
+            $insertData[$parteDiarioColumn] = $rutaParteDiario;
         }
 
         $rowId = DB::table('agregado_cotizacion')->insertGetId($insertData);
@@ -336,8 +427,22 @@ class CotizacionController extends Controller
             ->join('chofer as ch', 'ch.id_chofer', '=', 'ac.id_chofer')
             ->join('agregado as a', 'a.id_agregado', '=', 'ac.id_agregado')
             ->where('ac.id_cotizacion_agr', $rowId)
-            ->select('ac.*', 'ch.nombres as chofer_nombre', 'a.nombre as agregado_nombre')
+            ->select('ac.*', DB::raw("TRIM(CONCAT(ch.nombres,' ',COALESCE(ch.apellido_paterno,''),' ',COALESCE(ch.apellido_materno,''))) as chofer_nombre"), DB::raw("CONCAT(a.nombre, CASE WHEN a.numero_agregado IS NOT NULL AND a.numero_agregado != '' THEN CONCAT(' (', a.numero_agregado, ')') ELSE '' END) as agregado_nombre"))
             ->first();
+
+        if ($row && $parteDiarioColumn === 'ruta_n_parte_diario' && isset($row->ruta_n_parte_diario)) {
+            $row->ruta_parte_diario = $row->ruta_n_parte_diario;
+        }
+
+        // Agregar URLs públicas de S3 al objeto devuelto
+        if ($row) {
+            if (isset($row->ruta_parte_diario) && $row->ruta_parte_diario !== '') {
+                $row->url_parte_diario = $this->resolveS3FileUrl($row->ruta_parte_diario);
+            }
+            if (isset($row->ruta_grr) && $row->ruta_grr !== '') {
+                $row->url_grr = $this->resolveS3FileUrl($row->ruta_grr);
+            }
+        }
 
         $totales = $this->getTotales($cotizacion->id_cotizacion);
 
@@ -350,6 +455,8 @@ class CotizacionController extends Controller
         if (!$cotizacion) return response()->json(['error' => 'No encontrado'], 404);
 
         if ($cotizacion->tipo_cotizacion === 'MAQUINARIA') {
+            $parteDiarioColumn = $this->getParteDiarioColumn('maquinaria_cotizacion');
+
             $v = $request->validate([
                 'id_chofer'      => 'required|integer',
                 'id_maquinaria'  => 'required|integer',
@@ -361,6 +468,7 @@ class CotizacionController extends Controller
                 'hora_minima'    => 'required|numeric',
                 'precio_hora'    => 'required|numeric',
                 'n_parte_diario' => 'nullable|string|max:50',
+                'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
             ]);
 
             $horasTrabajadas = round($v['hora_fin'] - $v['hora_inicio'], 2);
@@ -368,23 +476,32 @@ class CotizacionController extends Controller
             $totalFila       = round($horasEfectivas * $v['precio_hora'], 2);
 
             $updateData = array_merge($v, [
-                'horas_trabajadas'   => $horasTrabajadas,
-                'total_fila'         => $totalFila,
-                'fecha_actualizacion'=> now(),
+                'horas_trabajadas'    => $horasTrabajadas,
+                'total_fila'          => $totalFila,
+                'fecha_actualizacion' => now(),
             ]);
 
+            // Subir nueva imagen parte diario a S3 si viene en la request
             if ($request->hasFile('imagen_parte_diario')) {
-                if ($this->tableHasColumn('maquinaria_cotizacion', 'ruta_parte_diario')) {
-                    $updateData['ruta_parte_diario'] = $request->file('imagen_parte_diario')
-                        ->store("cotizaciones/partes/{$idCotizacion}", 'public');
+                if ($parteDiarioColumn) {
+                    $updateData[$parteDiarioColumn] = $this->uploadToS3(
+                        $request,
+                        'imagen_parte_diario',
+                        "cotizaciones/partes/{$idCotizacion}"
+                    );
                 }
             }
+
+            // Quitar la clave del archivo del array de actualización (no es columna)
+            unset($updateData['imagen_parte_diario']);
 
             DB::table('maquinaria_cotizacion')
                 ->where('id_cotizacion_maqu', $rowId)
                 ->update($updateData);
 
         } else {
+            $parteDiarioColumn = $this->getParteDiarioColumn('agregado_cotizacion');
+
             $v = $request->validate([
                 'id_chofer'      => 'required|integer',
                 'id_agregado'    => 'required|integer',
@@ -395,26 +512,37 @@ class CotizacionController extends Controller
                 'precio_m3'      => 'required|numeric',
                 'n_parte_diario' => 'nullable|string|max:50',
                 'grr'            => 'nullable|string|max:50',
+                'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
+                'archivo_grr'         => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:20480',
             ]);
 
             $totalFila  = round($v['m3'] * $v['precio_m3'], 2);
             $updateData = array_merge($v, [
-                'total_fila'         => $totalFila,
-                'fecha_actualizacion'=> now(),
+                'total_fila'          => $totalFila,
+                'fecha_actualizacion' => now(),
             ]);
 
             if ($request->hasFile('archivo_grr')) {
                 if ($this->tableHasColumn('agregado_cotizacion', 'ruta_grr')) {
-                    $updateData['ruta_grr'] = $request->file('archivo_grr')
-                        ->store("cotizaciones/grr/{$idCotizacion}", 'public');
+                    $updateData['ruta_grr'] = $this->uploadToS3(
+                        $request,
+                        'archivo_grr',
+                        "cotizaciones/grr/{$idCotizacion}"
+                    );
                 }
             }
             if ($request->hasFile('imagen_parte_diario')) {
-                if ($this->tableHasColumn('agregado_cotizacion', 'ruta_parte_diario')) {
-                    $updateData['ruta_parte_diario'] = $request->file('imagen_parte_diario')
-                        ->store("cotizaciones/partes/{$idCotizacion}", 'public');
+                if ($parteDiarioColumn) {
+                    $updateData[$parteDiarioColumn] = $this->uploadToS3(
+                        $request,
+                        'imagen_parte_diario',
+                        "cotizaciones/partes/{$idCotizacion}"
+                    );
                 }
             }
+
+            // Quitar claves de archivos del array
+            unset($updateData['imagen_parte_diario'], $updateData['archivo_grr']);
 
             DB::table('agregado_cotizacion')
                 ->where('id_cotizacion_agr', $rowId)
@@ -453,36 +581,69 @@ class CotizacionController extends Controller
     private function getFilas(object $cotizacion): \Illuminate\Support\Collection
     {
         if ($cotizacion->tipo_cotizacion === 'MAQUINARIA') {
-            return DB::table('maquinaria_cotizacion as mc')
+            $parteDiarioColumn = $this->getParteDiarioColumn('maquinaria_cotizacion');
+
+            $query = DB::table('maquinaria_cotizacion as mc')
                 ->join('chofer as ch', 'ch.id_chofer', '=', 'mc.id_chofer')
                 ->join('maquinaria as m', 'm.id_maquinaria', '=', 'mc.id_maquinaria')
                 ->where('mc.id_cotizacion', $cotizacion->id_cotizacion)
                 ->where('mc.activo', 1)
                 ->select(
                     'mc.*',
-                    'ch.nombres as chofer_nombre',
-                    'm.nombre as maquinaria_nombre',
+                    DB::raw("TRIM(CONCAT(ch.nombres,' ',COALESCE(ch.apellido_paterno,''),' ',COALESCE(ch.apellido_materno,''))) as chofer_nombre"),
+                    DB::raw("CONCAT(m.nombre, CASE WHEN m.numero_maquina IS NOT NULL AND m.numero_maquina != '' THEN CONCAT(' — ', m.numero_maquina) ELSE '' END) as maquinaria_nombre"),
                     DB::raw("'MAQUINARIA' as _tipo"),
                     DB::raw('mc.id_cotizacion_maqu as _row_id')
                 )
                 ->orderBy('mc.fecha')
-                ->orderBy('mc.hora_inicio')
-                ->get();
+                ->orderBy('mc.hora_inicio');
+
+            if ($parteDiarioColumn === 'ruta_n_parte_diario') {
+                $query->addSelect(DB::raw('mc.ruta_n_parte_diario as ruta_parte_diario'));
+            }
+
+            $filas = $query->get();
+
+            // Adjuntar URLs públicas de S3
+            return $filas->map(function ($fila) {
+                if (isset($fila->ruta_parte_diario) && $fila->ruta_parte_diario !== '') {
+                    $fila->url_parte_diario = $this->resolveS3FileUrl($fila->ruta_parte_diario);
+                }
+                return $fila;
+            });
         } else {
-            return DB::table('agregado_cotizacion as ac')
+            $parteDiarioColumn = $this->getParteDiarioColumn('agregado_cotizacion');
+
+            $query = DB::table('agregado_cotizacion as ac')
                 ->join('chofer as ch', 'ch.id_chofer', '=', 'ac.id_chofer')
                 ->join('agregado as a', 'a.id_agregado', '=', 'ac.id_agregado')
                 ->where('ac.id_cotizacion', $cotizacion->id_cotizacion)
                 ->where('ac.activo', 1)
                 ->select(
                     'ac.*',
-                    'ch.nombres as chofer_nombre',
-                    'a.nombre as agregado_nombre',
+                    DB::raw("TRIM(CONCAT(ch.nombres,' ',COALESCE(ch.apellido_paterno,''),' ',COALESCE(ch.apellido_materno,''))) as chofer_nombre"),
+                    DB::raw("CONCAT(a.nombre, CASE WHEN a.numero_agregado IS NOT NULL AND a.numero_agregado != '' THEN CONCAT(' (', a.numero_agregado, ')') ELSE '' END) as agregado_nombre"),
                     DB::raw("'AGREGADO' as _tipo"),
                     DB::raw('ac.id_cotizacion_agr as _row_id')
                 )
-                ->orderBy('ac.fecha')
-                ->get();
+                ->orderBy('ac.fecha');
+
+            if ($parteDiarioColumn === 'ruta_n_parte_diario') {
+                $query->addSelect(DB::raw('ac.ruta_n_parte_diario as ruta_parte_diario'));
+            }
+
+            $filas = $query->get();
+
+            // Adjuntar URLs públicas de S3
+            return $filas->map(function ($fila) {
+                if (isset($fila->ruta_parte_diario) && $fila->ruta_parte_diario !== '') {
+                    $fila->url_parte_diario = $this->resolveS3FileUrl($fila->ruta_parte_diario);
+                }
+                if (isset($fila->ruta_grr) && $fila->ruta_grr !== '') {
+                    $fila->url_grr = $this->resolveS3FileUrl($fila->ruta_grr);
+                }
+                return $fila;
+            });
         }
     }
 
@@ -532,5 +693,18 @@ class CotizacionController extends Controller
             $cache[$key] = Schema::hasColumn($table, $column);
         }
         return $cache[$key];
+    }
+
+    private function getParteDiarioColumn(string $table): ?string
+    {
+        if ($this->tableHasColumn($table, 'ruta_parte_diario')) {
+            return 'ruta_parte_diario';
+        }
+
+        if ($this->tableHasColumn($table, 'ruta_n_parte_diario')) {
+            return 'ruta_n_parte_diario';
+        }
+
+        return null;
     }
 }

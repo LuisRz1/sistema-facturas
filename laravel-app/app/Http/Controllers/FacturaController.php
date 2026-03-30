@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Factura;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -18,31 +20,40 @@ class FacturaController extends Controller
         $fechaDesde = $request->input('fecha_desde', now()->startOfMonth()->format('Y-m-d'));
         $fechaHasta = $request->input('fecha_hasta', now()->format('Y-m-d'));
 
+        $selects = [
+            'f.id_factura', 'f.serie', 'f.numero',
+            'f.fecha_emision', 'f.fecha_vencimiento', 'f.fecha_abono',
+            'f.moneda', 'f.importe_total', 'f.monto_igv',
+            'f.monto_abonado', 'f.monto_pendiente', 'f.estado',
+            'f.tipo_recaudacion', 'f.glosa', 'f.forma_pago',
+            'f.usuario_creacion', 'f.cuenta_pago',
+            'c.id_cliente', 'c.razon_social', 'c.ruc',
+            'c.correo as cliente_correo', 'c.celular as cliente_celular',
+            'u.nombre as usuario_nombre', 'u.apellido as usuario_apellido',
+            'rec.total_recaudacion as monto_recaudacion',
+            'rec.porcentaje as porcentaje_recaudacion',
+            'rec.fecha_recaudacion',
+        ];
+
+        if (Schema::hasColumn('factura', 'ruta_comprobante_pago')) {
+            $selects[] = 'f.ruta_comprobante_pago';
+        } else {
+            $selects[] = DB::raw('NULL as ruta_comprobante_pago');
+        }
+
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('usuario as u', 'u.id_usuario', '=', 'f.usuario_creacion')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
-            ->select([
-                'f.id_factura', 'f.serie', 'f.numero',
-                'f.fecha_emision', 'f.fecha_vencimiento', 'f.fecha_abono',
-                'f.moneda', 'f.importe_total', 'f.monto_igv',
-                'f.monto_abonado', 'f.monto_pendiente', 'f.estado',
-                'f.tipo_recaudacion', 'f.glosa', 'f.forma_pago',
-                'f.usuario_creacion', 'f.cuenta_pago',
-                'c.id_cliente', 'c.razon_social', 'c.ruc',
-                'c.correo as cliente_correo', 'c.celular as cliente_celular',
-                'u.nombre as usuario_nombre', 'u.apellido as usuario_apellido',
-                'rec.total_recaudacion as monto_recaudacion',
-                'rec.porcentaje as porcentaje_recaudacion',
-                'rec.fecha_recaudacion',
-            ])
+            ->select($selects)
             ->orderByDesc('f.fecha_emision')
             ->orderByDesc('f.numero')
             ->get();
 
         $facturasCollection = collect($query->map(function ($f) {
             return (object) array_merge((array) $f, [
+                'comprobante_url' => $this->resolveComprobanteUrl($f->ruta_comprobante_pago ?? null),
                 'cliente' => (object) [
                     'id_cliente'   => $f->id_cliente,
                     'razon_social' => $f->razon_social,
@@ -344,6 +355,80 @@ class FacturaController extends Controller
 
     public function uploadComprobante(Request $request, $id)
     {
-        return response()->json(['success'=>false,'message'=>'La columna ruta_comprobante_pago no existe en la base de datos.'],422);
+        if (!Schema::hasColumn('factura', 'ruta_comprobante_pago')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Falta la columna ruta_comprobante_pago en la tabla factura. Ejecuta la migracion correspondiente.'
+            ], 422);
+        }
+
+        $factura = Factura::findOrFail($id);
+
+        $validated = $request->validate([
+            'comprobante' => 'required|file|mimes:jpg,jpeg,png,webp,pdf|max:20480',
+        ]);
+
+        $path = $validated['comprobante']->store("facturas/comprobantes/{$id}", 's3');
+        if (!$path) {
+            return response()->json(['success' => false, 'message' => 'No se pudo subir el comprobante a S3.'], 500);
+        }
+
+        $factura->update([
+            'ruta_comprobante_pago' => $path,
+            'fecha_actualizacion'   => now(),
+        ]);
+
+        $url = $this->resolveComprobanteUrl($path);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Comprobante subido correctamente.',
+            'url'     => $url,
+            'path'    => $path,
+        ]);
+    }
+
+    private function resolveComprobanteUrl(?string $storedValue): ?string
+    {
+        if (!$storedValue) {
+            return null;
+        }
+
+        $value = trim((string) $storedValue);
+        if ($value === '') {
+            return null;
+        }
+
+        $key = $value;
+        if (preg_match('/^https?:\/\//i', $value)) {
+            $parsedPath = parse_url($value, PHP_URL_PATH) ?? '';
+            $key = ltrim($parsedPath, '/');
+
+            $bucket = (string) config('filesystems.disks.s3.bucket');
+            if ($bucket !== '' && str_starts_with($key, $bucket . '/')) {
+                $key = substr($key, strlen($bucket) + 1);
+            }
+        }
+
+        $key = ltrim($key, '/');
+        if ($key === '') {
+            return null;
+        }
+
+        $disk = Storage::disk('s3');
+
+        try {
+            if (is_object($disk) && method_exists($disk, 'temporaryUrl')) {
+                return call_user_func([$disk, 'temporaryUrl'], $key, now()->addMinutes(60));
+            }
+        } catch (\Throwable $e) {
+            // Fallback below.
+        }
+
+        if (is_object($disk) && method_exists($disk, 'url')) {
+            return call_user_func([$disk, 'url'], $key);
+        }
+
+        return null;
     }
 }

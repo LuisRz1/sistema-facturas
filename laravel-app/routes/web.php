@@ -16,12 +16,31 @@ use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\CotizacionExportController;
 use App\Http\Controllers\Configuracioncontroller;
 use App\Http\Controllers\ImportarClientesController;
+use App\Http\Controllers\CotizacionDocumentController;
+
 
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────────────
 Route::get('/login',  [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']    )->name('login.post');
 Route::post('/logout',[AuthController::class, 'logout']   )->name('logout');
+
+// ── Documentos de Cotización (Partes Diarios + GRRs) ─────────────────────
+Route::get('/cotizaciones/{id}/partes/download',
+    [CotizacionDocumentController::class, 'downloadPartesDiarios']
+)->whereNumber('id')->name('cotizaciones.partes.download');
+
+Route::get('/cotizaciones/{id}/grrs/download',
+    [CotizacionDocumentController::class, 'downloadGRRs']
+)->whereNumber('id')->name('cotizaciones.grrs.download');
+
+Route::post('/cotizaciones/{id}/partes/wa',
+    [CotizacionDocumentController::class, 'enviarPartesDiariosWA']
+)->whereNumber('id')->name('cotizaciones.partes.wa');
+
+Route::post('/cotizaciones/{id}/grrs/wa',
+    [CotizacionDocumentController::class, 'enviarGRRsWA']
+)->whereNumber('id')->name('cotizaciones.grrs.wa');
 
 // ── RUTAS PROTEGIDAS ──────────────────────────────────────────────────────
 Route::middleware('auth')->group(function () {
@@ -109,6 +128,8 @@ Route::middleware('auth')->group(function () {
         [CotizacionController::class, 'show'])->whereNumber('id')->name('cotizaciones.show');
     Route::post('/cotizaciones/{id}',
         [CotizacionController::class, 'update'])->whereNumber('id')->name('cotizaciones.update');
+    Route::post('/cotizaciones/{id}/cliente',
+        [CotizacionController::class, 'updateCliente'])->whereNumber('id')->name('cotizaciones.cliente.update');
     Route::delete('/cotizaciones/{id}',
         [CotizacionController::class, 'destroy'])->whereNumber('id')->name('cotizaciones.destroy');
     Route::get('/cotizaciones/{id}/print',
@@ -117,7 +138,7 @@ Route::middleware('auth')->group(function () {
     // Rows AJAX
     Route::post('/cotizaciones/{id}/rows',
         [CotizacionController::class, 'storeRow'])->whereNumber('id')->name('cotizaciones.rows.store');
-    Route::post('/cotizaciones/{id}/rows/{rowId}',
+    Route::match(['POST', 'PUT', 'PATCH'], '/cotizaciones/{id}/rows/{rowId}',
         [CotizacionController::class, 'updateRow'])->whereNumber('id')->whereNumber('rowId')->name('cotizaciones.rows.update');
     Route::delete('/cotizaciones/{id}/rows/{rowId}',
         [CotizacionController::class, 'destroyRow'])->whereNumber('id')->whereNumber('rowId')->name('cotizaciones.rows.destroy');
