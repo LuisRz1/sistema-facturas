@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
-class ConfiguracionController extends Controller
+class Configuracioncontroller extends Controller
 {
     private string $gatewayUrl;
 

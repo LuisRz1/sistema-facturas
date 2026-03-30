@@ -14,7 +14,7 @@ use App\Http\Controllers\ImportarRetencionesController;
 use App\Http\Controllers\CotizacionController;
 use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\CotizacionExportController;
-use App\Http\Controllers\ConfiguracionController;
+use App\Http\Controllers\Configuracioncontroller;
 use App\Http\Controllers\ImportarClientesController;
 
 
@@ -138,10 +138,10 @@ Route::middleware('auth')->group(function () {
         [CotizacionExportController::class, 'exportExcel'])->whereNumber('id')->name('cotizaciones.export-excel');
 
     // Configuración
-    Route::get('/configuracion', [ConfiguracionController::class, 'index'])->name('configuracion.index');
-    Route::get('/configuracion/whatsapp/status', [ConfiguracionController::class, 'whatsappStatus'])->name('configuracion.whatsapp.status');
-    Route::get('/configuracion/whatsapp/qr',     [ConfiguracionController::class, 'whatsappQr'])->name('configuracion.whatsapp.qr');
-    Route::post('/configuracion/whatsapp/logout',[ConfiguracionController::class, 'whatsappLogout'])->name('configuracion.whatsapp.logout');
+    Route::get('/configuracion', [Configuracioncontroller::class, 'index'])->name('configuracion.index');
+    Route::get('/configuracion/whatsapp/status', [Configuracioncontroller::class, 'whatsappStatus'])->name('configuracion.whatsapp.status');
+    Route::get('/configuracion/whatsapp/qr',     [Configuracioncontroller::class, 'whatsappQr'])->name('configuracion.whatsapp.qr');
+    Route::post('/configuracion/whatsapp/logout',[Configuracioncontroller::class, 'whatsappLogout'])->name('configuracion.whatsapp.logout');
 
 // Retenciones: ruta de confirmación (AGREGAR junto con la ruta de importar)
     Route::post('/facturas/importar-retenciones/confirmar',
