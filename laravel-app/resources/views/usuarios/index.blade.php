@@ -29,6 +29,79 @@
         .toast-notif.show { transform:translateY(0); opacity:1; pointer-events:all; }
         .toast-notif.ok    { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
         .toast-notif.error { background:#fee2e2; color:#7f1d1d; border:1px solid #fca5a5; }
+
+        /* Modales de usuario en estilo dorado */
+        .usuario-modal {
+            overflow-y: auto;
+            align-items: flex-start;
+            padding: 18px;
+        }
+        .usuario-modal .modal {
+            margin: 10px auto;
+            max-width: 840px;
+            width: min(840px, 96vw);
+            max-height: calc(100vh - 36px);
+            border: 1.5px solid #fce8a8;
+            box-shadow: 0 20px 56px rgba(15,23,42,.22);
+        }
+        .usuario-modal .modal-header {
+            background: linear-gradient(135deg, #f5c842 0%, #e8b820 100%);
+            border-top: 3px solid #9a6e10;
+            color: #111827;
+            cursor: move;
+            user-select: none;
+            position: relative;
+        }
+        .usuario-modal .modal-header h2 { color: #111827; }
+        .usuario-modal .modal-header p { color: rgba(17,24,39,.72); }
+        .usuario-modal .modal-body {
+            padding: 24px;
+        }
+        .usuario-modal .modal-footer {
+            background: #fff;
+            border-top: 1px solid #f3e8c1;
+        }
+        .warning-modal .modal {
+            max-width: 460px;
+            border: 1.5px solid #fca5a5;
+        }
+        .warning-modal .modal-header {
+            background: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 100%);
+            border-top: none;
+            cursor: default;
+        }
+        .warning-modal .modal-header h2,
+        .warning-modal .modal-header p {
+            color: #fff;
+        }
+        .warning-modal .modal-footer {
+            background: #fff;
+            border-top: 1px solid #fecaca;
+        }
+        .usuario-form {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            flex: 1;
+        }
+        .usuario-form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 768px) {
+            .usuario-modal { padding: 10px; }
+            .usuario-modal .modal {
+                width: 100%;
+                max-height: calc(100vh - 20px);
+                margin: 0;
+            }
+            .usuario-modal .modal-header { cursor: default; }
+            .usuario-form-grid { grid-template-columns: 1fr; gap: 12px; }
+            .usuario-modal .modal-body,
+            .usuario-modal .modal-footer { padding: 16px; }
+        }
     </style>
 @endpush
 
@@ -111,10 +184,11 @@
                                 </button>
                                 @if(auth()->user()->id_usuario !== $usuario->id_usuario)
                                     <form method="POST" action="{{ route('usuarios.destroy', $usuario->id_usuario) }}"
-                                          style="display:inline;"
-                                          onsubmit="return confirm('¿Eliminar al usuario {{ addslashes($usuario->nombre) }}?');">
+                                                                                    id="delete-user-form-{{ $usuario->id_usuario }}"
+                                                                                    style="display:inline;">
                                         @csrf @method('DELETE')
-                                        <button type="submit" class="action-btn" title="Eliminar" style="color:#dc2626;">
+                                                                                <button type="button" class="action-btn" title="Eliminar" style="color:#dc2626;"
+                                                                                                onclick="abrirModalEliminarUsuario({{ $usuario->id_usuario }}, '{{ addslashes($usuario->nombre) }} {{ addslashes($usuario->apellido) }}')">
                                             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                             </svg>
@@ -138,16 +212,16 @@
     </div>
 
     {{-- ═══ MODAL CREAR ═══ --}}
-    <div class="modal-overlay" id="modalCrearOverlay">
+    <div class="modal-overlay usuario-modal" id="modalCrearOverlay">
         <div class="modal">
             <div class="modal-header">
                 <h2>Crear Usuario</h2>
                 <p>Agrega un nuevo usuario al sistema</p>
-                <button onclick="cerrarModalCrear()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+                <button onclick="cerrarModalCrear()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#111827;cursor:pointer;font-size:24px;opacity:.75;">×</button>
             </div>
-            <form method="POST" action="{{ route('usuarios.store') }}" onsubmit="return validarFormCrear(event)">
+            <form method="POST" action="{{ route('usuarios.store') }}" onsubmit="return validarFormCrear(event)" class="usuario-form">
                 @csrf
-                <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div class="modal-body usuario-form-grid">
                     <div class="form-group"><label class="form-label">Nombre *</label><input type="text" name="nombre" id="cNombre" class="form-input" required></div>
                     <div class="form-group"><label class="form-label">Apellido *</label><input type="text" name="apellido" id="cApellido" class="form-input" required></div>
                     <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Nombre de Usuario *</label><input type="text" name="nombre_usuario" id="cNombreUsr" class="form-input" placeholder="jperez" required></div>
@@ -171,15 +245,15 @@
     </div>
 
     {{-- ═══ MODAL EDITAR ═══ --}}
-    <div class="modal-overlay" id="modalEditarOverlay">
+    <div class="modal-overlay usuario-modal" id="modalEditarOverlay">
         <div class="modal">
             <div class="modal-header">
                 <h2>Editar Usuario</h2>
                 <p id="subtitleEditar">Actualiza los datos del usuario</p>
-                <button onclick="cerrarModalEditar()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+                <button onclick="cerrarModalEditar()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#111827;cursor:pointer;font-size:24px;opacity:.75;">×</button>
             </div>
-            <form id="formEditarUsuario" onsubmit="guardarUsuario(event)">
-                <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <form id="formEditarUsuario" onsubmit="guardarUsuario(event)" class="usuario-form">
+                <div class="modal-body usuario-form-grid">
                     <div class="form-group"><label class="form-label">Nombre *</label><input type="text" id="eNombre" class="form-input" required></div>
                     <div class="form-group"><label class="form-label">Apellido *</label><input type="text" id="eApellido" class="form-input" required></div>
                     <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Nombre de Usuario *</label><input type="text" id="eNombreUsr" class="form-input" required></div>
@@ -204,6 +278,23 @@
         </div>
     </div>
 
+    <div class="modal-overlay warning-modal" id="modalEliminarUsuarioOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Eliminar Usuario</h2>
+                <p id="deleteUsuarioText">Esta acción no se puede deshacer.</p>
+                <button onclick="cerrarModalEliminarUsuario()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;opacity:.85;">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:14px;color:#7f1d1d;font-weight:600;">Se eliminará el usuario seleccionado y perderá acceso al sistema.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="cerrarModalEliminarUsuario()" class="btn btn-ghost">Cancelar</button>
+                <button type="button" onclick="confirmarEliminarUsuario()" class="btn" style="background:#dc2626;color:#fff;">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+
     {{-- Toast --}}
     <div class="toast-notif" id="toastNotif">
         <svg id="toastIco" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"></svg>
@@ -214,6 +305,63 @@
         <script>
             const CSRF   = document.querySelector('meta[name="csrf-token"]').content;
             let editandoId = null;
+            let deleteUserId = null;
+
+            function resetModalPosition(overlayId) {
+                const modal = document.querySelector(`#${overlayId} .modal`);
+                if (!modal) return;
+                modal.style.transform = '';
+                modal.style.left = '';
+                modal.style.top = '';
+                modal.style.position = '';
+            }
+
+            function enableModalDrag(overlayId) {
+                const overlay = document.getElementById(overlayId);
+                if (!overlay) return;
+
+                const modal = overlay.querySelector('.modal');
+                const header = overlay.querySelector('.modal-header');
+                if (!modal || !header) return;
+
+                let isDragging = false;
+                let startX = 0;
+                let startY = 0;
+                let movedX = 0;
+                let movedY = 0;
+
+                header.addEventListener('mousedown', (e) => {
+                    if (window.innerWidth <= 768) return;
+                    if (!overlay.classList.contains('open')) return;
+                    if (e.target.tagName === 'BUTTON') return;
+
+                    isDragging = true;
+                    startX = e.clientX - movedX;
+                    startY = e.clientY - movedY;
+                    modal.style.transition = 'none';
+                    document.body.style.userSelect = 'none';
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (!isDragging) return;
+                    movedX = e.clientX - startX;
+                    movedY = e.clientY - startY;
+                    modal.style.transform = `translate(${movedX}px, ${movedY}px)`;
+                });
+
+                document.addEventListener('mouseup', () => {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    document.body.style.userSelect = '';
+                });
+
+                overlay.addEventListener('close-modal-users', () => {
+                    movedX = 0;
+                    movedY = 0;
+                    modal.style.transition = '';
+                    resetModalPosition(overlayId);
+                });
+            }
 
             // ── Filtro ────────────────────────────────────────────────────────────
             function filtrarTabla() {
@@ -240,9 +388,14 @@
             function abrirModalCrear() {
                 ['cNombre','cApellido','cNombreUsr','cClave','cCorreo','cCelular','cRol']
                     .forEach(id => { document.getElementById(id).value = ''; });
+                resetModalPosition('modalCrearOverlay');
                 document.getElementById('modalCrearOverlay').classList.add('open');
             }
-            function cerrarModalCrear() { document.getElementById('modalCrearOverlay').classList.remove('open'); }
+            function cerrarModalCrear() {
+                const overlay = document.getElementById('modalCrearOverlay');
+                overlay.classList.remove('open');
+                overlay.dispatchEvent(new Event('close-modal-users'));
+            }
             function validarFormCrear(e) {
                 const pw = document.getElementById('cClave').value;
                 if (pw.length < 6) { e.preventDefault(); showToast('La contraseña debe tener mínimo 6 caracteres', false); return false; }
@@ -260,9 +413,14 @@
                 document.getElementById('eCorreo').value    = correo;
                 document.getElementById('eCelular').value   = celular;
                 document.getElementById('eRol').value       = rol;
+                resetModalPosition('modalEditarOverlay');
                 document.getElementById('modalEditarOverlay').classList.add('open');
             }
-            function cerrarModalEditar() { document.getElementById('modalEditarOverlay').classList.remove('open'); }
+            function cerrarModalEditar() {
+                const overlay = document.getElementById('modalEditarOverlay');
+                overlay.classList.remove('open');
+                overlay.dispatchEvent(new Event('close-modal-users'));
+            }
 
             async function guardarUsuario(event) {
                 event.preventDefault();
@@ -283,7 +441,7 @@
 
                 try {
                     const res  = await fetch(`/usuarios/${editandoId}`, {
-                        method: 'POST',
+                        method: 'PUT',
                         headers: {
                             'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': CSRF,
@@ -316,12 +474,35 @@
                 }
             }
 
+            function abrirModalEliminarUsuario(id, nombreCompleto) {
+                deleteUserId = id;
+                document.getElementById('deleteUsuarioText').textContent = `¿Eliminar al usuario ${nombreCompleto}?`;
+                document.getElementById('modalEliminarUsuarioOverlay').classList.add('open');
+            }
+
+            function cerrarModalEliminarUsuario() {
+                deleteUserId = null;
+                document.getElementById('modalEliminarUsuarioOverlay').classList.remove('open');
+            }
+
+            function confirmarEliminarUsuario() {
+                if (!deleteUserId) return;
+                const form = document.getElementById(`delete-user-form-${deleteUserId}`);
+                if (form) form.submit();
+            }
+
             // ── Cerrar modales al click fuera ─────────────────────────────────────
-            ['modalCrearOverlay', 'modalEditarOverlay'].forEach(id => {
+            ['modalCrearOverlay', 'modalEditarOverlay', 'modalEliminarUsuarioOverlay'].forEach(id => {
                 document.getElementById(id)?.addEventListener('click', e => {
-                    if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+                    if (e.target === e.currentTarget) {
+                        e.currentTarget.classList.remove('open');
+                        e.currentTarget.dispatchEvent(new Event('close-modal-users'));
+                    }
                 });
             });
+
+            enableModalDrag('modalCrearOverlay');
+            enableModalDrag('modalEditarOverlay');
         </script>
     @endpush
 

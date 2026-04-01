@@ -80,7 +80,7 @@
             <div class="cat-card-header">
                 <div>
                     <div class="cat-card-title">Choferes registrados</div>
-                    <div class="cat-card-desc">Operadores disponibles para asignar a cotizaciones</div>
+                    <div class="cat-card-desc">Operadores disponibles para asignar a valorizaciones</div>
                 </div>
             </div>
             <div style="overflow-x:auto;">
@@ -314,7 +314,8 @@
                 method: 'DELETE',
                 headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
             });
-            return res.json();
+            const data = await res.json();
+            return { ...data, _httpOk: res.ok };
         }
 
         // ─────────────── CHOFER ───────────────────────────────────────────────────
@@ -442,7 +443,7 @@
             const data = await apiDelete(`/catalogos/${urlMap[delCtx.tipo]}/${delCtx.id}`);
             document.getElementById('modalDel').classList.remove('open');
             if (data.success) { showToast('Eliminado correctamente.'); location.reload(); }
-            else showToast('Error al eliminar.', false);
+            else showToast(data.message || 'Error al eliminar.', false);
             delCtx = null;
         });
 

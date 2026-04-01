@@ -48,8 +48,17 @@ class ImportarFacturasController extends Controller
         $hoja  = $spreadsheet->getActiveSheet();
         $filas = $hoja->toArray(null, true, false, true);
 
-        // Leer encabezados para mapear dinámicamente las columnas
+        if (empty($filas)) {
+            return back()->with('error', 'El archivo está vacío.')->withInput();
+        }
+
         $encabezados = $filas[1] ?? [];
+        [$formatoValido, $mensajeFormato] = $this->validarFormatoNubefact($encabezados);
+        if (!$formatoValido) {
+            return back()->with('error', $mensajeFormato)->withInput();
+        }
+
+        // Leer encabezados para mapear dinámicamente las columnas
         $colSerieModificado  = null;
         $colNumeroModificado = null;
 
@@ -229,10 +238,7 @@ class ImportarFacturasController extends Controller
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            return back()->with('error',
-                'Error en fila ' . ($numFila ?? '?') . ': ' . $e->getMessage() .
-                ' [' . basename($e->getFile()) . ':' . $e->getLine() . ']'
-            )->withInput();
+            return back()->with('error', $this->mensajeErrorImportacionControlado($encabezados))->withInput();
         }
 
         // Si se insertaron facturas, redirigir a la lista con el rango de fechas importadas
@@ -319,5 +325,108 @@ class ImportarFacturasController extends Controller
     {
         $doc = preg_replace('/\D/', '', (string) $documento);
         return strlen($doc) === 8 ? 'PERSONA NATURAL' : 'PERSONA JURIDICA';
+    }
+
+    private function validarFormatoNubefact(array $encabezados): array
+    {
+        $reglas = [
+            'B' => [
+                'label' => 'Fecha de Emision',
+                'alternativas' => [['FECHA']],
+            ],
+            'E' => [
+                'label' => 'Serie',
+                'alternativas' => [['SERIE']],
+            ],
+            'F' => [
+                'label' => 'Numero',
+                'alternativas' => [['NUMERO']],
+            ],
+            'J' => [
+                'label' => 'RUC / Documento del cliente',
+                'alternativas' => [['RUC'], ['DOCUMENTO', 'ADQUIRIENTE']],
+            ],
+            'K' => [
+                'label' => 'Razon Social / Cliente',
+                'alternativas' => [['RAZON'], ['DENOMINACION'], ['CLIENTE'], ['ADQUIRIENTE']],
+            ],
+            'Y' => [
+                'label' => 'Importe Total',
+                'alternativas' => [['IMPORTE'], ['TOTAL']],
+            ],
+        ];
+
+        $faltantes = [];
+        foreach ($reglas as $col => $rule) {
+            $actualRaw = trim((string)($encabezados[$col] ?? ''));
+            $actualNorm = $this->normalizarEncabezado($actualRaw);
+            $cumple = false;
+
+            foreach ($rule['alternativas'] as $altTokens) {
+                $okTokens = true;
+                foreach ($altTokens as $token) {
+                    if (!str_contains($actualNorm, $this->normalizarEncabezado($token))) {
+                        $okTokens = false;
+                        break;
+                    }
+                }
+                if ($okTokens) {
+                    $cumple = true;
+                    break;
+                }
+            }
+
+            if (!$cumple) {
+                $faltantes[] = "{$col}={$rule['label']} (detectado: " . ($actualRaw !== '' ? $actualRaw : 'VACIO') . ')';
+            }
+        }
+
+        if (!empty($faltantes)) {
+            $mensaje = 'Las columnas no coinciden con el formato esperado de Facturas (Nubefact). '
+                . 'Columnas requeridas: B=Fecha Emision, E=Serie, F=Numero, J=RUC/Documento, K=Razon Social/Cliente, Y=Importe Total. '
+                . 'Diferencias detectadas: ' . implode(' | ', $faltantes);
+
+            return [false, $mensaje];
+        }
+
+        return [true, null];
+    }
+
+    private function normalizarEncabezado(string $value): string
+    {
+        $txt = strtoupper(trim($value));
+        $txt = str_replace(
+            ['Á', 'É', 'Í', 'Ó', 'Ú', 'Ñ'],
+            ['A', 'E', 'I', 'O', 'U', 'N'],
+            $txt
+        );
+        $txt = preg_replace('/[^A-Z0-9\s]/', ' ', $txt);
+        $txt = preg_replace('/\s+/', ' ', $txt);
+        return trim((string) $txt);
+    }
+
+    private function mensajeErrorImportacionControlado(array $encabezados): string
+    {
+        $requeridas = [
+            'B: Fecha Emision',
+            'E: Serie',
+            'F: Numero',
+            'J: RUC/Documento cliente',
+            'K: Razon Social/Cliente',
+            'Y: Importe Total',
+        ];
+
+        $detCols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y'];
+        $detectadas = [];
+        foreach ($detCols as $col) {
+            $valor = trim((string)($encabezados[$col] ?? ''));
+            if ($valor !== '') {
+                $detectadas[] = $col . ': ' . $valor;
+            }
+        }
+
+        return 'Archivo incorrecto. El archivo debe tener columnas del formato Facturas (Excel de Ventas). '
+            . 'Columnas requeridas: ' . implode(', ', $requeridas) . '. '
+            . 'Columnas detectadas: ' . (!empty($detectadas) ? implode(' | ', $detectadas) : 'No se detectaron encabezados en la fila 1');
     }
 }

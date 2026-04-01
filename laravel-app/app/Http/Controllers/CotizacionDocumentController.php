@@ -16,10 +16,26 @@ use Illuminate\Support\Facades\Log;
  */
 class CotizacionDocumentController extends Controller
 {
+    private function findCommand(string $binary): ?string
+    {
+        $isWindows = PHP_OS_FAMILY === 'Windows';
+        $lookupCmd = $isWindows
+            ? "where {$binary} 2>NUL"
+            : "command -v {$binary} 2>/dev/null";
+
+        $output = trim((string) @shell_exec($lookupCmd));
+        if ($output === '') {
+            return null;
+        }
+
+        $firstLine = trim((string) strtok($output, "\n"));
+        return $firstLine !== '' ? $firstLine : null;
+    }
+
     private function mergePdfsWithNode(array $pdfPaths, string $outputPath): bool
     {
-        $nodePath = trim((string) @shell_exec('where node 2>NUL'));
-        if ($nodePath === '') {
+        $nodePath = $this->findCommand('node');
+        if (!$nodePath) {
             Log::warning('GRR merge Node fallback unavailable: node not found in PATH');
             return false;
         }
@@ -32,7 +48,7 @@ class CotizacionDocumentController extends Controller
 
         $escapedOutput = escapeshellarg($outputPath);
         $escapedInputs = implode(' ', array_map('escapeshellarg', $pdfPaths));
-        $cmd = 'node ' . escapeshellarg($scriptPath) . ' ' . $escapedOutput . ' ' . $escapedInputs . ' 2>&1';
+        $cmd = escapeshellarg($nodePath) . ' ' . escapeshellarg($scriptPath) . ' ' . $escapedOutput . ' ' . $escapedInputs . ' 2>&1';
 
         $out = [];
         $code = 1;
@@ -368,13 +384,10 @@ class CotizacionDocumentController extends Controller
 
             $escapedPaths = implode(' ', array_map('escapeshellarg', $pdfPaths));
 
-            $qpdfPath = trim((string) @shell_exec('where qpdf 2>NUL'));
-            if ($qpdfPath === '') {
-                $qpdfPath = trim((string) @shell_exec('which qpdf 2>/dev/null'));
-            }
+            $qpdfPath = $this->findCommand('qpdf');
 
-            if ($qpdfPath !== '') {
-                exec("qpdf --empty --pages {$escapedPaths} -- " . escapeshellarg($outputPath) . ' 2>&1', $out, $code);
+            if ($qpdfPath) {
+                exec(escapeshellarg($qpdfPath) . " --empty --pages {$escapedPaths} -- " . escapeshellarg($outputPath) . ' 2>&1', $out, $code);
                 foreach ($pdfPaths as $tmpPdfPath) {
                     @unlink($tmpPdfPath);
                 }
@@ -579,13 +592,10 @@ class CotizacionDocumentController extends Controller
 
             if (!$merged) {
                 $escapedPaths = implode(' ', array_map('escapeshellarg', $pdfPaths));
-                $qpdfPath = trim((string) @shell_exec('where qpdf 2>NUL'));
-                if ($qpdfPath === '') {
-                    $qpdfPath = trim((string) @shell_exec('which qpdf 2>/dev/null'));
-                }
+                $qpdfPath = $this->findCommand('qpdf');
 
-                if ($qpdfPath !== '') {
-                    @exec("qpdf --empty --pages {$escapedPaths} -- " . escapeshellarg($outputPath) . ' 2>&1', $out, $code);
+                if ($qpdfPath) {
+                    @exec(escapeshellarg($qpdfPath) . " --empty --pages {$escapedPaths} -- " . escapeshellarg($outputPath) . ' 2>&1', $out, $code);
                     $merged = ($code === 0 && file_exists($outputPath));
                 }
             }

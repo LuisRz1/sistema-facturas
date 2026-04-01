@@ -1,6 +1,6 @@
 @extends('layouts.app')
-@section('title', 'Nueva Cotización')
-@section('breadcrumb', 'Nueva Cotización')
+@section('title', 'Nueva Valorización')
+@section('breadcrumb', 'Nueva Valorización')
 
 @push('styles')
     <style>
@@ -44,10 +44,10 @@
     <div class="page-header">
         <div>
             <div class="breadcrumb">
-                <a href="{{ route('cotizaciones.index') }}">Cotizaciones</a>
+                <a href="{{ route('cotizaciones.index') }}">Valorizaciones</a>
                 <span>›</span><span>Nueva</span>
             </div>
-            <h1 class="page-title">Nueva Cotización</h1>
+            <h1 class="page-title">Nueva Valorización</h1>
             <p class="page-desc">Define el tipo, equipo, empresa y período antes de cargar las filas.</p>
         </div>
         <a href="{{ route('cotizaciones.index') }}" class="btn btn-ghost">← Volver</a>
@@ -61,7 +61,7 @@
             <div style="padding:24px;">
 
                 {{-- ① TIPO --}}
-                <div class="section-lbl">① Tipo de cotización</div>
+                <div class="section-lbl">① Tipo de valorización</div>
                 <div class="tipo-grid">
                     <div class="tipo-card" id="cardMaq" onclick="selTipo('MAQUINARIA')">
                         <span class="tipo-check" id="chkMaq"></span>
@@ -82,7 +82,7 @@
 
                 {{-- ② SELECCIÓN ESPECÍFICA --}}
                 <div class="item-selector" id="selectorMaq">
-                    <label>Maquinaria de esta cotización *</label>
+                    <label>Maquinaria de esta valorización *</label>
                     <select name="id_maquinaria" id="selMaquinaria" class="form-input"
                             style="border-color:var(--gold-b);">
                         <option value="">— Seleccionar maquinaria —</option>
@@ -102,7 +102,7 @@
                 </div>
 
                 <div class="item-selector" id="selectorAgr">
-                    <label>Tipo de Agregado de esta cotización *</label>
+                    <label>Tipo de Agregado de esta valorización *</label>
                     <select name="id_agregado" id="selAgregado" class="form-input"
                             style="border-color:var(--gold-b);">
                         <option value="">— Seleccionar agregado —</option>
@@ -179,7 +179,7 @@
                 <div style="display:flex;gap:10px;">
                     <a href="{{ route('cotizaciones.index') }}" class="btn btn-ghost">Cancelar</a>
                     <button type="submit" class="btn btn-primary" id="btnCrear" disabled>
-                        Crear Cotización → Agregar Filas
+                        Crear Valorización → Agregar Filas
                     </button>
                 </div>
             </div>

@@ -356,9 +356,11 @@
                                 </button>
 
                                 <form method="POST" action="{{ route('clientes.destroy', $cliente->id_cliente) }}"
-                                      style="display:inline;" onsubmit="return confirm('¿Eliminar este cliente?')">
+                                                                            id="delete-cliente-form-{{ $cliente->id_cliente }}"
+                                                                            style="display:inline;">
                                     @csrf @method('DELETE')
-                                    <button type="submit" class="action-btn" title="Eliminar" style="color:var(--red);">
+                                                                        <button type="button" class="action-btn" title="Eliminar" style="color:var(--red);"
+                                                                                        onclick="abrirModalEliminarCliente({{ $cliente->id_cliente }}, '{{ addslashes($cliente->razon_social) }}')">
                                         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                         </svg>
@@ -430,8 +432,26 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="modalDeleteClienteOverlay">
+        <div class="modal" style="max-width:440px;border-color:#fca5a5;">
+            <div class="modal-header" style="background:#7f1d1d;border-bottom-color:#fecaca;">
+                <h2 style="color:#fff;">Eliminar Cliente</h2>
+                <p id="deleteClienteText" style="color:#fecaca;">Esta acción no se puede deshacer.</p>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:14px;color:#7f1d1d;font-weight:600;">Se eliminará el cliente seleccionado y su información de contacto.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="cerrarModalEliminarCliente()">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="confirmarEliminarCliente()" style="background:#dc2626 !important;color:#fff !important;">Sí, eliminar</button>
+            </div>
+        </div>
+    </div>
+
     @push('scripts')
         <script>
+            let deleteClienteId = null;
+
             function abrirModal() {
                 document.getElementById('modalTitle').textContent = 'Nuevo Cliente';
                 document.getElementById('modalDesc').textContent  = 'Ingresa los datos del nuevo cliente.';
@@ -461,8 +481,29 @@
                 document.getElementById('modalOverlay').classList.remove('open');
             }
 
+            function abrirModalEliminarCliente(id, razonSocial) {
+                deleteClienteId = id;
+                document.getElementById('deleteClienteText').textContent = `¿Eliminar al cliente ${razonSocial}?`;
+                document.getElementById('modalDeleteClienteOverlay').classList.add('open');
+            }
+
+            function cerrarModalEliminarCliente() {
+                deleteClienteId = null;
+                document.getElementById('modalDeleteClienteOverlay').classList.remove('open');
+            }
+
+            function confirmarEliminarCliente() {
+                if (!deleteClienteId) return;
+                const form = document.getElementById(`delete-cliente-form-${deleteClienteId}`);
+                if (form) form.submit();
+            }
+
             document.getElementById('modalOverlay').addEventListener('click', function(e) {
                 if (e.target === this) cerrarModal();
+            });
+
+            document.getElementById('modalDeleteClienteOverlay').addEventListener('click', function(e) {
+                if (e.target === this) cerrarModalEliminarCliente();
             });
 
             function filtrarClientes() {

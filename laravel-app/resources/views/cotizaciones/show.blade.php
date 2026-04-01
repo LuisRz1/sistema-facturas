@@ -1,6 +1,6 @@
 @extends('layouts.app')
-@section('title', 'Cotización #' . $cotizacion->numero_valorizacion)
-@section('breadcrumb', 'Cotización')
+@section('title', 'Valorización #' . $cotizacion->numero_valorizacion)
+@section('breadcrumb', 'Valorización')
 
 @php
     $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
@@ -138,7 +138,7 @@
     <div class="page-header">
         <div>
             <div class="breadcrumb">
-                <a href="{{ route('cotizaciones.index') }}">Cotizaciones</a>
+                <a href="{{ route('cotizaciones.index') }}">Valorizaciones</a>
                 <span>›</span>
                 <span>{{ $cotizacion->numero_valorizacion }} — {{ Str::limit($cotizacion->obra, 40) }}</span>
             </div>
@@ -602,7 +602,7 @@
     {{-- ══ MODAL EDITAR HEADER ══ --}}
     <div class="modal-overlay" id="modalEditHeader">
         <div class="modal" style="max-width:640px;">
-            <div class="modal-header"><h2>Editar Encabezado</h2><p>Modifica los datos generales de la cotización</p>
+            <div class="modal-header"><h2>Editar Encabezado</h2><p>Modifica los datos generales de la valorización</p>
                 <button onclick="document.getElementById('modalEditHeader').classList.remove('open')" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
             </div>
             <form onsubmit="guardarHeader(event)">
@@ -675,7 +675,7 @@
         <div class="modal" style="max-width:640px;">
             <div class="modal-header">
                 <h2>Editar Cliente</h2>
-                <p>Actualiza los datos del cliente de esta cotización</p>
+                <p>Actualiza los datos del cliente de esta valorización</p>
                 <button onclick="document.getElementById('modalEditClienteCot').classList.remove('open')" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
             </div>
             <form id="formEditClienteCot" onsubmit="guardarClienteCot(event)">

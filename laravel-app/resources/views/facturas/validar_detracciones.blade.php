@@ -191,7 +191,7 @@
 
                 {{-- Pill del archivo seleccionado --}}
                 <div class="file-pill" id="filePill">
-                    <span style="font-size:22px;">📊</span>
+                    <span style="font-size:22px;"></span>
                     <div style="flex:1;">
                         <div class="fname" id="fileName"></div>
                         <div class="fsize" id="fileSize"></div>
@@ -355,7 +355,7 @@
                     const btns = document.getElementById('sheetButtons');
                     btns.innerHTML = data.sheets.map(s => `
                     <button type="button" class="sheet-btn" onclick="seleccionarHoja('${s.replace(/'/g, "\\'")}', this)">
-                        📄 ${s}
+                         ${s}
                     </button>
                 `).join('');
                     sel.classList.add('show');
@@ -364,7 +364,7 @@
                 }
 
                 if (!data.success) {
-                    alert('❌ Error: ' + (data.error || 'Error desconocido'));
+                    alert(' Error: ' + (data.error || 'Error desconocido'));
                     document.getElementById('btnProcesar').disabled = false;
                     return;
                 }

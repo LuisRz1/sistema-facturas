@@ -53,6 +53,23 @@ class CatalogosController extends Controller
 
     public function destroyChofer(int $id)
     {
+        $enUsoEnMaquinaria = DB::table('maquinaria_cotizacion')
+            ->where('id_chofer', $id)
+            ->where('activo', 1)
+            ->exists();
+
+        $enUsoEnAgregado = DB::table('agregado_cotizacion')
+            ->where('id_chofer', $id)
+            ->where('activo', 1)
+            ->exists();
+
+        if ($enUsoEnMaquinaria || $enUsoEnAgregado) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede eliminar el chofer porque tiene valorizaciones ligadas.',
+            ], 422);
+        }
+
         DB::table('chofer')->where('id_chofer', $id)->update([
             'activo'              => 0,
             'fecha_actualizacion' => now(),
@@ -95,6 +112,18 @@ class CatalogosController extends Controller
 
     public function destroyMaquinaria(int $id)
     {
+        $enUso = DB::table('cotizacion')
+            ->where('id_maquinaria', $id)
+            ->where('activo', 1)
+            ->exists();
+
+        if ($enUso) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede eliminar la maquinaria porque tiene valorizaciones ligadas.',
+            ], 422);
+        }
+
         DB::table('maquinaria')->where('id_maquinaria', $id)->update([
             'activo'              => 0,
             'fecha_actualizacion' => now(),
@@ -137,6 +166,18 @@ class CatalogosController extends Controller
 
     public function destroyAgregado(int $id)
     {
+        $enUso = DB::table('cotizacion')
+            ->where('id_agregado', $id)
+            ->where('activo', 1)
+            ->exists();
+
+        if ($enUso) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede eliminar el agregado porque tiene valorizaciones ligadas.',
+            ], 422);
+        }
+
         DB::table('agregado')->where('id_agregado', $id)->update([
             'activo'              => 0,
             'fecha_actualizacion' => now(),

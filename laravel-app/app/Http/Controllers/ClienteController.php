@@ -6,6 +6,7 @@ use App\Models\Cliente;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\DB;
 
 class ClienteController extends Controller
 {
@@ -58,6 +59,21 @@ class ClienteController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         $cliente = Cliente::findOrFail($id);
+
+        $tieneFacturas = DB::table('factura')
+            ->where('id_cliente', $id)
+            ->exists();
+
+        $tieneValorizaciones = DB::table('cotizacion')
+            ->where('id_cliente', $id)
+            ->where('activo', 1)
+            ->exists();
+
+        if ($tieneFacturas || $tieneValorizaciones) {
+            return redirect()->route('clientes.index')
+                ->with('error', 'No se puede eliminar el cliente porque tiene facturas o valorizaciones ligadas.');
+        }
+
         $cliente->delete();
 
         return redirect()->route('clientes.index')

@@ -153,7 +153,7 @@
                 <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none;">
 
                 <div class="file-pill" id="filePill">
-                    <span style="font-size:22px;">📊</span>
+                    <span style="font-size:22px;"></span>
                     <div style="flex:1;">
                         <div class="fname" id="fileName"></div>
                         <div class="fsize" id="fileSize"></div>

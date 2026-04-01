@@ -136,7 +136,7 @@
         <div class="card" style="margin-bottom:24px;max-width:1100px;">
             <div style="padding:18px 24px;border-bottom:1px solid #ede9fe;background:#f5f3ff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
                 <div>
-                    <p style="font-weight:800;font-size:15px;color:#4c1d95;margin:0;">🟣 Vista Previa de Retenciones — Revisa y Edita antes de Confirmar</p>
+                    <p style="font-weight:800;font-size:15px;color:#4c1d95;margin:0;"> Vista Previa de Retenciones — Revisa y Edita antes de Confirmar</p>
                     <p style="font-size:12px;color:#6d28d9;margin:4px 0 0;">
                         {{ collect($preview)->where('encontrada', true)->count() }} facturas encontradas ·
                         {{ collect($preview)->where('encontrada', false)->count() }} no encontradas.

@@ -1,6 +1,6 @@
 @extends('layouts.app')
-@section('title', 'Cotizaciones / Valorizaciones')
-@section('breadcrumb', 'Cotizaciones')
+@section('title', 'Valorizaciones')
+@section('breadcrumb', 'Valorizaciones')
 
 @push('styles')
     <style>
@@ -42,12 +42,12 @@
     <div class="page-header" style="animation:fadeDown .5s ease-out;">
 
         <div>
-            <h1 class="page-title">Cotizaciones / Valorizaciones</h1>
+            <h1 class="page-title">Valorizaciones</h1>
             <p class="page-desc">Gestiona las valorizaciones de maquinaria y agregados para clientes.</p>
         </div>
         <a href="{{ route('cotizaciones.create') }}" class="btn btn-primary">
             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-            Nueva Cotización
+            Nueva Valorización
         </a>
 
 
@@ -63,7 +63,7 @@
     <div class="kpi-row">
         <div class="kpi-box">
             <div class="kpi-val">{{ $cotizaciones->count() }}</div>
-            <div class="kpi-lbl">Total Cotizaciones</div>
+            <div class="kpi-lbl">Total Valorizaciones</div>
         </div>
         <div class="kpi-box" style="border-color:#fde68a;">
             <div class="kpi-val" style="color:#92400e;">{{ $totalMaq }}</div>
@@ -83,7 +83,7 @@
     <div class="card" style="animation:slideUp .5s .1s ease-out both;">
         <div class="card-header">
             <div>
-                <div class="card-title">Listado de Cotizaciones</div>
+                <div class="card-title">Listado de Valorizaciones</div>
                 <div class="card-desc">{{ $cotizaciones->count() }} registros</div>
             </div>
         </div>
@@ -197,8 +197,8 @@
                     <tr><td colspan="9">
                             <div class="empty-state">
                                 <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                                <p style="font-weight:600;font-size:15px;color:var(--text-primary);margin-top:10px;">Sin cotizaciones registradas</p>
-                                <p style="font-size:13px;margin-top:4px;">Crea tu primera cotización usando el botón superior.</p>
+                                <p style="font-weight:600;font-size:15px;color:var(--text-primary);margin-top:10px;">Sin valorizaciones registradas</p>
+                                <p style="font-size:13px;margin-top:4px;">Crea tu primera valorización usando el botón superior.</p>
                             </div>
                         </td></tr>
                 @endforelse
@@ -211,13 +211,13 @@
     <div class="modal-overlay" id="modalEliminar">
         <div class="modal" style="max-width:420px;">
             <div class="modal-header" style="background:#7f1d1d;">
-                <h2>Eliminar Cotización</h2>
+                <h2>Eliminar Valorización</h2>
                 <p id="modalEliminarDesc">¿Estás seguro?</p>
                 <button onclick="document.getElementById('modalEliminar').classList.remove('open')"
                         style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
             </div>
             <div class="modal-body" style="padding:24px;">
-                <p style="font-size:14px;color:var(--text-primary);">Esta acción desactivará la cotización y no podrá recuperarse fácilmente.</p>
+                <p style="font-size:14px;color:var(--text-primary);">Esta acción desactivará la valorización y no podrá recuperarse fácilmente.</p>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-ghost" onclick="document.getElementById('modalEliminar').classList.remove('open')">Cancelar</button>
@@ -261,7 +261,7 @@
             });
             const data = await res.json();
             document.getElementById('modalEliminar').classList.remove('open');
-            if (data.success) { showToast('Cotización eliminada.'); setTimeout(() => location.reload(), 1200); }
+            if (data.success) { showToast('Valorización eliminada.'); setTimeout(() => location.reload(), 1200); }
             else showToast(data.message || 'Error', false);
         });
         document.getElementById('modalEliminar').addEventListener('click', e => {
