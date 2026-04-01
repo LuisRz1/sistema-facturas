@@ -40,7 +40,7 @@ class CotizacionDocumentController extends Controller
             return false;
         }
 
-        $scriptPath = base_path('../whatsapp-worker/merge-pdfs.js');
+        $scriptPath = base_path('scripts/merge-pdfs.cjs');
         if (!is_file($scriptPath)) {
             Log::warning('GRR merge Node fallback unavailable: script not found', ['script' => $scriptPath]);
             return false;
@@ -187,6 +187,10 @@ class CotizacionDocumentController extends Controller
     private function buildPartesDiariosPdfHtml(object $cotizacion, \Illuminate\Support\Collection $filas, $disk, string $title): ?string
     {
         $cards = [];
+        $periodoTexto = 'Periodo: '
+            . \Carbon\Carbon::parse($cotizacion->periodo_inicio)->format('d/m/Y')
+            . ' a '
+            . \Carbon\Carbon::parse($cotizacion->periodo_fin)->format('d/m/Y');
 
         foreach ($filas as $f) {
             if (!$disk->exists($f->ruta_parte_diario)) {
@@ -258,6 +262,7 @@ class CotizacionDocumentController extends Controller
             *{box-sizing:border-box;margin:0;padding:0;}
             body{font-family:Arial,sans-serif;background:#fff;padding:10px;}
             h2{font-size:13px;font-weight:bold;color:#0f172a;margin:0 0 10px;border-bottom:2px solid #e2e8f0;padding-bottom:6px;}
+            .periodo{font-size:11px;font-weight:700;color:#111827;margin:-4px 0 10px;}
             .page{height:260mm;}
             .item{height:124mm;border:1px solid #e2e8f0;border-radius:6px;padding:7px;margin-bottom:6px;background:#fff;}
             .item:last-child{margin-bottom:0;}
@@ -267,6 +272,7 @@ class CotizacionDocumentController extends Controller
             img{max-width:100%;max-height:106mm;}
         </style></head><body>
         <h2>{$title}</h2>
+        <div class='periodo'>{$periodoTexto}</div>
         {$pagesHtml}
         </body></html>";
     }

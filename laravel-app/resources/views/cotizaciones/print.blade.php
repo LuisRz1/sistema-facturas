@@ -22,6 +22,8 @@
         .header-right { text-align: right; }
         .header-right h1 { font-size: 20px; font-weight: 900; text-transform: uppercase; color: #0f172a; }
         .header-right .ruc-big { font-size: 16px; font-weight: 700; color: #374151; }
+        .header-right .period-top { margin-top: 6px; font-size: 9px; color: #1f2937; line-height: 1.25; max-width: 330px; }
+        .header-right .period-top strong { text-transform: uppercase; letter-spacing: .3px; }
 
         /* ── META FIELDS ── */
         .meta-grid { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 4px 12px; margin-bottom: 12px; font-size: 10px; align-items: center; }
@@ -96,6 +98,12 @@
         <div class="header-right">
             <h1>Consorcio Rodriguez Caballero</h1>
             <div class="ruc-big">RUC: 20482304665</div>
+            <div class="period-top">
+                <strong>Periodo:</strong>
+                {{ strtoupper(\Carbon\Carbon::parse($cotizacion->periodo_inicio)->locale('es')->isoFormat('D [DE] MMMM [DEL] Y')) }}
+                AL
+                {{ strtoupper(\Carbon\Carbon::parse($cotizacion->periodo_fin)->locale('es')->isoFormat('D [DE] MMMM [DEL] Y')) }}
+            </div>
         </div>
     </div>
 
@@ -105,12 +113,8 @@
             {{ $cotizacion->tipo_cotizacion === 'MAQUINARIA' ? 'ALQUILER DE' : '' }}
             {{ Str::upper($cotizacion->obra) }} - {{ $cotizacion->numero_valorizacion }}
         </span>
-        <span class="meta-label">Periodo:</span>
-        <span class="meta-val">
-            {{ strtoupper(\Carbon\Carbon::parse($cotizacion->periodo_inicio)->locale('es')->isoFormat('D [DE] MMMM [DEL] Y')) }}
-            AL
-            {{ strtoupper(\Carbon\Carbon::parse($cotizacion->periodo_fin)->locale('es')->isoFormat('D [DE] MMMM [DEL] Y')) }}
-        </span>
+        <span class="meta-label"></span>
+        <span class="meta-val" style="border-bottom:none;"></span>
 
         <span class="meta-label">Empresa:</span>
         <span class="meta-val">{{ strtoupper($cotizacion->razon_social) }}</span>
@@ -123,7 +127,11 @@
 
     {{-- ── SECTION TITLE ── --}}
     <div class="val-title">{{ strtoupper($cotizacion->razon_social) }}</div>
-    <div class="val-subtitle">1.- {{ strtoupper($cotizacion->obra) }}</div>
+    <div class="val-subtitle">
+        1.- {{ strtoupper($cotizacion->obra) }}
+        <br>
+        Periodo: {{ \Carbon\Carbon::parse($cotizacion->periodo_inicio)->format('d/m/Y') }} a {{ \Carbon\Carbon::parse($cotizacion->periodo_fin)->format('d/m/Y') }}
+    </div>
 
     {{-- ── TABLE ── --}}
     @if($esMaquinaria)

@@ -4,7 +4,7 @@ const { PDFDocument } = require('pdf-lib');
 async function main() {
   const args = process.argv.slice(2);
   if (args.length < 3) {
-    console.error('Usage: node merge-pdfs.js <output.pdf> <input1.pdf> <input2.pdf> [...]');
+    console.error('Usage: node merge-pdfs.cjs <output.pdf> <input1.pdf> <input2.pdf> [...]');
     process.exit(2);
   }
 
