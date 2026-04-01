@@ -18,14 +18,44 @@ class CotizacionDocumentController extends Controller
 {
     private function getMergeDiagnostics(): array
     {
+        $nodePath = $this->findCommand('node');
+        $scriptPath = base_path('scripts/merge-pdfs.cjs');
+
         return [
             'fpdi_class' => class_exists('setasign\\Fpdi\\Fpdi'),
-            'node_path' => $this->findCommand('node'),
+            'node_path' => $nodePath,
             'qpdf_path' => $this->findCommand('qpdf'),
-            'script_path' => base_path('scripts/merge-pdfs.cjs'),
-            'script_exists' => is_file(base_path('scripts/merge-pdfs.cjs')),
+            'script_path' => $scriptPath,
+            'script_exists' => is_file($scriptPath),
             'pdf_lib_installed' => is_file(base_path('node_modules/pdf-lib/package.json')),
+            'node_pdf_lib_exec_ok' => $this->canExecuteNodePdfLib($nodePath),
         ];
+    }
+
+    private function canExecuteNodePdfLib(?string $nodePath): bool
+    {
+        if (!$nodePath) {
+            return false;
+        }
+
+        $cmd = 'cd ' . escapeshellarg(base_path())
+            . ' && ' . escapeshellarg($nodePath)
+            . ' -e ' . escapeshellarg("require('pdf-lib'); process.exit(0)")
+            . ' 2>&1';
+
+        $out = [];
+        $code = 1;
+        @exec($cmd, $out, $code);
+
+        return $code === 0;
+    }
+
+    public function diagnosticoMergeGRR()
+    {
+        return response()->json([
+            'success' => true,
+            'diagnostics' => $this->getMergeDiagnostics(),
+        ]);
     }
 
     private function findCommand(string $binary): ?string

@@ -47,6 +47,10 @@ Route::middleware('auth')->group(function () {
 
     Route::redirect('/', '/dashboard');
 
+    Route::get('/cotizaciones/grrs/diagnostico-runtime',
+        [CotizacionDocumentController::class, 'diagnosticoMergeGRR']
+    )->name('cotizaciones.grrs.diagnostico-runtime');
+
     // ── DASHBOARD ──────────────────────────────────────────────────────
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
