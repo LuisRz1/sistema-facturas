@@ -20,6 +20,7 @@ class CotizacionDocumentController extends Controller
     {
         $nodePath = $this->findCommand('node');
         $scriptPath = base_path('scripts/merge-pdfs.cjs');
+        $disabledFunctions = array_map('trim', explode(',', (string) ini_get('disable_functions')));
 
         return [
             'fpdi_class' => class_exists('setasign\\Fpdi\\Fpdi'),
@@ -29,6 +30,9 @@ class CotizacionDocumentController extends Controller
             'script_exists' => is_file($scriptPath),
             'pdf_lib_installed' => is_file(base_path('node_modules/pdf-lib/package.json')),
             'node_pdf_lib_exec_ok' => $this->canExecuteNodePdfLib($nodePath),
+            'exec_enabled' => function_exists('exec') && !in_array('exec', $disabledFunctions, true),
+            'shell_exec_enabled' => function_exists('shell_exec') && !in_array('shell_exec', $disabledFunctions, true),
+            'path_env' => (string) env('PATH', ''),
         ];
     }
 
