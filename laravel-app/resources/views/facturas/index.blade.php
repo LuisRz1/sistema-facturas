@@ -73,7 +73,7 @@
         .btn-wa:hover  { background:#a7f3d0; transform:translateY(-1px); }
         .btn-mail      { background:#dbeafe; color:#1d4ed8; }
         .btn-mail:hover { background:#bfdbfe; transform:translateY(-1px); }
-        .serie-num     { font-family:'DM Mono',monospace; font-weight:700; font-size:13px; color:var(--gold); background:var(--gold-l); padding:3px 8px; border-radius:6px; display:inline-block; }
+        .serie-num     { font-family:'DM Mono',monospace; font-weight:700; font-size:13px; color:#1f2937; background:var(--gold-l); padding:3px 8px; border-radius:6px; display:inline-block; border:1px solid var(--gold-b); }
         .tag           { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
         .tag-wa        { background:#dcfce7; color:#16a34a; }
         .tag-mail      { background:#dbeafe; color:#2563eb; }

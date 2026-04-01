@@ -16,6 +16,18 @@ use Illuminate\Support\Facades\Log;
  */
 class CotizacionDocumentController extends Controller
 {
+    private function getMergeDiagnostics(): array
+    {
+        return [
+            'fpdi_class' => class_exists('setasign\\Fpdi\\Fpdi'),
+            'node_path' => $this->findCommand('node'),
+            'qpdf_path' => $this->findCommand('qpdf'),
+            'script_path' => base_path('scripts/merge-pdfs.cjs'),
+            'script_exists' => is_file(base_path('scripts/merge-pdfs.cjs')),
+            'pdf_lib_installed' => is_file(base_path('node_modules/pdf-lib/package.json')),
+        ];
+    }
+
     private function findCommand(string $binary): ?string
     {
         $isWindows = PHP_OS_FAMILY === 'Windows';
@@ -411,6 +423,7 @@ class CotizacionDocumentController extends Controller
             Log::warning('GRR merge failed - using index fallback', [
                 'cotizacion_id' => $id,
                 'pdf_paths_count' => count($pdfPaths),
+                'diagnostics' => $this->getMergeDiagnostics(),
             ]);
         }
 
@@ -441,8 +454,7 @@ class CotizacionDocumentController extends Controller
             <tr><th>#</th><th>N° GRR</th><th>N° Parte Diario</th><th>Fecha</th><th>Placa</th></tr>
             {$rows}
         </table>
-        <p class='nota'>No se pudo combinar automáticamente los GRR en este servidor.<br>
-        Verifique dependencias de despliegue: <strong>setasign/fpdi</strong> (Composer), <strong>Node + pdf-lib + merge-pdfs.js</strong> (fallback), o <strong>qpdf</strong> en PATH.<br>
+        <p class='nota'>No se pudo combinar automáticamente los GRR en este momento.<br>
         Los GRR originales siguen disponibles individualmente en el sistema (botón PDF por fila).</p>
         </body></html>";
 
