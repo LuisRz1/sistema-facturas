@@ -110,6 +110,75 @@ class CotizacionDocumentController extends Controller
         return $code === 0 && is_file($outputPath) && filesize($outputPath) > 0;
     }
 
+    private function getWhatsAppWorkerBaseUrl(): string
+    {
+        $raw = (string) env('WHATSAPP_GATEWAY_URL', 'https://whastapp-production.up.railway.app');
+        $url = rtrim($raw, '/');
+
+        if (str_ends_with($url, '/send-message')) {
+            $url = substr($url, 0, -strlen('/send-message'));
+        }
+
+        return $url;
+    }
+
+    private function mergePdfsWithWorker(array $pdfPaths): ?string
+    {
+        if (count($pdfPaths) < 2) {
+            return null;
+        }
+
+        $files = [];
+        foreach ($pdfPaths as $path) {
+            if (!is_file($path)) {
+                continue;
+            }
+
+            $bytes = @file_get_contents($path);
+            if (!is_string($bytes) || $bytes === '') {
+                continue;
+            }
+
+            $files[] = [
+                'name' => basename($path),
+                'base64' => base64_encode($bytes),
+            ];
+        }
+
+        if (count($files) < 2) {
+            return null;
+        }
+
+        $endpoint = $this->getWhatsAppWorkerBaseUrl() . '/merge-pdfs';
+
+        try {
+            $response = Http::timeout(180)->post($endpoint, ['files' => $files]);
+            if (!$response->successful()) {
+                Log::warning('GRR merge worker endpoint failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'endpoint' => $endpoint,
+                ]);
+                return null;
+            }
+
+            $json = $response->json();
+            $pdfBase64 = is_array($json) ? ($json['pdfBase64'] ?? null) : null;
+            if (!is_string($pdfBase64) || $pdfBase64 === '') {
+                return null;
+            }
+
+            $merged = base64_decode($pdfBase64, true);
+            return is_string($merged) && $merged !== '' ? $merged : null;
+        } catch (\Throwable $e) {
+            Log::warning('GRR merge worker endpoint exception', [
+                'error' => $e->getMessage(),
+                'endpoint' => $endpoint,
+            ]);
+            return null;
+        }
+    }
+
     private function normalizarStorageKey(string $value): ?string
     {
         $raw = trim($value);
@@ -440,14 +509,26 @@ class CotizacionDocumentController extends Controller
 
             if ($qpdfPath) {
                 exec(escapeshellarg($qpdfPath) . " --empty --pages {$escapedPaths} -- " . escapeshellarg($outputPath) . ' 2>&1', $out, $code);
+                if ($code === 0 && file_exists($outputPath)) {
+                    foreach ($pdfPaths as $tmpPdfPath) {
+                        @unlink($tmpPdfPath);
+                    }
+                    $filename = 'GRR_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $cotizacion->numero_valorizacion) . '.pdf';
+                    return response()->download($outputPath, $filename)->deleteFileAfterSend(true);
+                }
+            }
+
+            $mergedByWorker = $this->mergePdfsWithWorker($pdfPaths);
+            if (is_string($mergedByWorker) && $mergedByWorker !== '') {
                 foreach ($pdfPaths as $tmpPdfPath) {
                     @unlink($tmpPdfPath);
                 }
 
-                if ($code === 0 && file_exists($outputPath)) {
-                    $filename = 'GRR_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $cotizacion->numero_valorizacion) . '.pdf';
-                    return response()->download($outputPath, $filename)->deleteFileAfterSend(true);
-                }
+                $filename = 'GRR_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $cotizacion->numero_valorizacion) . '.pdf';
+                return response($mergedByWorker, 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+                ]);
             }
 
             foreach ($pdfPaths as $tmpPdfPath) {
@@ -652,12 +733,35 @@ class CotizacionDocumentController extends Controller
                 }
             }
 
-            foreach ($pdfPaths as $tmpPdfPath) {
-                @unlink($tmpPdfPath);
+            if (!$merged || !file_exists($outputPath)) {
+                $pdfContentFromWorker = $this->mergePdfsWithWorker($pdfPaths);
+                foreach ($pdfPaths as $tmpPdfPath) {
+                    @unlink($tmpPdfPath);
+                }
+                if (!is_string($pdfContentFromWorker) || $pdfContentFromWorker === '') {
+                    return response()->json(['success' => false, 'error' => 'No se pudo combinar los PDFs de GRR.'], 500);
+                }
+
+                $cloudUrl = $this->subirPdfACloudinary($pdfContentFromWorker, 'grrs_' . $id);
+                if (!$cloudUrl) {
+                    return response()->json(['success' => false, 'error' => 'No se pudo subir el PDF de GRR a la nube.'], 500);
+                }
+
+                $gateway  = app(\App\Services\WhatsAppGatewayService::class);
+                $caption  = "*GRRs Combinados*\nVal. {$cotizacion->numero_valorizacion} — {$cotizacion->obra}";
+                $filename = 'GRR_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $cotizacion->numero_valorizacion) . '.pdf';
+                $resultado = $gateway->enviarDocumento($cotizacion->celular, $cloudUrl, $filename, $caption);
+
+                return response()->json([
+                    'success' => $resultado['ok'],
+                    'message' => $resultado['ok']
+                        ? "✓ PDF GRR enviado a {$cotizacion->razon_social} ({$cotizacion->celular})"
+                        : '✗ Error: ' . ($resultado['error'] ?? 'Sin respuesta del gateway'),
+                ]);
             }
 
-            if (!$merged || !file_exists($outputPath)) {
-                return response()->json(['success' => false, 'error' => 'No se pudo combinar los PDFs de GRR.'], 500);
+            foreach ($pdfPaths as $tmpPdfPath) {
+                @unlink($tmpPdfPath);
             }
 
             $finalPath = $outputPath;

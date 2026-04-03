@@ -127,6 +127,11 @@ class ImportarClientesController extends Controller
                     }
                 }
 
+                // Regla especial: RUC de 11 dígitos que inicia con 10 es persona natural.
+                if (preg_match('/^10\d{9}$/', $numero)) {
+                    $tipoCliente = 'PERSONA NATURAL';
+                }
+
                 $direccion = $colDireccion !== null ? trim((string)($fila[$colDireccion] ?? '')) : null;
                 $email     = $colEmail     !== null ? trim((string)($fila[$colEmail]     ?? '')) : null;
                 $celular   = $colTelefono  !== null ? trim((string)($fila[$colTelefono]  ?? '')) : null;

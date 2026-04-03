@@ -2,9 +2,10 @@ const express = require('express');
 const qrcode = require('qrcode-terminal');
 const QRCode = require('qrcode');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const { PDFDocument } = require('pdf-lib');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '80mb' }));
 
 const PORT = process.env.PORT || 3001;
 let listo    = false;
@@ -196,6 +197,52 @@ app.post('/send-message', async (req, res) => {
     } catch (error) {
         console.error('Error general:', error);
         return res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+// ── POST /merge-pdfs ─────────────────────────────────────────────────────
+// Endpoint utilitario para fusionar PDFs (sin afectar lógica de WhatsApp).
+app.post('/merge-pdfs', async (req, res) => {
+    try {
+        const { files } = req.body || {};
+
+        if (!Array.isArray(files) || files.length < 2) {
+            return res.status(400).json({ ok: false, error: 'Se requieren al menos 2 archivos PDF en files[].' });
+        }
+
+        const outDoc = await PDFDocument.create();
+
+        for (const file of files) {
+            const b64 = (file && typeof file.base64 === 'string') ? file.base64 : '';
+            if (!b64) continue;
+
+            let bytes;
+            try {
+                bytes = Buffer.from(b64, 'base64');
+            } catch (e) {
+                continue;
+            }
+
+            if (!bytes || bytes.length === 0) continue;
+
+            const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+            const pages = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+            pages.forEach((p) => outDoc.addPage(p));
+        }
+
+        if (outDoc.getPageCount() === 0) {
+            return res.status(422).json({ ok: false, error: 'No se pudieron procesar páginas PDF válidas.' });
+        }
+
+        const outBytes = await outDoc.save();
+        return res.json({
+            ok: true,
+            pageCount: outDoc.getPageCount(),
+            pdfBase64: Buffer.from(outBytes).toString('base64'),
+        });
+    } catch (error) {
+        console.error('Error en /merge-pdfs:', error);
+        return res.status(500).json({ ok: false, error: error.message || String(error) });
     }
 });
 
