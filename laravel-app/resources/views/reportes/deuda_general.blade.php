@@ -92,15 +92,13 @@
         tbody td.c { text-align:center; }
 
         /* Anchos fijos para las columnas */
-        col.col-rank   { width:36px; }
-        col.col-emp    { width:25%; }
-        col.col-pen    { width:13%; }
-        col.col-usd    { width:10%; }
-        col.col-rec    { width:12%; }
+        col.col-rank   { width:4%; }
+        col.col-emp    { width:30%; }
         col.col-neto   { width:12%; }
-        col.col-neto-p { width:10%; }
-        col.col-cnt    { width:5%; }
-        col.col-est    { width:18%; }
+        col.col-rec    { width:12%; }
+        col.col-neto-p { width:14%; }
+        col.col-cnt    { width:6%; }
+        col.col-est    { width:10%; }
 
         .rank    { color:#94a3b8; font-size:10px; font-weight:700; text-align:center; }
         .empresa { font-weight:700; font-size:11px; color:#0f172a; }
@@ -165,9 +163,9 @@
 
 @php
     $totalNetoPen  = $totalPendientePen;
+    $totalSubtotalPen = (float) ($totalSubtotalPen ?? collect($clientes)->sum(fn($c) => (float) ($c['subtotal_pen'] ?? 0)));
     $countEmpresas = count($clientes);
     $countVencidas = collect($clientes)->filter(fn($c) => in_array('VENCIDO', $c['estados']))->count();
-    $mostrarUsd    = ($totalUsd ?? 0) > 0;
     $totalFacturado     = (float) ($dashboard['total_facturado'] ?? 0);
     $saldoPendiente     = (float) ($dashboard['saldo_pendiente'] ?? 0);
     $cobrado            = (float) ($dashboard['cobrado'] ?? 0);
@@ -222,20 +220,20 @@
             <colgroup>
                 <col class="col-rank">
                 <col class="col-emp">
-                <col class="col-pen">
-                @if($mostrarUsd)<col class="col-usd">@endif
-                <col class="col-rec">
-                <col class="col-neto">
-                <col class="col-cnt">
-                <col class="col-est">
+                <col class="col-neto">   {{-- SUB_TOTAL --}}
+                <col class="col-rec">    {{-- RECAUDACIÓN --}}
+                <col class="col-neto">   {{-- TOTAL --}}
+                <col class="col-neto-p"> {{-- SALDO PENDIENTE --}}
+                <col class="col-cnt">    {{-- FACT. --}}
+                <col class="col-est">    {{-- ESTADOS --}}
             </colgroup>
             <thead>
             <tr>
                 <th class="c">#</th>
                 <th>EMPRESA / CLIENTE</th>
-                <th class="r">DEUDA BRUTA (S/)</th>
-                @if($mostrarUsd)<th class="r">DEUDA ($)</th>@endif
+                <th class="r">SUB TOTAL (S/)</th>
                 <th class="r">RECAUDACIÓN (S/)</th>
+                <th class="r">TOTAL (S/)</th>
                 <th class="r">SALDO PENDIENTE (S/)</th>
                 <th class="c">FACT.</th>
                 <th>ESTADOS</th>
@@ -254,22 +252,15 @@
                         <div class="empresa">{{ $c['razon_social'] }}</div>
                         <div class="ruc">{{ $c['ruc'] }}</div>
                     </td>
+                    {{-- SUB TOTAL (base sin IGV) --}}
                     <td class="r">
-                        @if($c['deuda_pen'] > 0)
-                            <span class="deuda-pen">S/ {{ number_format($c['deuda_pen'], 2) }}</span>
+                        @if(($c['subtotal_pen'] ?? 0) > 0)
+                            <span class="pendiente-val" style="color:#1d4ed8;">S/ {{ number_format($c['subtotal_pen'], 2) }}</span>
                         @else
                             <span style="color:#cbd5e1;">—</span>
                         @endif
                     </td>
-                    @if($mostrarUsd)
-                        <td class="r">
-                            @if($c['deuda_usd'] > 0)
-                                <span class="deuda-usd">$ {{ number_format($c['deuda_usd'], 2) }}</span>
-                            @else
-                                <span style="color:#cbd5e1;">—</span>
-                            @endif
-                        </td>
-                    @endif
+                    {{-- RECAUDACIÓN --}}
                     <td class="r">
                         @if($c['recaudacion_pen'] > 0)
                             <span class="detrac-val">S/ {{ number_format($c['recaudacion_pen'], 2) }}</span>
@@ -277,8 +268,19 @@
                             <span style="color:#cbd5e1;">—</span>
                         @endif
                     </td>
+                    {{-- TOTAL (importe total incluyendo IGV) --}}
                     <td class="r">
-                        {{-- saldo calculado correctamente en el controller --}}
+                        @if($c['deuda_pen'] > 0)
+                            <span class="deuda-pen">S/ {{ number_format($c['deuda_pen'], 2) }}</span>
+                            <div style="font-size:8.5px;color:#64748b;font-family:Arial, Helvetica, sans-serif;">
+                                IGV: {{ ($c['igv_pen'] ?? 0) > 0 ? 'S/ '.number_format($c['igv_pen'], 2) : '—' }}
+                            </div>
+                        @else
+                            <span style="color:#cbd5e1;">—</span>
+                        @endif
+                    </td>
+                    {{-- SALDO PENDIENTE --}}
+                    <td class="r">
                         <span class="pendiente-val">S/ {{ number_format($c['pendiente_pen'], 2) }}</span>
                     </td>
                     <td class="c" style="font-weight:700;color:#64748b;">{{ $c['facturas'] }}</td>
@@ -291,14 +293,37 @@
                 </tr>
             @endforeach
 
-            {{-- FILA TOTAL --}}
+            {{-- FILA TOTAL GENERAL --}}
             <tr class="total-row">
                 <td class="c" style="font-size:9px;color:#94a3b8;">TOTAL</td>
                 <td style="font-size:11px;color:#f1f5f9;">{{ $countEmpresas }} EMPRESAS</td>
-                <td class="r"><span style="font-family:'Courier New',monospace;color:#fca5a5;">S/ {{ number_format($totalPen, 2) }}</span></td>
-                @if($mostrarUsd)<td class="r"><span style="font-family:'Courier New',monospace;color:#93c5fd;">$ {{ number_format($totalUsd, 2) }}</span></td>@endif
-                <td class="r"><span style="font-family:'Courier New',monospace;color:#fcd34d;">S/ {{ number_format($totalRecaudacionPen, 2) }}</span></td>
-                <td class="r"><span style="font-family:'Courier New',monospace;font-size:13px;color:#fca5a5;font-weight:900;">S/ {{ number_format($totalNetoPen, 2) }}</span></td>
+                {{-- Total SubTotal --}}
+                <td class="r">
+                    <span style="font-family:'Courier New',monospace;color:#93c5fd;">
+                        S/ {{ number_format($totalSubtotalPen ?? 0, 2) }}
+                    </span>
+                </td>
+                {{-- Total Recaudación --}}
+                <td class="r">
+                    <span style="font-family:'Courier New',monospace;color:#fcd34d;">
+                        S/ {{ number_format($totalRecaudacionPen, 2) }}
+                    </span>
+                </td>
+                {{-- Total General (antes DEUDA BRUTA) --}}
+                <td class="r">
+                    <span style="font-family:'Courier New',monospace;color:#fca5a5;">
+                        S/ {{ number_format($totalPen, 2) }}
+                    </span>
+                    <div style="font-size:8.5px;color:#cbd5e1;font-family:Arial, Helvetica, sans-serif;">
+                        IGV: {{ ($totalIgvPen ?? 0) > 0 ? 'S/ '.number_format($totalIgvPen, 2) : '—' }}
+                    </div>
+                </td>
+                {{-- Saldo Pendiente Total --}}
+                <td class="r">
+                    <span style="font-family:'Courier New',monospace;font-size:13px;color:#fca5a5;font-weight:900;">
+                        S/ {{ number_format($totalNetoPen, 2) }}
+                    </span>
+                </td>
                 <td class="c" style="color:#94a3b8;">{{ collect($clientes)->sum('facturas') }}</td>
                 <td></td>
             </tr>
@@ -318,6 +343,7 @@
     const CSRF           = '{{ csrf_token() }}';
     const RUTA_WA        = '{{ route("reportes.enviar-whatsapp") }}';
     const RUTA_MAIL      = '{{ route("reportes.enviar-correo") }}';
+    const RUTA_EXCEL     = '{{ route("reportes.excel") }}';
     const FECHA_DESDE    = '{{ $fechaDesde ?? "" }}';
     const FECHA_HASTA    = '{{ $fechaHasta ?? "" }}';
     const ESTADOS_FILTRO = {!! $estadosFiltroJson !!};
@@ -357,44 +383,12 @@
     }
 
     function exportarExcel() {
-        const wb = XLSX.utils.book_new();
-        const rows = [
-            ['#', 'EMPRESA', 'RUC', 'DEUDA BRUTA (S/)', 'DEUDA ($)', 'RECAUDACIÓN (S/)', 'SALDO PENDIENTE (S/)', 'FACTURAS', 'ESTADOS']
-        ];
-
-        document.querySelectorAll('#tablaDeuda tbody tr:not(.total-row)').forEach((tr, i) => {
-            const tds = tr.querySelectorAll('td');
-            if (!tds.length) return;
-            const estados = [...tds[tds.length-1].querySelectorAll('.badge')]
-                .map(b => b.textContent.trim()).join(', ');
-            rows.push([
-                tds[0].textContent.trim(),
-                tds[1].querySelector('.empresa')?.textContent.trim() || '',
-                tds[1].querySelector('.ruc')?.textContent.trim()     || '',
-                tds[2].textContent.replace('S/','').trim() || '—',
-                tds.length > 6 ? (tds[3].textContent.replace('$','').trim() || '—') : '—',
-                // ajustar índice según si hay columna USD
-                tds.length > 7 ? tds[4].textContent.replace('S/','').trim() : tds[3].textContent.replace('S/','').trim(),
-                tds.length > 7 ? tds[5].textContent.replace('S/','').trim() : tds[4].textContent.replace('S/','').trim(),
-                tds.length > 7 ? tds[6].textContent.trim()                  : tds[5].textContent.trim(),
-                estados,
-            ]);
-        });
-
-        // Fila de totales
-        rows.push([]);
-        rows.push(['TOTALES', '{{ $countEmpresas }} empresas', '',
-            '{{ number_format($totalPen, 2) }}',
-            '{{ number_format($totalUsd ?? 0, 2) }}',
-            '{{ number_format($totalRecaudacionPen, 2) }}',
-            '{{ number_format($totalNetoPen, 2) }}',
-            '{{ collect($clientes)->sum("facturas") }}', '']);
-
-        const ws = XLSX.utils.aoa_to_sheet(rows);
-        ws['!cols'] = [{wch:4},{wch:30},{wch:13},{wch:16},{wch:14},{wch:16},{wch:18},{wch:8},{wch:35}];
-
-        XLSX.utils.book_append_sheet(wb, ws, 'Deuda General');
-        XLSX.writeFile(wb, 'DeudaGeneral_CRC_{{ now()->format("Ymd_Hi") }}.xlsx');
+        const params = new URLSearchParams();
+        if (FECHA_DESDE) params.append('fecha_desde', FECHA_DESDE);
+        if (FECHA_HASTA) params.append('fecha_hasta', FECHA_HASTA);
+        ESTADOS_FILTRO.forEach(e => params.append('estados[]', e));
+        params.append('tipo_reporte', TIPO_REPORTE);
+        window.location.href = `${RUTA_EXCEL}?${params.toString()}`;
     }
 
     window.addEventListener('load', () => setTimeout(() => window.print(), 600));

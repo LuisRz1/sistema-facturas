@@ -11,17 +11,22 @@ use Carbon\Carbon;
 /**
  * Valida detracciones desde el Excel oficial SUNAT / Banco de la Nación.
  *
- * Sin POR VALIDAR DETRACCION: el indicador es tipo_recaudacion = 'DETRACCION'
- * con estado PENDIENTE o DIFERENCIA PENDIENTE.
+ * CAMBIO: Solo se procesan filas donde "Nombre Proveedor" sea
+ *         "CONSORCIO RODRIGUEZ CABALLERO S.A.C" (nuestras detracciones).
  */
 class ValidarDetraccionesController extends Controller
 {
+    /** Columnas que DEBEN existir en la fila de encabezados del Excel */
     private const COLS_REQUERIDAS = [
-        'fecha_pago' => 'Fecha Pago',
-        'monto'      => 'Monto Deposito',
-        'serie'      => 'Serie de Comprobante',
-        'numero'     => 'Numero de Comprobante',
+        'fecha_pago'       => 'Fecha Pago',
+        'monto'            => 'Monto Deposito',
+        'serie'            => 'Serie de Comprobante',
+        'numero'           => 'Numero de Comprobante',
+        'nombre_proveedor' => 'Nombre Proveedor',   // ← nuevo filtro
     ];
+
+    /** Nombre del proveedor que debemos validar */
+    private const PROVEEDOR_CRC = 'CONSORCIO RODRIGUEZ CABALLERO S.A.C';
 
     public function index()
     {
@@ -58,6 +63,7 @@ class ValidarDetraccionesController extends Controller
             $ws = $spreadsheet->getActiveSheet();
         }
 
+        // El Excel de BN/SUNAT tiene fila 1 vacía y fila 2 con los encabezados
         $headerRow  = $ws->rangeToArray('A2:ZZ2', null, true, false, false)[0] ?? [];
         $headerNorm = array_map(fn($h) => mb_strtolower(trim((string)$h)), $headerRow);
 
@@ -70,12 +76,14 @@ class ValidarDetraccionesController extends Controller
             $colMap[$key] = $idx;
         }
 
+        // Datos desde fila 3 (fila 1 vacía, fila 2 encabezados)
         $dataRows = array_slice($ws->toArray(null, true, false, false), 2);
         if (empty($dataRows)) return response()->json(['success'=>false,'error'=>'El Excel no contiene datos.'],422);
 
         $validadas     = [];
         $noEncontradas = 0;
         $yaValidadas   = 0;
+        $omitidas      = 0; // filas de otros proveedores
 
         DB::beginTransaction();
         try {
@@ -84,6 +92,13 @@ class ValidarDetraccionesController extends Controller
                 $numero = trim((string)($row[$colMap['numero']] ?? ''));
                 if ($serie === '' || $numero === '') continue;
                 $numero = (int)$numero;
+
+                // ── Filtrar por Nombre Proveedor ─────────────────────────────
+                $nombreProveedor = strtoupper(trim((string)($row[$colMap['nombre_proveedor']] ?? '')));
+                if (!str_contains($nombreProveedor, 'CONSORCIO RODRIGUEZ CABALLERO')) {
+                    $omitidas++;
+                    continue; // no es nuestra detracción
+                }
 
                 $fechaPago = $this->parsearFecha($row[$colMap['fecha_pago']] ?? null);
                 $monto     = abs((float)($row[$colMap['monto']] ?? 0));
@@ -96,7 +111,6 @@ class ValidarDetraccionesController extends Controller
                 if (!$factura) { $noEncontradas++; continue; }
 
                 // Solo procesar facturas con detracción que aún no se validaron
-                // (tipo_recaudacion = DETRACCION y estado PENDIENTE o DIFERENCIA PENDIENTE)
                 if ($factura->tipo_recaudacion !== 'DETRACCION') { $yaValidadas++; continue; }
                 if (!in_array($factura->estado, ['PENDIENTE', 'DIFERENCIA PENDIENTE', 'VENCIDO'])) {
                     $yaValidadas++;
@@ -109,13 +123,11 @@ class ValidarDetraccionesController extends Controller
                 $totalRecaudacion = $monto > 0 ? $monto : (float)($recExistente->total_recaudacion ?? 0);
                 $montoPendiente   = max(0, $importeTotal - $montoAbonado - $totalRecaudacion);
 
-                // Nuevo estado tras validar la detracción
                 if ($montoPendiente <= 0) {
                     $nuevoEstado = 'PAGADA';
                 } elseif ($montoAbonado > 0) {
                     $nuevoEstado = 'PAGO PARCIAL';
                 } else {
-                    // Detracción registrada y validada, pero queda diferencia por cobrar
                     $nuevoEstado = 'DIFERENCIA PENDIENTE';
                 }
 
@@ -123,7 +135,7 @@ class ValidarDetraccionesController extends Controller
                     'estado'              => $nuevoEstado,
                     'monto_pendiente'     => $montoPendiente,
                     'fecha_actualizacion' => now(),
-                    'fecha_abono'         => $factura->fecha_abono ?? $fechaPago,
+                    // NO actualizamos fecha_abono; esa columna es solo para pagos directos del cliente
                 ]);
 
                 DB::table('recaudacion')->updateOrInsert(
@@ -162,6 +174,7 @@ class ValidarDetraccionesController extends Controller
             'total_validadas' => count($validadas),
             'no_encontradas'  => $noEncontradas,
             'ya_validadas'    => $yaValidadas,
+            'omitidas_otros'  => $omitidas,
             'total_filas'     => count($dataRows),
         ]);
     }

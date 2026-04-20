@@ -165,6 +165,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/cotizaciones/{id}/export-excel',
         [CotizacionExportController::class, 'exportExcel'])->whereNumber('id')->name('cotizaciones.export-excel');
+    Route::get('/cotizaciones/{id}/export-pdf',
+        [CotizacionExportController::class, 'exportPdf'])->whereNumber('id')->name('cotizaciones.export-pdf');
 
     // Configuración
     Route::get('/configuracion', [Configuracioncontroller::class, 'index'])->name('configuracion.index');

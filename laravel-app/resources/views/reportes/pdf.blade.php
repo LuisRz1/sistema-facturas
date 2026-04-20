@@ -108,19 +108,6 @@
         /* ── TABLE ── */
         .body { padding:24px 32px; }
         .empresa-table { width:100%; border-collapse:collapse; table-layout:fixed; margin-bottom:4px; }
-        .empresa-table colgroup col:nth-child(1)  { width:3%; }
-        .empresa-table colgroup col:nth-child(2)  { width:7%; }
-        .empresa-table colgroup col:nth-child(3)  { width:7%; }
-        .empresa-table colgroup col:nth-child(4)  { width:10%; }
-        .empresa-table colgroup col:nth-child(5)  { width:10%; }
-        .empresa-table colgroup col:nth-child(6)  { width:8%; }
-        .empresa-table colgroup col:nth-child(7)  { width:8%; }
-        .empresa-table colgroup col:nth-child(8)  { width:7%; }
-        .empresa-table colgroup col:nth-child(9)  { width:7%; }
-        .empresa-table colgroup col:nth-child(10) { width:8%; }
-        .empresa-table colgroup col:nth-child(11) { width:7%; }
-        .empresa-table colgroup col:nth-child(12) { width:8%; }
-        .empresa-table colgroup col:nth-child(13) { width:10%; }
 
         .empresa-table thead tr { background:#0f172a; color:#fff; }
         .empresa-table thead th {
@@ -180,6 +167,7 @@
         .detrac  { color:#d97706; font-weight:700; font-family:'Courier New',monospace; }
         .abonado { color:#059669; font-weight:700; font-family:'Courier New',monospace; }
         .pendiente-cell { color:#dc2626; font-weight:700; font-family:'Courier New',monospace; }
+        .igv-note { display:block; font-size:7.5px; color:#64748b; margin-top:1px; font-family:Arial, Helvetica, sans-serif; }
 
         .badge {
             display:inline-block; padding:2px 6px; border-radius:20px; font-size:8px;
@@ -206,7 +194,24 @@
             .no-print { display:none !important; }
             @page { size:A4 landscape; margin:8mm; }
         }
+
+        /* Anchos fijos y coherentes con 14 columnas (suma 100%) */
+        col.col-rank   { width:3%; }
+        col.col-emi    { width:6%; }
+        col.col-vcto   { width:6%; }
+        col.col-fact   { width:10%; }
+        col.col-glosa  { width:12%; }
+        col.col-sub    { width:7%; }
+        col.col-pen    { width:7%; }
+        col.col-rec    { width:7%; }
+        col.col-total  { width:7%; }
+        col.col-tipo   { width:5%; }
+        col.col-abo    { width:7%; }
+        col.col-fabo   { width:6%; }
+        col.col-pend   { width:7%; }
+        col.col-est    { width:10%; }
     </style>
+
 </head>
 <body>
 
@@ -305,25 +310,35 @@
 
         @foreach($facturasAgrupadas as $empresa => $facturasPorEmpresa)
             @php
-                /* Totales por empresa usando solo las facturas que cuentan */
                 $facturasPorEmpresaParaTotales = $facturasAgrupParaTotales[$empresa] ?? collect();
                 $totEmpresa      = $facturasPorEmpresaParaTotales->sum('importe_total');
+                $totSubEmpresa   = $facturasPorEmpresaParaTotales->sum('subtotal_gravado');
                 $totRecEmpresa   = $facturasPorEmpresaParaTotales->sum('monto_recaudacion');
                 $totAbono        = $facturasPorEmpresaParaTotales->sum('monto_abonado');
                 $totPendEmpresa  = $facturasPorEmpresaParaTotales->sum(function ($fTot) {
                     return $fTot->estado === 'DIFERENCIA PENDIENTE'
-                        ? ($fTot->importe_total ?? 0)
+                        ? max(0, ($fTot->importe_total ?? 0) - ($fTot->monto_recaudacion ?? 0))
                         : ($fTot->pendiente_display ?? $fTot->monto_pendiente ?? 0);
                 });
             @endphp
 
             <div class="group-title">{{ $empresa }}</div>
-
             <table class="empresa-table">
                 <colgroup>
-                    <col><col><col><col><col>
-                    <col><col><col><col><col>
-                    <col><col><col>
+                    <col class="col-rank">  {{-- # --}}
+                    <col class="col-emi">   {{-- Emisión --}}
+                    <col class="col-vcto">  {{-- Vcto --}}
+                    <col class="col-fact">  {{-- Factura --}}
+                    <col class="col-glosa"> {{-- Glosa --}}
+                    <col class="col-sub">   {{-- SubTotal --}}
+                    <col class="col-pen">   {{-- DETRAC/RENTE --}}
+                    <col class="col-rec">   {{-- F.DETRAC --}}
+                    <col class="col-total"> {{-- Total --}}
+                    <col class="col-tipo">  {{-- Tipo --}}
+                    <col class="col-abo">   {{-- Abonado --}}
+                    <col class="col-fabo">  {{-- F.Abono --}}
+                    <col class="col-pend">  {{-- Pendiente --}}
+                    <col class="col-est">   {{-- Estado --}}
                 </colgroup>
                 <thead>
                 <tr>
@@ -332,9 +347,10 @@
                     <th>Vcto.</th>
                     <th>Factura</th>
                     <th>Glosa</th>
-                    <th class="r">Importe</th>
+                    <th class="r">Sub Total</th>
                     <th class="r">DETRAC/RENTE</th>
                     <th>F.DETRAC/F.RETEN</th>
+                    <th class="r">Total</th>
                     <th>Tipo</th>
                     <th class="r">Abonado</th>
                     <th>F.Abono</th>
@@ -345,17 +361,17 @@
                 <tbody>
                 @foreach($facturasPorEmpresa as $idx => $f)
                     @php
-                        /*
-                         * Usar el array pre-computado del controlador:
-                         * NO hacer queries por fila (N+1).
-                         * Misma lógica que facturas/index.blade.php
-                         */
                         $esNcHuerfana     = in_array((int) $f->id_factura, $orphanFacturaIds);
                         $recaudacion      = $f->monto_recaudacion ?? 0;
                         $tipoRec          = $f->tipo_recaudacion  ?? '—';
                         $badgeKey         = str_replace([' '], ['_'], $f->estado);
-                        $pendienteDisplay = $f->pendiente_display
-                            ?? (($f->estado === 'DIFERENCIA PENDIENTE') ? $f->importe_total : $f->monto_pendiente);
+                        // Pendiente corregido: para DIFERENCIA PENDIENTE restar la recaudación
+                        $pendienteDisplay = $esNcHuerfana ? 0 :
+                            ($f->estado === 'DIFERENCIA PENDIENTE'
+                                ? max(0, ($f->importe_total ?? 0) - ($recaudacion))
+                                : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                        // F.Abono solo cuando hay un abono real del cliente
+                        $mostrarFAbono = ($f->monto_abonado ?? 0) > 0 && !empty($f->fecha_abono);
                     @endphp
                     <tr class="{{ $esNcHuerfana ? 'nc-huerfana' : '' }}">
                         <td style="text-align:center;color:#64748b;font-size:9px;">{{ $idx + 1 }}</td>
@@ -368,25 +384,40 @@
                             @endif
                         </td>
                         <td class="td-glosa" style="font-size:9px;">{{ $f->glosa ?? '—' }}</td>
-                        <td class="r mono">{{ $f->moneda }} {{ number_format($f->importe_total, 2) }}</td>
+                        {{-- Sub Total = subtotal_gravado (base sin IGV) --}}
+                        <td class="r mono">
+                            @if(!$esNcHuerfana && ($f->subtotal_gravado ?? 0) > 0)
+                                {{ $f->moneda }} {{ number_format($f->subtotal_gravado, 2) }}
+                            @else
+                                —
+                            @endif
+                        </td>
                         <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda.' '.number_format($recaudacion, 2) : '—' }}</td>
                         <td class="mono" style="font-size:8.5px;color:#d97706;">
                             {{ $f->fecha_recaudacion ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—' }}
+                        </td>
+                        {{-- Total = importe_total (antes "Importe"). IGV se muestra debajo. --}}
+                        <td class="r mono">
+                            {{ $f->moneda }} {{ number_format($f->importe_total, 2) }}
+                            <span class="igv-note">
+                                IGV: {{ ($f->monto_igv ?? 0) > 0 ? $f->moneda.' '.number_format($f->monto_igv, 2) : '—' }}
+                            </span>
                         </td>
                         <td style="font-size:8.5px;font-weight:700;color:#7c3aed;">{{ $tipoRec !== '—' ? $tipoRec : '—' }}</td>
                         <td class="r abonado">
                             {{ ($f->monto_abonado ?? 0) > 0 ? $f->moneda.' '.number_format($f->monto_abonado, 2) : '—' }}
                         </td>
+                        {{-- F.Abono: solo cuando monto_abonado > 0, NUNCA se muestra la fecha de recaudación aquí --}}
                         <td class="mono" style="font-size:8.5px;color:#059669;">
-                            {{ $f->fecha_abono ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—' }}
+                            {{ $mostrarFAbono ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—' }}
                         </td>
                         <td class="r {{ $esNcHuerfana ? '' : 'pendiente-cell' }}">
                             @if($esNcHuerfana)
                                 <span style="color:#9ca3af;">—</span>
                             @else
                                 {{ $f->moneda }} {{ number_format($pendienteDisplay, 2) }}
-                                @if($f->estado === 'DIFERENCIA PENDIENTE')
-                                    <div style="font-size:7.5px;color:#7c3aed;font-weight:600;">det. no valid.</div>
+                                @if($f->estado === 'DIFERENCIA PENDIENTE' && $recaudacion > 0)
+                                    <div style="font-size:7.5px;color:#7c3aed;font-weight:600;">det. descontada</div>
                                 @endif
                             @endif
                         </td>
@@ -399,14 +430,15 @@
                     </tr>
                 @endforeach
 
-                {{-- FILA TOTALES POR EMPRESA — usa $facturasAgrupParaTotales ── --}}
+                {{-- FILA TOTALES POR EMPRESA --}}
                 <tr class="total-empresa">
                     <td colspan="5" style="font-size:10px;letter-spacing:.3px;">
                         SUBTOTAL — {{ $facturasPorEmpresaParaTotales->count() }} factura(s)
                     </td>
-                    <td class="r" style="color:#fca5a5;">{{ number_format($totEmpresa, 2) }}</td>
+                    <td class="r" style="color:#fcd34d;">{{ $totSubEmpresa > 0 ? number_format($totSubEmpresa, 2) : '—' }}</td>
                     <td class="r" style="color:#fcd34d;">{{ $totRecEmpresa > 0 ? number_format($totRecEmpresa, 2) : '—' }}</td>
                     <td></td>
+                    <td class="r" style="color:#fca5a5;">{{ number_format($totEmpresa, 2) }}</td>
                     <td></td>
                     <td class="r" style="color:#6ee7b7;">{{ $totAbono > 0 ? number_format($totAbono, 2) : '—' }}</td>
                     <td></td>
@@ -434,6 +466,7 @@
     const FECHA_HASTA    = '{{ $fechaHasta ?? "" }}';
     const ID_CLIENTE     = '{{ $idCliente ?? "" }}';
     const ESTADOS_FILTRO = {!! $estadosFiltroJson !!};
+    const RUTA_EXCEL     = '{{ route("reportes.excel") }}';
     const TIPO_REPORTE   = 'detallado';
     // IDs de NCs huérfanas para exclusión en exportación Excel
     const ORPHAN_IDS     = {!! json_encode($orphanFacturaIds) !!};
@@ -472,73 +505,13 @@
         } finally { onUsuarioChange(); }
     }
 
-    /* ── Exportar Excel: excluye huérfanas de totales, las tacha visualmente ── */
     function exportarExcel() {
-        const wb   = XLSX.utils.book_new();
-        const rows = [
-            ['#','EMPRESA','EMISIÓN','VCTO','FACTURA','GLOSA','IMPORTE','DETRAC/RENTE','F.DETRAC/F.RETEN','TIPO','ABONADO','F.ABONO','PENDIENTE','ESTADO']
-        ];
-
-        // Acumuladores de totales (excluyen huérfanas)
-        let totalBruto = 0, totalRec = 0, totalAbono = 0, totalPend = 0;
-
-        document.querySelectorAll('.empresa-table').forEach((tabla, tIdx) => {
-            const empresa = tabla.previousElementSibling?.textContent?.trim() || `Empresa ${tIdx + 1}`;
-            tabla.querySelectorAll('tbody tr:not(.total-empresa)').forEach(tr => {
-                const celdas    = tr.querySelectorAll('td');
-                if (celdas.length < 13) return;
-                const esHuerfana = tr.classList.contains('nc-huerfana');
-                const row = [
-                    celdas[0].textContent.trim(),
-                    empresa,
-                    celdas[1].textContent.trim(),
-                    celdas[2].textContent.trim(),
-                    celdas[3].textContent.trim(),
-                    celdas[4].textContent.trim(),
-                    esHuerfana ? '(NC sin factura)' : celdas[5].textContent.trim(),
-                    esHuerfana ? '—'                : celdas[6].textContent.trim(),
-                    celdas[7].textContent.trim(),
-                    celdas[8].textContent.trim(),
-                    celdas[9].textContent.trim(),
-                    celdas[10].textContent.trim(),
-                    esHuerfana ? '—'                : celdas[11].textContent.replace('det. no valid.','').trim(),
-                    celdas[12].textContent.trim() + (esHuerfana ? ' [NC SIN FACTURA - NO SUMA]' : ''),
-                ];
-                rows.push(row);
-            });
-
-            // Fila de subtotal por empresa (del DOM, ya es la suma correcta)
-            const totRow = tabla.querySelector('tbody tr.total-empresa');
-            if (totRow) {
-                const cTot = totRow.querySelectorAll('td');
-                const tBruto = parseFloat((cTot[5]?.textContent.replace(/[^0-9.\-]/g,'')).trim()) || 0;
-                const tRec   = parseFloat((cTot[6]?.textContent.replace(/[^0-9.\-]/g,'')).trim()) || 0;
-                const tAbon  = parseFloat((cTot[9]?.textContent.replace(/[^0-9.\-]/g,'')).trim()) || 0;
-                const tPend  = parseFloat((cTot[11]?.textContent.replace(/[^0-9.\-]/g,'')).trim()) || 0;
-                totalBruto += tBruto; totalRec += tRec; totalAbono += tAbon; totalPend += tPend;
-                rows.push(['', 'SUBTOTAL — ' + empresa, '', '', '', '',
-                    cTot[5]?.textContent.trim() || '',
-                    cTot[6]?.textContent.trim() || '', '', '',
-                    cTot[9]?.textContent.trim() || '', '',
-                    cTot[11]?.textContent.trim() || '', '']);
-            }
-            rows.push([]);
-        });
-
-        // Fila de totales generales
-        rows.push([]);
-        rows.push(['', 'TOTAL GENERAL', '', '', '', '',
-            totalBruto.toFixed(2), totalRec.toFixed(2), '', '',
-            totalAbono.toFixed(2), '', totalPend.toFixed(2), '']);
-
-        const ws = XLSX.utils.aoa_to_sheet(rows);
-        ws['!cols'] = [
-            {wch:4},{wch:30},{wch:12},{wch:12},{wch:16},{wch:22},
-            {wch:14},{wch:12},{wch:12},{wch:14},{wch:12},{wch:12},{wch:14},{wch:28}
-        ];
-
-        XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
-        XLSX.writeFile(wb, 'Reporte_CRC_{{ now()->format("Ymd_Hi") }}.xlsx');
+        const params = new URLSearchParams();
+        if (ID_CLIENTE) params.append('id_cliente', ID_CLIENTE);
+        if (FECHA_DESDE) params.append('fecha_desde', FECHA_DESDE);
+        if (FECHA_HASTA) params.append('fecha_hasta', FECHA_HASTA);
+        ESTADOS_FILTRO.forEach(e => params.append('estados[]', e));
+        window.location.href = `${RUTA_EXCEL}?${params.toString()}`;
     }
 
     window.addEventListener('load', () => setTimeout(() => window.print(), 600));

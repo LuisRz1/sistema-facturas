@@ -45,6 +45,32 @@ class CotizacionExportController extends Controller
         return $this->streamDownload($spreadsheet, $filename);
     }
 
+    // ── Single cotización PDF export ───────────────────────────────────────
+    public function exportPdf(int $id)
+    {
+        $cotizacion = $this->getCotizacionWithDetails($id);
+        if (!$cotizacion) {
+            abort(404);
+        }
+
+        $filas = $this->getFilas($cotizacion);
+        $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
+
+        $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria'))->render();
+        $html = preg_replace('/<div class="no-print".*?<\/div>/s', '', $html);
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)
+            ->setPaper('a4', $esMaquinaria ? 'landscape' : 'portrait');
+
+        $filename = 'Valorizacion_'
+            . preg_replace('/[^A-Za-z0-9\-_]/', '_', (string) $cotizacion->numero_valorizacion)
+            . '_' . preg_replace('/[^A-Za-z0-9\-_]/', '_', (string) $cotizacion->obra)
+            . '_' . now()->format('Ymd') . '.pdf';
+
+        return $pdf->download($filename);
+    }
+
     // ── Bulk export (POST with array of ids or filter params) ─────────────
     public function exportExcelBulk(Request $request)
     {

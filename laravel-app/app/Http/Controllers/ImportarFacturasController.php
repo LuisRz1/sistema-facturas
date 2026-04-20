@@ -9,6 +9,18 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use Carbon\Carbon;
 
+/**
+ * Importación de facturas desde el Excel de Nubefact.
+ *
+ * CAMBIOS v2 (nuevo formato Nubefact):
+ *  - Columnas desplazadas: ahora los datos empiezan en columna A (antes B).
+ *  - ¿ANULADO?  → columna AI  (antes ANULADO en AF)
+ *  - ¿DETRACCIÓN? → columna AB (antes en AI)
+ *  - IMPORTE DE DETRACCIÓN → columna AC (antes AE)
+ *  - TOTAL RETENCIÓN → columna Z  (nueva; si > 0 fuerza tipo RETENCION)
+ *  - DOC MODIFICADO - SERIE  → nombre anterior: "SERIE DOC MODIFICADO"
+ *  - DOC MODIFICADO - NUMERO → nombre anterior: "NUMERO DOC MODIFICADO"
+ */
 class ImportarFacturasController extends Controller
 {
     public function index()
@@ -58,17 +70,28 @@ class ImportarFacturasController extends Controller
             return back()->with('error', $mensajeFormato)->withInput();
         }
 
-        // Leer encabezados para mapear dinámicamente las columnas
+        // ── Detectar dinámicamente columnas de documento modificado ──────────
+        // Soporta nombre nuevo ("DOC MODIFICADO - SERIE") y anterior ("SERIE DOC MODIFICADO")
         $colSerieModificado  = null;
         $colNumeroModificado = null;
+        $colDetalleItems     = null;
 
         foreach ($encabezados as $columna => $valor) {
             $nombreEncabezado = strtoupper(trim((string)$valor));
-            if ($nombreEncabezado === 'SERIE DOC MODIFICADO') {
+            $nombreNormalizado = $this->normalizarEncabezado((string)$valor);
+
+            if (in_array($nombreEncabezado, ['DOC MODIFICADO - SERIE', 'SERIE DOC MODIFICADO'])) {
                 $colSerieModificado = $columna;
             }
-            if ($nombreEncabezado === 'NUMERO DOC MODIFICADO') {
+            if (in_array($nombreEncabezado, ['DOC MODIFICADO - NUMERO', 'NUMERO DOC MODIFICADO'])) {
                 $colNumeroModificado = $columna;
+            }
+
+            // Tomar la glosa desde el encabezado real de detalle y no por letra fija.
+            if (str_contains($nombreNormalizado, 'DETALLE') &&
+                (str_contains($nombreNormalizado, 'LINEAS') || str_contains($nombreNormalizado, 'LINEA')) &&
+                str_contains($nombreNormalizado, 'ITEM')) {
+                $colDetalleItems = $columna;
             }
         }
 
@@ -80,48 +103,66 @@ class ImportarFacturasController extends Controller
         $duplicadas       = 0;
         $errores          = [];
         $numFila          = null;
-        $fechasImportadas = []; // Para determinar el rango de fechas a mostrar
+        $fechasImportadas = [];
 
         DB::beginTransaction();
 
         try {
             foreach ($filas as $numFila => $f) {
 
-                $esAnulado = strtoupper(trim((string)($f['AF'] ?? ''))) === 'SI';
+                // ── ¿ANULADO? → columna AI (nuevo) ──────────────────────────
+                $esAnulado = strtoupper(trim((string)($f['AI'] ?? ''))) === 'SI';
 
                 // Fila vacía
-                if (empty($f['E']) && empty($f['F'])) continue;
+                if (empty($f['D']) && empty($f['E'])) continue;
 
-                // ── Montos base ───────────────────────────────────────────
-                $subtotalGravado  = $this->monto($f['P'] ?? 0);
-                $montoIgv         = $this->monto($f['T'] ?? 0);
-                $importeTotal     = $this->monto($f['Y'] ?? 0);
-                $moneda           = trim((string)($f['N'] ?? 'PEN'));
+                // ── Montos ───────────────────────────────────────────────────
+                $subtotalGravado  = $this->monto($f['N'] ?? 0);   // GRAVADA
+                $montoIgv         = $this->monto($f['R'] ?? 0);   // IGV
+                $importeTotal     = $this->monto($f['V'] ?? 0);   // TOTAL
+                $moneda           = trim((string)($f['J'] ?? 'PEN')); // MONEDA
 
-                $montoRecaudacion = $this->monto($f['AE'] ?? 0);
-                $porcentajeExcel  = $this->monto($f['AC'] ?? 0);
+                // ── Recaudación ──────────────────────────────────────────────
+                // TOTAL RETENCIÓN (Z): si > 0 fuerza tipo RETENCION para esta fila
+                $totalRetencionExcel  = $this->monto($f['Z'] ?? 0);
+                // ¿DETRACCIÓN? (AB): 'SI' indica que hay detracción
+                $indicadorDetraccion  = strtoupper(trim((string)($f['AB'] ?? '')));
+                $tieneDetraccion      = (strpos($indicadorDetraccion, 'SI') !== false);
+                // IMPORTE DE DETRACCIÓN (AC)
+                $importeDetraccion    = $this->monto($f['AC'] ?? 0);
 
-                if ($montoRecaudacion <= 0) {
-                    $porcentajeExcel = 0;
+                // Determinar tipo y monto de recaudación para esta fila
+                if ($totalRetencionExcel > 0) {
+                    // Fila con retención explícita → forzar RETENCION
+                    $tipoRecaudacionFila = 'RETENCION';
+                    $montoRecaudacion    = $totalRetencionExcel;
+                    $porcentajeExcel     = $importeTotal > 0
+                        ? round(($totalRetencionExcel / $importeTotal) * 100, 2)
+                        : 0;
+                } elseif ($tieneDetraccion && $importeDetraccion > 0) {
+                    // Fila con detracción → usar tipo seleccionado en el formulario
+                    $tipoRecaudacionFila = $tipoRecaudacion;
+                    $montoRecaudacion    = $importeDetraccion;
+                    $porcentajeExcel     = $importeTotal > 0
+                        ? round(($importeDetraccion / $importeTotal) * 100, 2)
+                        : 0;
+                } else {
+                    $tipoRecaudacionFila = null;
+                    $montoRecaudacion    = 0;
+                    $porcentajeExcel     = 0;
                 }
-
-                $indicadorExcel = strtoupper(trim((string)($f['AI'] ?? '')));
-                $tieneIndicador = (strpos($indicadorExcel, 'SI') !== false ||
-                    strpos($indicadorExcel, 'DETRACCION') !== false ||
-                    strpos($indicadorExcel, 'RETENCION') !== false);
-
-                $tipoRecaudacionFila = ($tieneIndicador && $montoRecaudacion > 0)
-                    ? $tipoRecaudacion
-                    : null;
 
                 $estado = 'PENDIENTE';
 
-                $glosa            = $this->transformarGlosa(trim((string)($f['AG'] ?? '')));
-                $fechaEmision     = $this->parsearFecha($f['B'] ?? null);
-                $fechaVencimiento = $this->parsearFecha($f['C'] ?? null);
+                $detalleItems     = !is_null($colDetalleItems)
+                    ? trim((string)($f[$colDetalleItems] ?? ''))
+                    : trim((string)($f['AG'] ?? ''));
+                $glosa            = $this->transformarGlosa($detalleItems);
+                $fechaEmision     = $this->parsearFecha($f['A'] ?? null); // FECHA E
+                $fechaVencimiento = $this->parsearFecha($f['B'] ?? null); // FECHA V
 
-                $ruc         = trim((string)($f['J'] ?? ''));
-                $razonSocial = trim((string)($f['K'] ?? ''));
+                $ruc         = trim((string)($f['G'] ?? '')); // RUC
+                $razonSocial = trim((string)($f['H'] ?? '')); // DENOMINACIÓN
 
                 if (empty($ruc)) {
                     $errores[] = "Fila {$numFila}: sin RUC, omitida.";
@@ -149,15 +190,15 @@ class ImportarFacturasController extends Controller
                     }
                 }
 
-                $serie  = trim((string)($f['E'] ?? ''));
-                $numero = (int) trim((string)($f['F'] ?? '0'));
+                $serie  = trim((string)($f['D'] ?? ''));   // SERIE
+                $numero = (int) trim((string)($f['E'] ?? '0')); // NÚMERO
 
                 if (DB::table('factura')->where('serie', $serie)->where('numero', $numero)->exists()) {
                     $duplicadas++;
                     continue;
                 }
 
-                $esNotaCredito   = strtoupper($serie) === 'FC01';
+                $esNotaCredito    = strtoupper($serie) === 'FC01';
                 $serieModificada  = null;
                 $numeroModificada = null;
 
@@ -187,10 +228,12 @@ class ImportarFacturasController extends Controller
                     $montoPendiente = max(0, $importeTotal - $montoRecaudacion);
                 }
 
+                $tipoOperacion = trim((string)($f['I'] ?? '')); // TIPO DE OPERACIÓN
+
                 $idFactura = DB::table('factura')->insertGetId([
                     'serie'             => $serie,
                     'numero'            => $numero,
-                    'tipo_operacion'    => trim((string)($f['H'] ?? '')),
+                    'tipo_operacion'    => $tipoOperacion,
                     'id_cliente'        => $idCliente,
                     'id_usuario'        => $idUsuario,
                     'moneda'            => $moneda,
@@ -199,7 +242,7 @@ class ImportarFacturasController extends Controller
                     'importe_total'     => $importeTotal,
                     'estado'            => $estadoFinal,
                     'glosa'             => $glosa,
-                    'forma_pago'        => trim((string)($f['AH'] ?? '')),
+                    'forma_pago'        => trim((string)($f['AE'] ?? '')), // FORMA DE PAGO
                     'tipo_recaudacion'  => $tipoRecaudacionFila,
                     'fecha_vencimiento' => $fechaVencimiento,
                     'fecha_emision'     => $fechaEmision,
@@ -226,7 +269,6 @@ class ImportarFacturasController extends Controller
                     ]);
                 }
 
-                // Guardar la fecha de emisión para determinar el rango de la redirección
                 if ($fechaEmision) {
                     $fechasImportadas[] = $fechaEmision;
                 }
@@ -241,7 +283,6 @@ class ImportarFacturasController extends Controller
             return back()->with('error', $this->mensajeErrorImportacionControlado($encabezados))->withInput();
         }
 
-        // Si se insertaron facturas, redirigir a la lista con el rango de fechas importadas
         if ($insertadas > 0 && !empty($fechasImportadas)) {
             $filtroDesde = min($fechasImportadas);
             $filtroHasta = max($fechasImportadas);
@@ -272,26 +313,43 @@ class ImportarFacturasController extends Controller
     private function transformarGlosa(string $txt): string
     {
         if (empty($txt)) return '';
-        $up = strtoupper($txt);
 
-        if (str_contains($up, 'PLACA')) {
-            if (preg_match('/PLACA\s*:?\s*([A-Z0-9]{3}[-]?[A-Z0-9]{3,4})/i', $txt, $m)) {
-                return 'Alquiler de carro Placa: ' . strtoupper($m[1]);
+        $texto = trim((string) preg_replace('/\s+/u', ' ', str_replace(["\r", "\n", "\t"], ' ', $txt)));
+        $normalizado = $this->normalizarEncabezado($texto);
+
+        if (str_contains($normalizado, 'PLACA')) {
+            if (preg_match('/PLACA\s*:?\s*([A-Z0-9]{3}[- ]?[A-Z0-9]{3,4})/i', $texto, $m)) {
+                $placa = strtoupper(str_replace(' ', '-', trim((string) $m[1])));
+                return 'Alquiler de carro Placa: ' . $placa;
             }
             return 'Alquiler de carro Placa: N/D';
         }
-        if (str_contains($up, 'AGUA') && str_contains($up, 'TRANSPORT')) return 'Servicio de transporte de agua';
-        if (str_contains($up, 'AGUA'))      return 'Suministro de Agua';
-        if (str_contains($up, 'TRANSPORT')) return 'Servicio de transporte';
-        if (str_contains($up, 'ALQUILER')) {
-            if (preg_match('/ALQUILER\s+DE\s+([\wÁÉÍÓÚáéíóúÑñ]+)(?:\s+([\wÁÉÍÓÚáéíóúÑñ]+))?/iu', $txt, $m)) {
-                $parte = ucfirst(strtolower($m[1]));
-                if (!empty($m[2])) $parte .= ' ' . ucfirst(strtolower($m[2]));
+
+        if (str_contains($normalizado, 'ALQUILER')) {
+            if (preg_match('/ALQUILER\s+DE\s+([A-Z0-9ÁÉÍÓÚÑ]+)(?:\s+([A-Z0-9ÁÉÍÓÚÑ]+))?/iu', $texto, $m)) {
+                $parte = ucfirst(strtolower((string) $m[1]));
+                if (!empty($m[2])) {
+                    $parte .= ' ' . ucfirst(strtolower((string) $m[2]));
+                }
                 return 'Alquiler de ' . $parte;
             }
+            return 'Alquiler';
         }
 
-        return trim(preg_replace('/\s+/', ' ', $txt));
+        $tieneAgua = str_contains($normalizado, 'AGUA');
+        $tieneTransporte = str_contains($normalizado, 'TRANSPORTE') || str_contains($normalizado, 'TRANSPORT');
+
+        if ($tieneTransporte && $tieneAgua) {
+            return 'Servicio de transporte de agua';
+        }
+        if ($tieneAgua) {
+            return 'Suministro de Agua';
+        }
+        if ($tieneTransporte) {
+            return 'Servicio de transporte';
+        }
+
+        return $texto;
     }
 
     private function monto(mixed $v): float
@@ -327,40 +385,57 @@ class ImportarFacturasController extends Controller
         return strlen($doc) === 8 ? 'PERSONA NATURAL' : 'PERSONA JURIDICA';
     }
 
+    /**
+     * Valida que el Excel corresponda al formato de Nubefact (versión nueva o anterior).
+     *
+     * Nuevo formato (desde 2025): columnas empiezan en A.
+     *   A=FECHA E, D=SERIE, E=NÚMERO, G=RUC, H=DENOMINACIÓN, V=TOTAL
+     *
+     * Formato anterior: columnas empezaban en B.
+     *   B=Fecha, E=Serie, F=Numero, J=RUC, K=RazonSocial, Y=Total
+     */
     private function validarFormatoNubefact(array $encabezados): array
     {
-        $reglas = [
-            'B' => [
-                'label' => 'Fecha de Emision',
-                'alternativas' => [['FECHA']],
-            ],
-            'E' => [
-                'label' => 'Serie',
-                'alternativas' => [['SERIE']],
-            ],
-            'F' => [
-                'label' => 'Numero',
-                'alternativas' => [['NUMERO']],
-            ],
-            'J' => [
-                'label' => 'RUC / Documento del cliente',
-                'alternativas' => [['RUC'], ['DOCUMENTO', 'ADQUIRIENTE']],
-            ],
-            'K' => [
-                'label' => 'Razon Social / Cliente',
-                'alternativas' => [['RAZON'], ['DENOMINACION'], ['CLIENTE'], ['ADQUIRIENTE']],
-            ],
-            'Y' => [
-                'label' => 'Importe Total',
-                'alternativas' => [['IMPORTE'], ['TOTAL']],
-            ],
-        ];
+        // ── Detectar versión del formato por columna A ─────────────────────
+        $colA = strtoupper(trim((string)($encabezados['A'] ?? '')));
+        $colB = strtoupper(trim((string)($encabezados['B'] ?? '')));
+
+        // Nuevo formato: A contiene "FECHA"
+        $esNuevoFormato = str_contains($colA, 'FECHA');
+        // Formato anterior: B contiene "FECHA" (y A está vacío o no es fecha)
+        $esFormatoAnterior = !$esNuevoFormato && str_contains($colB, 'FECHA');
+
+        if (!$esNuevoFormato && !$esFormatoAnterior) {
+            // Intentar detectar por presencia de columnas clave
+            $esNuevoFormato = !empty($encabezados['D']) && !empty($encabezados['G']);
+        }
+
+        if ($esNuevoFormato) {
+            $reglas = [
+                'A' => ['label' => 'Fecha de Emision',        'alternativas' => [['FECHA']]],
+                'D' => ['label' => 'Serie',                   'alternativas' => [['SERIE']]],
+                'E' => ['label' => 'Numero',                  'alternativas' => [['NÚMERO'], ['NUMERO']]],
+                'G' => ['label' => 'RUC / Documento cliente', 'alternativas' => [['RUC'], ['DOCUMENTO']]],
+                'H' => ['label' => 'Denominacion / Cliente',  'alternativas' => [['DENOMINACIÓN'], ['DENOMINACION']]],
+                'V' => ['label' => 'Total',                   'alternativas' => [['TOTAL']]],
+            ];
+        } else {
+            // Formato anterior
+            $reglas = [
+                'B' => ['label' => 'Fecha de Emision',        'alternativas' => [['FECHA']]],
+                'E' => ['label' => 'Serie',                   'alternativas' => [['SERIE']]],
+                'F' => ['label' => 'Numero',                  'alternativas' => [['NUMERO']]],
+                'J' => ['label' => 'RUC / Documento cliente', 'alternativas' => [['RUC'], ['DOCUMENTO', 'ADQUIRIENTE']]],
+                'K' => ['label' => 'Razon Social / Cliente',  'alternativas' => [['RAZON'], ['DENOMINACION'], ['CLIENTE'], ['ADQUIRIENTE']]],
+                'Y' => ['label' => 'Importe Total',           'alternativas' => [['IMPORTE'], ['TOTAL']]],
+            ];
+        }
 
         $faltantes = [];
         foreach ($reglas as $col => $rule) {
-            $actualRaw = trim((string)($encabezados[$col] ?? ''));
+            $actualRaw  = trim((string)($encabezados[$col] ?? ''));
             $actualNorm = $this->normalizarEncabezado($actualRaw);
-            $cumple = false;
+            $cumple     = false;
 
             foreach ($rule['alternativas'] as $altTokens) {
                 $okTokens = true;
@@ -370,10 +445,7 @@ class ImportarFacturasController extends Controller
                         break;
                     }
                 }
-                if ($okTokens) {
-                    $cumple = true;
-                    break;
-                }
+                if ($okTokens) { $cumple = true; break; }
             }
 
             if (!$cumple) {
@@ -383,9 +455,7 @@ class ImportarFacturasController extends Controller
 
         if (!empty($faltantes)) {
             $mensaje = 'Las columnas no coinciden con el formato esperado de Facturas (Nubefact). '
-                . 'Columnas requeridas: B=Fecha Emision, E=Serie, F=Numero, J=RUC/Documento, K=Razon Social/Cliente, Y=Importe Total. '
                 . 'Diferencias detectadas: ' . implode(' | ', $faltantes);
-
             return [false, $mensaje];
         }
 
@@ -396,8 +466,8 @@ class ImportarFacturasController extends Controller
     {
         $txt = strtoupper(trim($value));
         $txt = str_replace(
-            ['Á', 'É', 'Í', 'Ó', 'Ú', 'Ñ'],
-            ['A', 'E', 'I', 'O', 'U', 'N'],
+            ['Á', 'É', 'Í', 'Ó', 'Ú', 'Ñ', '¿', '?'],
+            ['A', 'E', 'I', 'O', 'U', 'N', '',  ''],
             $txt
         );
         $txt = preg_replace('/[^A-Z0-9\s]/', ' ', $txt);
@@ -407,25 +477,30 @@ class ImportarFacturasController extends Controller
 
     private function mensajeErrorImportacionControlado(array $encabezados): string
     {
-        $requeridas = [
-            'B: Fecha Emision',
-            'E: Serie',
-            'F: Numero',
-            'J: RUC/Documento cliente',
-            'K: Razon Social/Cliente',
-            'Y: Importe Total',
-        ];
+        // Detectar qué formato tiene el archivo
+        $colA = strtoupper(trim((string)($encabezados['A'] ?? '')));
+        $esNuevo = str_contains($colA, 'FECHA');
 
-        $detCols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y'];
+        if ($esNuevo) {
+            $requeridas = [
+                'A: Fecha Emision', 'D: Serie', 'E: Numero',
+                'G: RUC/Documento cliente', 'H: Denominacion/Cliente', 'V: Total',
+            ];
+        } else {
+            $requeridas = [
+                'B: Fecha Emision', 'E: Serie', 'F: Numero',
+                'J: RUC/Documento cliente', 'K: Razon Social/Cliente', 'Y: Importe Total',
+            ];
+        }
+
+        $detCols = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y'];
         $detectadas = [];
         foreach ($detCols as $col) {
             $valor = trim((string)($encabezados[$col] ?? ''));
-            if ($valor !== '') {
-                $detectadas[] = $col . ': ' . $valor;
-            }
+            if ($valor !== '') $detectadas[] = $col . ': ' . $valor;
         }
 
-        return 'Archivo incorrecto. El archivo debe tener columnas del formato Facturas (Excel de Ventas). '
+        return 'Archivo incorrecto. El archivo debe ser el Excel de Ventas exportado desde Nubefact. '
             . 'Columnas requeridas: ' . implode(', ', $requeridas) . '. '
             . 'Columnas detectadas: ' . (!empty($detectadas) ? implode(' | ', $detectadas) : 'No se detectaron encabezados en la fila 1');
     }
