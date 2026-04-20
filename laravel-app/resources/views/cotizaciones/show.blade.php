@@ -328,7 +328,12 @@
                             <td class="r" style="color:#059669;">{{ number_format($f->horas_trabajadas,2) }}</td>
                             <td class="r">{{ number_format($f->hora_minima,1) }}</td>
                             <td class="r">{{ number_format($f->precio_hora,2) }}</td>
-                            <td class="r total-fila-cell">{{ number_format($f->total_fila,2) }}</td>
+                            <td class="r total-fila-cell">
+                                {{ number_format($f->total_fila,2) }}
+                                @if((float)($f->total_fila ?? 0) <= 0)
+                                    <div style="font-size:9px;color:#92400e;font-family:Arial, Helvetica, sans-serif;">NO COBRA</div>
+                                @endif
+                            </td>
                         @else
                             <td style="font-size:12px;">{{ $f->agregado_nombre }}</td>
                             <td class="mono">{{ $f->placa ?? '—' }}</td>
@@ -345,7 +350,12 @@
                             </td>
                             <td class="r">{{ number_format($f->m3,2) }}</td>
                             <td class="r">{{ number_format($f->precio_m3,2) }}</td>
-                            <td class="r total-fila-cell">{{ number_format($f->total_fila,2) }}</td>
+                            <td class="r total-fila-cell">
+                                {{ number_format($f->total_fila,2) }}
+                                @if((float)($f->total_fila ?? 0) <= 0)
+                                    <div style="font-size:9px;color:#92400e;font-family:Arial, Helvetica, sans-serif;">NO COBRA</div>
+                                @endif
+                            </td>
                             <td style="font-size:11px;font-weight:600;">{{ $f->grr ?? '—' }}</td>
                             {{-- Botón PDF GRR --}}
                             <td>
@@ -457,7 +467,18 @@
                                 <input type="number" class="row-input calculated" id="rTotal" step="0.01" readonly placeholder="0.00">
                             </div>
                         </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;">
+                            <div>
+                                <div class="row-input-lbl">Cobro de fila</div>
+                                <div style="display:flex;align-items:center;gap:12px;height:36px;padding:0 10px;border:1.5px solid var(--gold-b);border-radius:8px;background:#fff;">
+                                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#0f172a;cursor:pointer;">
+                                        <input type="radio" name="cobrar_fila" value="1" checked onchange="calcTotalFila()"> Cobrar
+                                    </label>
+                                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#92400e;cursor:pointer;">
+                                        <input type="radio" name="cobrar_fila" value="0" onchange="calcTotalFila()"> No cobrar
+                                    </label>
+                                </div>
+                            </div>
                             <div>
                                 <div class="row-input-lbl">N° Parte Diario</div>
                                 <input type="text" class="row-input" id="rNParte" name="n_parte_diario" placeholder="33594">
@@ -471,7 +492,6 @@
                                     <input type="file" id="inputImgParte" name="imagen_parte_diario" accept="image/*" style="display:none;" onchange="onFileSelected(this,'btnImgParte','📷')">
                                 </div>
                             </div>
-                            <div></div>
                             <div>
                                 <button type="submit" class="btn btn-primary" id="btnAddRow">+ Agregar Fila</button>
                             </div>
@@ -526,7 +546,18 @@
                                 <input type="number" class="row-input calculated" id="rTotal" step="0.01" readonly placeholder="0.00">
                             </div>
                         </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;">
+                            <div>
+                                <div class="row-input-lbl">Cobro de fila</div>
+                                <div style="display:flex;align-items:center;gap:12px;height:36px;padding:0 10px;border:1.5px solid var(--gold-b);border-radius:8px;background:#fff;">
+                                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#0f172a;cursor:pointer;">
+                                        <input type="radio" name="cobrar_fila" value="1" checked onchange="calcTotalFila()"> Cobrar
+                                    </label>
+                                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#92400e;cursor:pointer;">
+                                        <input type="radio" name="cobrar_fila" value="0" onchange="calcTotalFila()"> No cobrar
+                                    </label>
+                                </div>
+                            </div>
                             <div>
                                 <div class="row-input-lbl">N° Parte Diario</div>
                                 <input type="text" class="row-input" id="rNParte" name="n_parte_diario" placeholder="33594">
@@ -861,6 +892,7 @@
         }
 
         function calcTotalFila() {
+            const cobrar = document.querySelector('#addRowForm input[name="cobrar_fila"]:checked')?.value !== '0';
             if (ES_MAQUINARIA) {
                 const hi   = parseFloat(document.getElementById('rHI')?.value)    || 0;
                 const ht   = parseFloat(document.getElementById('rHT')?.value)    || 0;
@@ -868,7 +900,7 @@
                 const prec = parseFloat(document.getElementById('rPrecio')?.value) || 0;
                 const trab = Math.max(0, ht - hi);
                 const efec = hmin > 0 ? Math.max(trab, hmin) : trab;
-                const tot  = efec * prec;
+                const tot  = cobrar ? (efec * prec) : 0;
                 const htEl  = document.getElementById('rHTrab');
                 const totEl = document.getElementById('rTotal');
                 if (htEl)  htEl.value  = trab.toFixed(2);
@@ -877,7 +909,7 @@
                 const m3    = parseFloat(document.getElementById('rM3')?.value)      || 0;
                 const prec  = parseFloat(document.getElementById('rPrecioM3')?.value) || 0;
                 const totEl = document.getElementById('rTotal');
-                if (totEl) totEl.value = (m3 * prec).toFixed(2);
+                if (totEl) totEl.value = (cobrar ? (m3 * prec) : 0).toFixed(2);
             }
         }
 
@@ -933,6 +965,7 @@
             fd.append('obra_maquina', obra); fd.append('placa', placa);
             fd.append('hora_inicio', phantomData.hora_inicio); fd.append('hora_fin', phantomData.hora_fin);
             fd.append('hora_minima', hmin); fd.append('precio_hora', precio); fd.append('n_parte_diario', '');
+            fd.append('cobrar_fila', document.querySelector('#addRowForm input[name="cobrar_fila"]:checked')?.value || '1');
             await sendRowForm(fd);
             phantomData = null;
         }
@@ -1015,7 +1048,7 @@
                     <td class="r" style="color:#059669;">${Number(row.horas_trabajadas).toFixed(2)}</td>
                     <td class="r">${Number(row.hora_minima).toFixed(1)}</td>
                     <td class="r">${Number(row.precio_hora).toFixed(2)}</td>
-                    <td class="r total-fila-cell">${Number(row.total_fila).toFixed(2)}</td>
+                    <td class="r total-fila-cell">${Number(row.total_fila).toFixed(2)}${Number(row.total_fila) <= 0 ? '<div style="font-size:9px;color:#92400e;font-family:Arial, Helvetica, sans-serif;">NO COBRA</div>' : ''}</td>
                     <td><div style="display:flex;gap:4px;justify-content:flex-end;">
                         <button class="tbl-btn" onclick="abrirEditarFila(${row.id_cotizacion_maqu||row._row_id})"><svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
                         <button class="tbl-btn del" onclick="confirmarEliminarFila(${row.id_cotizacion_maqu||row._row_id})"><svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
@@ -1043,7 +1076,7 @@
                     <td>${imgBtn}</td>
                     <td class="r">${Number(row.m3).toFixed(2)}</td>
                     <td class="r">${Number(row.precio_m3).toFixed(2)}</td>
-                    <td class="r total-fila-cell">${Number(row.total_fila).toFixed(2)}</td>
+                    <td class="r total-fila-cell">${Number(row.total_fila).toFixed(2)}${Number(row.total_fila) <= 0 ? '<div style="font-size:9px;color:#92400e;font-family:Arial, Helvetica, sans-serif;">NO COBRA</div>' : ''}</td>
                     <td style="font-size:11px;font-weight:600;">${row.grr||'—'}</td>
                     <td>${pdfBtn}</td>
                     <td><div style="display:flex;gap:4px;justify-content:flex-end;">
@@ -1079,18 +1112,23 @@
             if (ES_MAQUINARIA) {
                 ['rHI','rHT','rHTrab','rTotal'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
                 document.getElementById('rNParte').value = '';
+                const cobrarSi = document.querySelector('#addRowForm input[name="cobrar_fila"][value="1"]');
+                if (cobrarSi) cobrarSi.checked = true;
                 const img = document.getElementById('inputImgParte');
                 if (img) img.value = '';
                 const btn = document.getElementById('btnImgParte');
                 if (btn) { btn.textContent = 'Adjuntar'; btn.classList.remove('uploaded'); }
             } else {
                 ['rM3','rTotal','rNParte','rGRR'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+                const cobrarSi = document.querySelector('#addRowForm input[name="cobrar_fila"][value="1"]');
+                if (cobrarSi) cobrarSi.checked = true;
                 ['inputImgParte','inputPdfGrr'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
                 [['btnImgParte','Adjuntar'],['btnPdfGrr','Adjuntar PDF']].forEach(([id, txt]) => {
                     const btn = document.getElementById(id);
                     if (btn) { btn.textContent = txt; btn.classList.remove('uploaded'); }
                 });
             }
+            calcTotalFila();
         }
 
         // ── Delete row ────────────────────────────────────────────────────
@@ -1139,6 +1177,7 @@
             const agrOpts    = AGREGADOS.map(a => `<option value="${a.id}" ${a.id==r.id_agregado?'selected':''}>${a.nombre}</option>`).join('');
             const parteActualUrl = r.url_parte_diario || (r.ruta_parte_diario ? `/storage/${r.ruta_parte_diario}` : '');
             const grrActualUrl   = r.url_grr || (r.ruta_grr ? `/storage/${r.ruta_grr}` : '');
+            const noCobrar = Number(r.total_fila || 0) <= 0;
 
             if (ES_MAQUINARIA) {
                 return `
@@ -1159,13 +1198,24 @@
                     <div class="form-group"><label class="form-label">H.Mín. *</label><input type="number" name="hora_minima" class="form-input" step="0.01" value="${r.hora_minima||3}" oninput="calcEditTotal()" required></div>
                     <div class="form-group"><label class="form-label">Precio/H *</label><input type="number" name="precio_hora" class="form-input" step="0.01" value="${r.precio_hora||''}" oninput="calcEditTotal()" required></div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:end;">
+                    <div class="form-group">
+                        <label class="form-label">Cobro de fila</label>
+                        <div style="display:flex;align-items:center;gap:12px;height:40px;padding:0 10px;border:1.5px solid #ecd67a;border-radius:8px;background:#fff;">
+                            <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="radio" name="cobrar_fila" value="1" ${!noCobrar ? 'checked' : ''} onchange="calcEditTotal()"> Cobrar</label>
+                            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#92400e;"><input type="radio" name="cobrar_fila" value="0" ${noCobrar ? 'checked' : ''} onchange="calcEditTotal()"> No cobrar</label>
+                        </div>
+                    </div>
                     <div class="form-group"><label class="form-label">N° Parte Diario</label><input type="text" name="n_parte_diario" class="form-input" value="${r.n_parte_diario||''}"></div>
                     <div class="form-group">
                         <label class="form-label">Imagen Parte Diario</label>
                         <input type="file" name="imagen_parte_diario" class="form-input" accept="image/*" style="height:auto;padding:6px 10px;">
                         ${parteActualUrl ? `<div style="margin-top:6px;font-size:11px;"><a href="#" class="file-view-btn file-view-img" onclick='openAdjuntoModal(${JSON.stringify(parteActualUrl)},"img"); return false;'>📷 Ver imagen actual</a></div>` : ''}
                     </div>
+                </div>
+                <div style="margin-top:10px;max-width:240px;">
+                    <label class="form-label">Total Fila calculado</label>
+                    <input type="number" id="eTotal" class="form-input" style="background:#f8fafc;" readonly value="${Number(r.total_fila||0).toFixed(2)}">
                 </div>
                 </div>`;
             } else {
@@ -1184,7 +1234,14 @@
                     <div class="form-group"><label class="form-label">M³ *</label><input type="number" name="m3" class="form-input" step="0.01" value="${r.m3||''}" oninput="calcEditTotal()" required></div>
                     <div class="form-group"><label class="form-label">Precio/M³ *</label><input type="number" name="precio_m3" class="form-input" step="0.01" value="${r.precio_m3||''}" oninput="calcEditTotal()" required></div>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;align-items:end;">
+                    <div class="form-group">
+                        <label class="form-label">Cobro de fila</label>
+                        <div style="display:flex;align-items:center;gap:12px;height:40px;padding:0 10px;border:1.5px solid #ecd67a;border-radius:8px;background:#fff;">
+                            <label style="display:flex;align-items:center;gap:6px;font-size:12px;"><input type="radio" name="cobrar_fila" value="1" ${!noCobrar ? 'checked' : ''} onchange="calcEditTotal()"> Cobrar</label>
+                            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#92400e;"><input type="radio" name="cobrar_fila" value="0" ${noCobrar ? 'checked' : ''} onchange="calcEditTotal()"> No cobrar</label>
+                        </div>
+                    </div>
                     <div class="form-group"><label class="form-label">N° Parte Diario</label><input type="text" name="n_parte_diario" class="form-input" value="${r.n_parte_diario||''}"></div>
                     <div class="form-group"><label class="form-label">N° GRR</label><input type="text" name="grr" class="form-input" value="${r.grr||''}"></div>
                     <div class="form-group">
@@ -1197,18 +1254,32 @@
                     <input type="file" name="archivo_grr" class="form-input" accept="application/pdf" style="height:auto;padding:6px 10px;">
                     ${grrActualUrl ? `<div style="margin-top:6px;font-size:11px;"><a href="#" class="file-view-btn file-view-pdf" onclick='openAdjuntoModal(${JSON.stringify(grrActualUrl)},"pdf"); return false;'>📄 Ver PDF actual</a></div>` : ''}
                 </div>
+                <div style="margin-top:10px;max-width:240px;">
+                    <label class="form-label">Total Fila calculado</label>
+                    <input type="number" id="eTotal" class="form-input" style="background:#f8fafc;" readonly value="${Number(r.total_fila||0).toFixed(2)}">
+                </div>
                 </div>`;
             }
         }
 
         function calcEditTotal() {
             const form = document.getElementById('editFilaBody');
+            const cobrar = form.querySelector('[name="cobrar_fila"]:checked')?.value !== '0';
+            const eTot = document.getElementById('eTotal');
             if (ES_MAQUINARIA) {
                 const hi   = parseFloat(form.querySelector('[name="hora_inicio"]')?.value) || 0;
                 const ht   = parseFloat(form.querySelector('[name="hora_fin"]')?.value)    || 0;
                 const trab = Math.max(0, ht - hi);
+                const hmin = parseFloat(form.querySelector('[name="hora_minima"]')?.value) || 0;
+                const prec = parseFloat(form.querySelector('[name="precio_hora"]')?.value)  || 0;
+                const efec = hmin > 0 ? Math.max(trab, hmin) : trab;
                 const htEl = document.getElementById('eHTrab');
                 if (htEl) htEl.value = trab.toFixed(2);
+                if (eTot) eTot.value = (cobrar ? (efec * prec) : 0).toFixed(2);
+            } else {
+                const m3   = parseFloat(form.querySelector('[name="m3"]')?.value) || 0;
+                const prec = parseFloat(form.querySelector('[name="precio_m3"]')?.value) || 0;
+                if (eTot) eTot.value = (cobrar ? (m3 * prec) : 0).toFixed(2);
             }
         }
 

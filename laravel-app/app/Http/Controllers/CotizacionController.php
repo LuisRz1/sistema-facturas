@@ -300,13 +300,15 @@ class CotizacionController extends Controller
             'hora_fin'       => 'required|numeric|gt:hora_inicio',
             'hora_minima'    => 'required|numeric|min:0',
             'precio_hora'    => 'required|numeric|min:0',
+            'cobrar_fila'    => 'nullable|in:0,1',
             'n_parte_diario' => 'nullable|string|max:50',
             'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
         ]);
 
         $horasTrabajadas = round($v['hora_fin'] - $v['hora_inicio'], 2);
         $horasEfectivas  = max($horasTrabajadas, (float) $v['hora_minima']);
-        $totalFila       = round($horasEfectivas * $v['precio_hora'], 2);
+        $debeCobrar      = (($v['cobrar_fila'] ?? '1') === '1');
+        $totalFila       = $debeCobrar ? round($horasEfectivas * $v['precio_hora'], 2) : 0;
 
         // ── Subir imagen parte diario a S3 ─────────────────────────────────
         $rutaParteDiario = $this->uploadToS3(
@@ -374,13 +376,15 @@ class CotizacionController extends Controller
             'obra_agregado'  => 'nullable|string|max:250',
             'm3'             => 'required|numeric|min:0',
             'precio_m3'      => 'required|numeric|min:0',
+            'cobrar_fila'    => 'nullable|in:0,1',
             'n_parte_diario' => 'nullable|string|max:50',
             'grr'            => 'nullable|string|max:50',
             'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
             'archivo_grr'         => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:20480',
         ]);
 
-        $totalFila = round($v['m3'] * $v['precio_m3'], 2);
+        $debeCobrar = (($v['cobrar_fila'] ?? '1') === '1');
+        $totalFila  = $debeCobrar ? round($v['m3'] * $v['precio_m3'], 2) : 0;
 
         // ── Subir imagen parte diario a S3 ─────────────────────────────────
         $rutaParteDiario = $this->uploadToS3(
@@ -467,13 +471,15 @@ class CotizacionController extends Controller
                 'hora_fin'       => 'required|numeric|gt:hora_inicio',
                 'hora_minima'    => 'required|numeric',
                 'precio_hora'    => 'required|numeric',
+                'cobrar_fila'    => 'nullable|in:0,1',
                 'n_parte_diario' => 'nullable|string|max:50',
                 'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
             ]);
 
             $horasTrabajadas = round($v['hora_fin'] - $v['hora_inicio'], 2);
             $horasEfectivas  = max($horasTrabajadas, (float) $v['hora_minima']);
-            $totalFila       = round($horasEfectivas * $v['precio_hora'], 2);
+            $debeCobrar      = (($v['cobrar_fila'] ?? '1') === '1');
+            $totalFila       = $debeCobrar ? round($horasEfectivas * $v['precio_hora'], 2) : 0;
 
             $updateData = array_merge($v, [
                 'horas_trabajadas'    => $horasTrabajadas,
@@ -493,7 +499,7 @@ class CotizacionController extends Controller
             }
 
             // Quitar la clave del archivo del array de actualización (no es columna)
-            unset($updateData['imagen_parte_diario']);
+            unset($updateData['imagen_parte_diario'], $updateData['cobrar_fila']);
 
             DB::table('maquinaria_cotizacion')
                 ->where('id_cotizacion_maqu', $rowId)
@@ -510,13 +516,15 @@ class CotizacionController extends Controller
                 'obra_agregado'  => 'nullable|string|max:250',
                 'm3'             => 'required|numeric',
                 'precio_m3'      => 'required|numeric',
+                'cobrar_fila'    => 'nullable|in:0,1',
                 'n_parte_diario' => 'nullable|string|max:50',
                 'grr'            => 'nullable|string|max:50',
                 'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
                 'archivo_grr'         => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:20480',
             ]);
 
-            $totalFila  = round($v['m3'] * $v['precio_m3'], 2);
+            $debeCobrar = (($v['cobrar_fila'] ?? '1') === '1');
+            $totalFila  = $debeCobrar ? round($v['m3'] * $v['precio_m3'], 2) : 0;
             $updateData = array_merge($v, [
                 'total_fila'          => $totalFila,
                 'fecha_actualizacion' => now(),
@@ -542,7 +550,7 @@ class CotizacionController extends Controller
             }
 
             // Quitar claves de archivos del array
-            unset($updateData['imagen_parte_diario'], $updateData['archivo_grr']);
+            unset($updateData['imagen_parte_diario'], $updateData['archivo_grr'], $updateData['cobrar_fila']);
 
             DB::table('agregado_cotizacion')
                 ->where('id_cotizacion_agr', $rowId)
