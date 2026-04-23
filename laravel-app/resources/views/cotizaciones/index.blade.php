@@ -116,7 +116,19 @@
 
         </form>
 
-        <div class="filter-bar" style="justify-content:flex-end;border-top:1px solid var(--border);">
+        <div class="filter-bar" style="justify-content:flex-end;border-top:1px solid var(--border);gap:8px;">
+            <form method="POST" action="{{ route('cotizaciones.export-pdf-bulk') }}" target="_blank">
+                @csrf
+                <input type="hidden" name="search" value="{{ $search }}">
+                <input type="hidden" name="tipo" value="{{ $tipo }}">
+                <input type="hidden" name="id_cliente" value="{{ $cliente }}">
+                <input type="hidden" name="fecha_desde" value="{{ $desde }}">
+                <input type="hidden" name="fecha_hasta" value="{{ $hasta }}">
+                <button type="submit" class="btn btn-outline" style="border-color:#1d4ed8;color:#1d4ed8;">
+                    Exportar PDF (según filtros)
+                </button>
+            </form>
+
             <form method="POST" action="{{ route('cotizaciones.export-excel-bulk') }}">
                 @csrf
                 <input type="hidden" name="search" value="{{ $search }}">

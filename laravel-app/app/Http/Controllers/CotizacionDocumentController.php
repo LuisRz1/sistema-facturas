@@ -465,7 +465,9 @@ class CotizacionDocumentController extends Controller
                 <div class='item'>
                     <div class='lbl'>{$item['label']} &nbsp;|&nbsp; {$item['fecha']} &nbsp;|&nbsp; {$item['placa']}</div>
                     <div class='img-wrap'>
-                        <img src='data:{$item['mime']};base64,{$item['b64']}'>
+                        <table class='img-center'><tr><td>
+                            <img src='data:{$item['mime']};base64,{$item['b64']}'>
+                        </td></tr></table>
                     </div>
                 </div>";
             }
@@ -507,8 +509,10 @@ class CotizacionDocumentController extends Controller
             .item:last-child{margin-bottom:0;}
             .item.empty{background:#fafafa;border-style:dashed;}
             .lbl{font-size:10px;font-weight:bold;color:#374151;background:#f8fafc;padding:5px 8px;border-radius:4px;margin-bottom:6px;}
-            .img-wrap{height:103mm;display:flex;align-items:center;justify-content:center;border:1px solid #edf2f7;border-radius:4px;background:#fff;overflow:hidden;}
-            .img-wrap img{max-width:100%;max-height:101mm;width:auto;height:auto;}
+            .img-wrap{height:103mm;border:1px solid #edf2f7;border-radius:4px;background:#fff;overflow:hidden;}
+            .img-center{width:100%;height:100%;border-collapse:collapse;}
+            .img-center td{text-align:center;vertical-align:middle;}
+            .img-wrap img{max-width:100%;max-height:101mm;width:auto;height:auto;display:inline-block;}
         </style></head><body>
         {$pagesHtml}
         </body></html>";

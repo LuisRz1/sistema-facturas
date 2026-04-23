@@ -125,6 +125,8 @@ Route::middleware('auth')->group(function () {
     // Excel export para cotizaciones (debe ir antes de /cotizaciones/{id})
     Route::post('/cotizaciones/export-excel-bulk',
         [CotizacionExportController::class, 'exportExcelBulk'])->name('cotizaciones.export-excel-bulk');
+    Route::post('/cotizaciones/export-pdf-bulk',
+        [CotizacionExportController::class, 'exportPdfBulk'])->name('cotizaciones.export-pdf-bulk');
 
     Route::get('/cotizaciones',
         [CotizacionController::class, 'index'])->name('cotizaciones.index');

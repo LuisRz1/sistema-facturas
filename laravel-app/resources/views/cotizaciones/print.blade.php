@@ -2,6 +2,7 @@
     $esMaquinaria = $esMaquinaria ?? ($cotizacion->tipo_cotizacion === 'MAQUINARIA');
     $forPdf = $forPdf ?? false;
     $logoDataUri = $logoDataUri ?? null;
+    $logoPath = $logoPath ?? null;
 @endphp
 <!DOCTYPE html>
 <html lang="es">
@@ -19,7 +20,7 @@
         /* ── HEADER ── */
         .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
         .logo-area { display: flex; align-items: center; gap: 12px; }
-        .logo-box { width: 140px; height: 70px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .logo-box { width: 230px; height: 95px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .logo-box img { max-width: 100%; max-height: 100%; width: auto; height: auto; }
         .logo-circle { width: 70px; height: 70px; background: #1e293b; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #f5c842; font-size: 20px; font-weight: 900; flex-shrink: 0; }
         .company-name { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .5px; }
@@ -44,7 +45,7 @@
 
         /* ── TABLE ── */
         table { width: 100%; border-collapse: collapse; }
-        thead tr th { background: #374151; color: #fff; padding: 6px 8px; text-align: center; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; border: 1px solid #4b5563; white-space: nowrap; }
+        thead tr th { background: #404040; color: #fff; padding: 6px 8px; text-align: center; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; border: 1px solid #4b5563; white-space: nowrap; }
         thead tr th.l { text-align: left; }
         thead tr th.r { text-align: right; }
         tbody tr { border-bottom: 1px solid #e5e7eb; }
@@ -55,7 +56,7 @@
         tbody td.mono { font-family: 'Courier New', monospace; }
 
         /* ── TOTAL ROW ── */
-        .total-row td { background: #374151 !important; color: #fff; font-weight: 800; font-size: 10px; border-color: #4b5563; }
+        .total-row td { background: #404040 !important; color: #fff; font-weight: 800; font-size: 10px; border-color: #4b5563; }
 
         /* ── SUMMARY ── */
         .summary-block { margin-top: 16px; display: flex; justify-content: flex-end; }
@@ -73,18 +74,21 @@
         .sig-role { font-size: 9px; color: #64748b; }
 
         @if($forPdf)
-            @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 35mm 8mm 10mm; }
+            @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 148px 22px 30px; }
             body { font-size: 9px; }
             .page { padding: 0; max-width: none; }
             .header-top {
                 position: fixed;
-                top: -30mm;
+                top: -126px;
                 left: 0;
                 right: 0;
                 margin-bottom: 0;
-                padding: 6px 12px 10px;
+                padding: 2px 6px 8px;
                 background: #fff;
-                z-index: 20;
+                border-bottom: 2px solid #e2e8f0;
+            }
+            .logo-area {
+                align-items: flex-start;
             }
         @endif
 
@@ -92,9 +96,7 @@
         @media print {
             .no-print { display: none !important; }
             body { font-size: 9px; }
-            @if($forPdf)
-                @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 35mm 8mm 10mm; }
-            @else
+            @if(!$forPdf)
                 @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 8mm; }
             @endif
         }
@@ -112,9 +114,9 @@
     {{-- ── HEADER ── --}}
     <div class="header-top">
         <div class="logo-area">
-            @if($logoDataUri)
+            @if($logoDataUri || $logoPath)
                 <div class="logo-box">
-                    <img src="{{ $logoDataUri }}" alt="Logo CRC">
+                    <img src="{{ $logoDataUri ?: $logoPath }}" alt="Logo CRC">
                 </div>
             @else
                 <div class="logo-circle">CRC</div>
@@ -286,8 +288,10 @@
 
 </div>
 
-<script>
-    window.addEventListener('load', () => setTimeout(() => window.print(), 500));
-</script>
+@if(!$forPdf)
+    <script>
+        window.addEventListener('load', () => setTimeout(() => window.print(), 500));
+    </script>
+@endif
 </body>
 </html>
