@@ -976,12 +976,69 @@ class ReporteController extends Controller
 
         $spreadsheet->setActiveSheetIndex(0);
 
-        $filename = 'Reporte_Financiero_Por_Empresa_' . now()->format('YmdHi') . '.xlsx';
+        $empresaArchivo = 'TODOS';
+        if ($idCliente) {
+            $empresaArchivo = (string) (DB::table('cliente')->where('id_cliente', $idCliente)->value('razon_social') ?? 'TODOS');
+        }
+
+        $filename = $this->buildVariacionesFilename($empresaArchivo, $fechaDesde, $fechaHasta, 'xlsx');
         $writer   = new Xlsx($spreadsheet);
         $tempFile = tempnam(sys_get_temp_dir(), 'xlsx');
         $writer->save($tempFile);
 
         return response()->download($tempFile, $filename)->deleteFileAfterSend(true);
+    }
+
+    private function buildVariacionesFilename(string $empresa, ?string $fechaDesde, ?string $fechaHasta, string $extension = 'xlsx'): string
+    {
+        $empresaCode = $this->empresaCode($empresa);
+        $periodo = $this->buildPeriodoArchivo($fechaDesde, $fechaHasta);
+
+        $base = "V.{$empresaCode}-CRC {$periodo}";
+
+        return $this->sanitizeFilename($base) . '.' . strtolower($extension);
+    }
+
+    private function buildPeriodoArchivo(?string $fechaDesde, ?string $fechaHasta): string
+    {
+        if ($fechaDesde && $fechaHasta) {
+            return \Carbon\Carbon::parse($fechaDesde)->format('d.m.y')
+                . ' AL '
+                . \Carbon\Carbon::parse($fechaHasta)->format('d.m.y');
+        }
+
+        if ($fechaDesde) {
+            return \Carbon\Carbon::parse($fechaDesde)->format('d.m.y');
+        }
+
+        if ($fechaHasta) {
+            return \Carbon\Carbon::parse($fechaHasta)->format('d.m.y');
+        }
+
+        return now()->format('d.m.y');
+    }
+
+    private function empresaCode(string $razonSocial): string
+    {
+        $clean = strtoupper(preg_replace('/[^A-Z0-9\s]/', ' ', $razonSocial));
+        $tokens = array_values(array_filter(preg_split('/\s+/', $clean)));
+        $stopWords = ['SAC', 'SA', 'EIRL', 'SRL', 'CONSORCIO', 'EMPRESA', 'EMPRESAS', 'DE', 'DEL', 'LA', 'LAS', 'LOS', 'Y'];
+
+        foreach ($tokens as $token) {
+            if (!in_array($token, $stopWords, true)) {
+                return substr($token, 0, 12);
+            }
+        }
+
+        return substr((string) ($tokens[0] ?? 'EMPRESA'), 0, 12);
+    }
+
+    private function sanitizeFilename(string $name): string
+    {
+        $name = str_replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], ' ', $name);
+        $name = preg_replace('/\s+/', ' ', trim($name));
+
+        return $name !== '' ? $name : 'archivo';
     }
 
     private function getColumn(int $number): string

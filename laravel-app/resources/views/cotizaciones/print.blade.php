@@ -1,3 +1,8 @@
+@php
+    $esMaquinaria = $esMaquinaria ?? ($cotizacion->tipo_cotizacion === 'MAQUINARIA');
+    $forPdf = $forPdf ?? false;
+    $logoDataUri = $logoDataUri ?? null;
+@endphp
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -14,6 +19,8 @@
         /* ── HEADER ── */
         .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
         .logo-area { display: flex; align-items: center; gap: 12px; }
+        .logo-box { width: 140px; height: 70px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .logo-box img { max-width: 100%; max-height: 100%; width: auto; height: auto; }
         .logo-circle { width: 70px; height: 70px; background: #1e293b; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #f5c842; font-size: 20px; font-weight: 900; flex-shrink: 0; }
         .company-name { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .5px; }
         .empresa-name-big { font-size: 18px; font-weight: 900; text-transform: uppercase; color: #0f172a; }
@@ -65,17 +72,35 @@
         .sig-name { font-weight: 700; font-size: 10px; text-transform: uppercase; }
         .sig-role { font-size: 9px; color: #64748b; }
 
+        @if($forPdf)
+            @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 35mm 8mm 10mm; }
+            body { font-size: 9px; }
+            .page { padding: 0; max-width: none; }
+            .header-top {
+                position: fixed;
+                top: -30mm;
+                left: 0;
+                right: 0;
+                margin-bottom: 0;
+                padding: 6px 12px 10px;
+                background: #fff;
+                z-index: 20;
+            }
+        @endif
+
         /* ── PRINT ── */
         @media print {
             .no-print { display: none !important; }
             body { font-size: 9px; }
-            @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 8mm; }
+            @if($forPdf)
+                @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 35mm 8mm 10mm; }
+            @else
+                @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 8mm; }
+            @endif
         }
     </style>
 </head>
 <body>
-@php $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA'; @endphp
-
 <div class="no-print">
     <button class="btn-print" onclick="window.print()">🖨 Imprimir / PDF</button>
     <button class="btn-back" onclick="window.close()">← Cerrar</button>
@@ -87,7 +112,13 @@
     {{-- ── HEADER ── --}}
     <div class="header-top">
         <div class="logo-area">
-            <div class="logo-circle">CRC</div>
+            @if($logoDataUri)
+                <div class="logo-box">
+                    <img src="{{ $logoDataUri }}" alt="Logo CRC">
+                </div>
+            @else
+                <div class="logo-circle">CRC</div>
+            @endif
             <div>
                 <div class="company-name">Consorcio Rodriguez Caballero SAC</div>
                 <div class="empresa-name-big">Consorcio Rodriguez Caballero</div>

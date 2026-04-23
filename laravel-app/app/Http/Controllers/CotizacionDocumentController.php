@@ -299,8 +299,114 @@ class CotizacionDocumentController extends Controller
         return null;
     }
 
+    private function getCotizacionConMetadatos(int $id, bool $withContact = false): ?object
+    {
+        $query = DB::table('cotizacion as c')
+            ->leftJoin('cliente as cl', 'cl.id_cliente', '=', 'c.id_cliente')
+            ->leftJoin('maquinaria as m', 'm.id_maquinaria', '=', 'c.id_maquinaria')
+            ->leftJoin('agregado as a', 'a.id_agregado', '=', 'c.id_agregado')
+            ->where('c.id_cotizacion', $id)
+            ->select(
+                'c.*',
+                'cl.razon_social',
+                'cl.ruc',
+                'm.nombre as maquinaria_nombre',
+                'a.nombre as agregado_nombre'
+            );
+
+        if ($withContact) {
+            $query->addSelect('cl.celular', 'cl.correo');
+        }
+
+        return $query->first();
+    }
+
+    private function getLogoDataUri(): ?string
+    {
+        $logoPath = resource_path('img/logo.png');
+        if (!is_file($logoPath)) {
+            return null;
+        }
+
+        $bytes = @file_get_contents($logoPath);
+        if (!is_string($bytes) || $bytes === '') {
+            return null;
+        }
+
+        return 'data:image/png;base64,' . base64_encode($bytes);
+    }
+
+    private function empresaCode(string $razonSocial): string
+    {
+        $clean = strtoupper(preg_replace('/[^A-Z0-9\s]/', ' ', $razonSocial));
+        $tokens = array_values(array_filter(preg_split('/\s+/', $clean)));
+        $stopWords = ['SAC', 'SA', 'EIRL', 'SRL', 'CONSORCIO', 'EMPRESA', 'EMPRESAS', 'DE', 'DEL', 'LA', 'LAS', 'LOS', 'Y'];
+
+        foreach ($tokens as $token) {
+            if (!in_array($token, $stopWords, true)) {
+                return substr($token, 0, 12);
+            }
+        }
+
+        return substr((string) ($tokens[0] ?? 'EMPRESA'), 0, 12);
+    }
+
+    private function sanitizeFilename(string $name): string
+    {
+        $name = str_replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], ' ', $name);
+        $name = preg_replace('/\s+/', ' ', trim($name));
+
+        return $name !== '' ? $name : 'archivo';
+    }
+
+    private function buildPeriodoTexto(string $inicio, string $fin, string $format = 'd.m.Y'): string
+    {
+        if ($inicio !== '' && $fin !== '') {
+            return \Carbon\Carbon::parse($inicio)->format($format)
+                . ' AL '
+                . \Carbon\Carbon::parse($fin)->format($format);
+        }
+
+        if ($inicio !== '') {
+            return \Carbon\Carbon::parse($inicio)->format($format);
+        }
+
+        if ($fin !== '') {
+            return \Carbon\Carbon::parse($fin)->format($format);
+        }
+
+        return now()->format($format);
+    }
+
+    private function resolveItemNombre(object $cotizacion): string
+    {
+        $item = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
+            ? (string) ($cotizacion->maquinaria_nombre ?? '')
+            : (string) ($cotizacion->agregado_nombre ?? '');
+
+        $item = trim($item);
+
+        if ($item === '') {
+            $item = (string) ($cotizacion->obra ?? 'ITEM');
+        }
+
+        return strtoupper($item);
+    }
+
+    private function buildPartesDiariosFilename(object $cotizacion, string $extension = 'pdf'): string
+    {
+        $empresa = $this->empresaCode((string) ($cotizacion->razon_social ?? 'EMPRESA'));
+        $item = $this->resolveItemNombre($cotizacion);
+        $periodo = $this->buildPeriodoTexto((string) $cotizacion->periodo_inicio, (string) $cotizacion->periodo_fin, 'd.m.Y');
+
+        $base = "PD-{$empresa} {$item} {$periodo}";
+
+        return $this->sanitizeFilename($base) . '.' . strtolower($extension);
+    }
+
     private function buildPartesDiariosPdfHtml(object $cotizacion, \Illuminate\Support\Collection $filas, $disk, string $title): ?string
     {
+        $logoDataUri = $this->getLogoDataUri();
         $cards = [];
         $periodoTexto = 'Periodo: '
             . \Carbon\Carbon::parse($cotizacion->periodo_inicio)->format('d/m/Y')
@@ -348,6 +454,10 @@ class CotizacionDocumentController extends Controller
         $pagesHtml = '';
         $totalPages = count($chunks);
 
+        $logoHtml = $logoDataUri
+            ? "<img class='logo' src='{$logoDataUri}' alt='Logo CRC'>"
+            : "<div class='logo-fallback'>CRC</div>";
+
         foreach ($chunks as $index => $pair) {
             $itemsHtml = '';
             foreach ($pair as $item) {
@@ -369,25 +479,37 @@ class CotizacionDocumentController extends Controller
             }
 
             $break = $index < ($totalPages - 1) ? "page-break-after: always;" : '';
-            $pagesHtml .= "<div class='page' style='{$break}'>{$itemsHtml}</div>";
+            $pagesHtml .= "<div class='page' style='{$break}'>
+                <div class='page-header'>
+                    {$logoHtml}
+                    <div class='company'>CONSORCIO RODRIGUEZ CABALLERO S.A.C.</div>
+                    <div class='title'>{$title}</div>
+                    <div class='periodo'>{$periodoTexto}</div>
+                </div>
+                <div class='items'>{$itemsHtml}</div>
+            </div>";
         }
 
         return "<!DOCTYPE html><html><head><meta charset='UTF-8'>
         <style>
             *{box-sizing:border-box;margin:0;padding:0;}
-            body{font-family:Arial,sans-serif;background:#fff;padding:10px;}
-            h2{font-size:13px;font-weight:bold;color:#0f172a;margin:0 0 10px;border-bottom:2px solid #e2e8f0;padding-bottom:6px;}
-            .periodo{font-size:11px;font-weight:700;color:#111827;margin:-4px 0 10px;}
-            .page{height:260mm;}
-            .item{height:124mm;border:1px solid #e2e8f0;border-radius:6px;padding:7px;margin-bottom:6px;background:#fff;}
+            @page{size:A4 portrait;margin:9mm 9mm 10mm;}
+            body{font-family:Arial,sans-serif;background:#fff;color:#0f172a;}
+            .page{height:278mm;overflow:hidden;}
+            .page-header{border-bottom:2px solid #e2e8f0;padding-bottom:5px;margin-bottom:7px;text-align:center;page-break-inside:avoid;}
+            .logo{display:block;margin:0 auto 4px;max-height:24mm;width:auto;height:auto;}
+            .logo-fallback{width:42mm;height:14mm;border:1px solid #94a3b8;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#334155;margin:0 auto 4px;}
+            .company{font-size:10px;font-weight:800;letter-spacing:.4px;}
+            .title{font-size:12px;font-weight:800;margin-top:2px;}
+            .periodo{font-size:10px;font-weight:700;color:#334155;margin-top:2px;}
+            .items{margin-top:2px;}
+            .item{height:120mm;border:1px solid #e2e8f0;border-radius:6px;padding:7px;margin-bottom:6px;background:#fff;page-break-inside:avoid;}
             .item:last-child{margin-bottom:0;}
             .item.empty{background:#fafafa;border-style:dashed;}
             .lbl{font-size:10px;font-weight:bold;color:#374151;background:#f8fafc;padding:5px 8px;border-radius:4px;margin-bottom:6px;}
-            .img-wrap{height:108mm;display:flex;align-items:center;justify-content:center;border:1px solid #edf2f7;border-radius:4px;background:#fff;overflow:hidden;}
-            img{max-width:100%;max-height:106mm;}
+            .img-wrap{height:103mm;display:flex;align-items:center;justify-content:center;border:1px solid #edf2f7;border-radius:4px;background:#fff;overflow:hidden;}
+            .img-wrap img{max-width:100%;max-height:101mm;width:auto;height:auto;}
         </style></head><body>
-        <h2>{$title}</h2>
-        <div class='periodo'>{$periodoTexto}</div>
         {$pagesHtml}
         </body></html>";
     }
@@ -399,7 +521,7 @@ class CotizacionDocumentController extends Controller
      */
     public function downloadPartesDiarios(int $id)
     {
-        $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $id)->first();
+        $cotizacion = $this->getCotizacionConMetadatos($id);
         if (!$cotizacion) abort(404);
         $disk = Storage::disk('s3');
 
@@ -429,7 +551,7 @@ class CotizacionDocumentController extends Controller
         }
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
-        $filename = 'PartesDiarios_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $cotizacion->numero_valorizacion) . '.pdf';
+        $filename = $this->buildPartesDiariosFilename($cotizacion, 'pdf');
         return $pdf->download($filename);
     }
 
@@ -585,11 +707,7 @@ class CotizacionDocumentController extends Controller
      */
     public function enviarPartesDiariosWA(int $id)
     {
-        $cotizacion = DB::table('cotizacion as c')
-            ->join('cliente as cl', 'cl.id_cliente', '=', 'c.id_cliente')
-            ->where('c.id_cotizacion', $id)
-            ->select('c.*', 'cl.celular', 'cl.correo', 'cl.razon_social')
-            ->first();
+        $cotizacion = $this->getCotizacionConMetadatos($id, true);
         $disk = Storage::disk('s3');
 
         if (!$cotizacion) {
@@ -642,7 +760,7 @@ class CotizacionDocumentController extends Controller
 
         $gateway  = app(\App\Services\WhatsAppGatewayService::class);
         $caption  = "*Partes Diarios*\nVal. {$cotizacion->numero_valorizacion} — {$cotizacion->obra}";
-        $filename = 'PartesDiarios_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $cotizacion->numero_valorizacion) . '.pdf';
+        $filename = $this->buildPartesDiariosFilename($cotizacion, 'pdf');
         $resultado = $gateway->enviarDocumento($cotizacion->celular, $cloudUrl, $filename, $caption);
 
         return response()->json([

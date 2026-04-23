@@ -10,6 +10,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 /**
  * Handles Excel export for cotizaciones.
@@ -37,10 +38,7 @@ class CotizacionExportController extends Controller
 
         $this->buildSheet($sheet, $cotizacion, $filas);
 
-        $filename = 'Valorizacion_'
-            . preg_replace('/[^A-Za-z0-9\-_]/', '_', $cotizacion->numero_valorizacion)
-            . '_' . preg_replace('/[^A-Za-z0-9\-_]/', '_', $cotizacion->obra)
-            . '_' . now()->format('Ymd') . '.xlsx';
+        $filename = $this->buildValorizacionFilename($cotizacion, 'xlsx');
 
         return $this->streamDownload($spreadsheet, $filename);
     }
@@ -56,17 +54,17 @@ class CotizacionExportController extends Controller
         $filas = $this->getFilas($cotizacion);
         $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
 
-        $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria'))->render();
+        $forPdf = true;
+        $logoDataUri = $this->getLogoDataUri();
+
+        $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria', 'forPdf', 'logoDataUri'))->render();
         $html = preg_replace('/<div class="no-print".*?<\/div>/s', '', $html);
         $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)
             ->setPaper('a4', $esMaquinaria ? 'landscape' : 'portrait');
 
-        $filename = 'Valorizacion_'
-            . preg_replace('/[^A-Za-z0-9\-_]/', '_', (string) $cotizacion->numero_valorizacion)
-            . '_' . preg_replace('/[^A-Za-z0-9\-_]/', '_', (string) $cotizacion->obra)
-            . '_' . now()->format('Ymd') . '.pdf';
+        $filename = $this->buildValorizacionFilename($cotizacion, 'pdf');
 
         return $pdf->download($filename);
     }
@@ -121,6 +119,9 @@ class CotizacionExportController extends Controller
             return back()->with('error', 'No se encontraron cotizaciones válidas para exportar.');
         }
 
+        // Mantiene el encabezado visible en cada página al imprimir/exportar.
+        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 12);
+
         $filename = 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.xlsx';
         return $this->streamDownload($spreadsheet, $filename);
     }
@@ -172,11 +173,14 @@ class CotizacionExportController extends Controller
         $sheet->getColumnDimension('A')->setWidth(3);
 
         // ── Row heights ──────────────────────────────────────────────────
-        $sheet->getRowDimension(1)->setRowHeight(40);
+        $sheet->getRowDimension(1)->setRowHeight(48);
         $sheet->getRowDimension(2)->setRowHeight(20);
-        $sheet->getRowDimension(3)->setRowHeight(28);
+        $sheet->getRowDimension(3)->setRowHeight(26);
+        $sheet->getRowDimension(4)->setRowHeight(18);
         $sheet->getRowDimension(5)->setRowHeight(6);
         $sheet->getRowDimension(9)->setRowHeight(6);
+
+        $this->addLogoToSheet($sheet);
 
         // ── Row 1-4: Header block ────────────────────────────────────────
         // Left: logo placeholder + company name
@@ -409,6 +413,9 @@ class CotizacionExportController extends Controller
         $sheet->getStyle("{$numCol}{$s3}")->getFont()->setBold(true);
         $sheet->getStyle("{$numCol}{$s3}")->getFill()
             ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFFC0');
+
+        // Repite el bloque superior al imprimir o guardar el archivo.
+        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 12);
     }
 
     private function extraerCorrelativoValorizacion(string $numeroValorizacion): string
@@ -469,6 +476,14 @@ class CotizacionExportController extends Controller
 
         foreach ($tmpSheet->getMergeCells() as $mergedRange) {
             $targetSheet->mergeCells($this->offsetRangeRows($mergedRange, $startRow - 1));
+        }
+
+        foreach ($tmpSheet->getDrawingCollection() as $drawing) {
+            $newDrawing = clone $drawing;
+            $newDrawing->setCoordinates(
+                $this->offsetCellRow($drawing->getCoordinates(), $startRow - 1)
+            );
+            $newDrawing->setWorksheet($targetSheet);
         }
 
         $tmpSpreadsheet->disconnectWorksheets();
@@ -541,6 +556,108 @@ class CotizacionExportController extends Controller
         $sheet->getStyle($range)->getAlignment()
             ->setHorizontal(Alignment::HORIZONTAL_CENTER)
             ->setVertical(Alignment::VERTICAL_CENTER);
+    }
+
+    private function addLogoToSheet(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet): void
+    {
+        $logoPath = resource_path('img/logo.png');
+        if (!is_file($logoPath)) {
+            return;
+        }
+
+        $drawing = new Drawing();
+        $drawing->setName('CRC Logo');
+        $drawing->setDescription('Logo CRC');
+        $drawing->setPath($logoPath);
+        $drawing->setCoordinates('B1');
+        $drawing->setOffsetX(2);
+        $drawing->setOffsetY(2);
+        $drawing->setHeight(58);
+        $drawing->setWorksheet($sheet);
+    }
+
+    private function getLogoDataUri(): ?string
+    {
+        $logoPath = resource_path('img/logo.png');
+        if (!is_file($logoPath)) {
+            return null;
+        }
+
+        $bytes = @file_get_contents($logoPath);
+        if (!is_string($bytes) || $bytes === '') {
+            return null;
+        }
+
+        return 'data:image/png;base64,' . base64_encode($bytes);
+    }
+
+    private function buildValorizacionFilename(object $cotizacion, string $extension): string
+    {
+        $empresa = $this->empresaCode((string) ($cotizacion->razon_social ?? 'EMPRESA'));
+        $correlativo = $this->extraerCorrelativoValorizacion((string) ($cotizacion->numero_valorizacion ?? '00'));
+        $maquina = strtoupper($this->resolveItemNombre($cotizacion));
+        $periodo = $this->buildPeriodoTexto((string) $cotizacion->periodo_inicio, (string) $cotizacion->periodo_fin, 'd.m.y');
+
+        $base = "V-CRC-{$empresa}-{$correlativo} {$maquina} {$periodo}";
+
+        return $this->sanitizeFilename($base) . '.' . strtolower($extension);
+    }
+
+    private function resolveItemNombre(object $cotizacion): string
+    {
+        $item = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
+            ? (string) ($cotizacion->maquinaria_nombre ?? '')
+            : (string) ($cotizacion->agregado_nombre ?? '');
+
+        $item = trim($item);
+
+        if ($item === '') {
+            $item = (string) ($cotizacion->obra ?? 'ITEM');
+        }
+
+        return $item;
+    }
+
+    private function buildPeriodoTexto(string $inicio, string $fin, string $format): string
+    {
+        if ($inicio !== '' && $fin !== '') {
+            return \Carbon\Carbon::parse($inicio)->format($format)
+                . ' AL '
+                . \Carbon\Carbon::parse($fin)->format($format);
+        }
+
+        if ($inicio !== '') {
+            return \Carbon\Carbon::parse($inicio)->format($format);
+        }
+
+        if ($fin !== '') {
+            return \Carbon\Carbon::parse($fin)->format($format);
+        }
+
+        return now()->format($format);
+    }
+
+    private function empresaCode(string $razonSocial): string
+    {
+        $clean = strtoupper(preg_replace('/[^A-Z0-9\s]/', ' ', $razonSocial));
+        $tokens = array_values(array_filter(preg_split('/\s+/', $clean)));
+        $stopWords = ['SAC', 'SA', 'EIRL', 'SRL', 'CONSORCIO', 'EMPRESA', 'EMPRESAS', 'DE', 'DEL', 'LA', 'LAS', 'LOS', 'Y'];
+
+        foreach ($tokens as $token) {
+            if (!in_array($token, $stopWords, true)) {
+                return substr($token, 0, 12);
+            }
+        }
+
+        return substr((string) ($tokens[0] ?? 'EMPRESA'), 0, 12);
+    }
+
+    private function sanitizeFilename(string $name): string
+    {
+        $name = str_replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], ' ', $name);
+        $name = preg_replace('/\s+/', ' ', trim($name));
+
+        return $name !== '' ? $name : 'archivo';
     }
 
     private function streamDownload(Spreadsheet $spreadsheet, string $filename)
