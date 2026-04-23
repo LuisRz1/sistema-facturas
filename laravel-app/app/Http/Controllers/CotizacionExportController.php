@@ -734,7 +734,7 @@ class CotizacionExportController extends Controller
             return null;
         }
 
-        return 'file://' . str_replace('\\', '/', $logoPath);
+        return str_replace('\\', '/', $logoPath);
     }
 
     private function buildValorizacionFilename(object $cotizacion, string $extension): string

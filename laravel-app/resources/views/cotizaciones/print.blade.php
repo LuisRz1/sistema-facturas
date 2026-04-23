@@ -20,7 +20,7 @@
         /* ── HEADER ── */
         .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
         .logo-area { display: flex; align-items: center; gap: 12px; }
-        .logo-box { width: 230px; height: 95px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .logo-box { width: 240px; height: 110px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .logo-box img { max-width: 100%; max-height: 100%; width: auto; height: auto; }
         .logo-circle { width: 70px; height: 70px; background: #1e293b; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #f5c842; font-size: 20px; font-weight: 900; flex-shrink: 0; }
         .company-name { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .5px; }
@@ -66,29 +66,39 @@
         .summary-table .s-val   { text-align: right; font-family: 'Courier New', monospace; font-weight: 700; color: #0f172a; }
         .summary-table tr.total-summary td { background: #374151; color: #fff; font-weight: 800; font-size: 12px; }
 
-        /* ── SIGNATURES ── */
-        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 32px; padding-top: 12px; border-top: 2px solid #e2e8f0; }
-        .sig-box { text-align: center; }
-        .sig-line { border-bottom: 1px solid #0f172a; margin: 32px auto 6px; width: 80%; }
-        .sig-name { font-weight: 700; font-size: 10px; text-transform: uppercase; }
-        .sig-role { font-size: 9px; color: #64748b; }
-
         @if($forPdf)
-            @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 148px 22px 30px; }
+            @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 10mm; }
             body { font-size: 9px; }
-            .page { padding: 0; max-width: none; }
+            .page { padding: 2mm 1mm; max-width: none; }
             .header-top {
-                position: fixed;
-                top: -126px;
-                left: 0;
-                right: 0;
-                margin-bottom: 0;
-                padding: 2px 6px 8px;
-                background: #fff;
-                border-bottom: 2px solid #e2e8f0;
+                margin-bottom: 10px;
+                padding-bottom: 8px;
             }
-            .logo-area {
-                align-items: flex-start;
+            .header-right h1 { font-size: 17px; }
+            .header-right .ruc-big { font-size: 14px; }
+            .header-right .period-top { font-size: 8.5px; }
+            table { table-layout: fixed; }
+            thead tr th { font-size: 8px; padding: 5px 4px; white-space: normal; }
+            tbody td { font-size: 8.5px; padding: 4px 4px; }
+            .summary-block { margin-top: 10px; }
+            .summary-table td { font-size: 10px; padding: 5px 10px; }
+            .logo-box { width: 220px; height: 95px; }
+            .logo-box img { display: block; }
+            .page-break-avoid { page-break-inside: avoid; }
+            tbody tr { page-break-inside: avoid; }
+            .total-row { page-break-inside: avoid; }
+            .summary-block { page-break-inside: avoid; }
+            .summary-table { page-break-inside: avoid; }
+            .signatures { display: none !important; }
+            .sig-box { display: none !important; }
+            .sig-line { display: none !important; }
+            .sig-name { display: none !important; }
+            .sig-role { display: none !important; }
+            img { image-rendering: auto; }
+            .logo-box img,
+            .img-logo-pdf {
+                max-width: 100%;
+                max-height: 100%;
             }
         @endif
 
@@ -116,7 +126,7 @@
         <div class="logo-area">
             @if($logoDataUri || $logoPath)
                 <div class="logo-box">
-                    <img src="{{ $logoDataUri ?: $logoPath }}" alt="Logo CRC">
+                    <img class="img-logo-pdf" src="{{ $forPdf ? ($logoPath ?: $logoDataUri) : ($logoDataUri ?: $logoPath) }}" alt="Logo CRC">
                 </div>
             @else
                 <div class="logo-circle">CRC</div>
@@ -270,20 +280,6 @@
                 <td class="s-val">{{ number_format($cotizacion->total, 2) }}</td>
             </tr>
         </table>
-    </div>
-
-    {{-- ── SIGNATURES ── --}}
-    <div class="signatures">
-        <div class="sig-box">
-            <div class="sig-line"></div>
-            <div class="sig-name">CONSORCIO RODRIGUEZ CABALLERO S.A.C.</div>
-            <div class="sig-role">PROVEEDOR</div>
-        </div>
-        <div class="sig-box">
-            <div class="sig-line"></div>
-            <div class="sig-name">{{ strtoupper($cotizacion->razon_social) }}</div>
-            <div class="sig-role">CLIENTE</div>
-        </div>
     </div>
 
 </div>
