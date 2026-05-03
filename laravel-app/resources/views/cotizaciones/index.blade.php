@@ -4,7 +4,8 @@
 
 @push('styles')
     <style>
-        :root { --gold:#f5c842; --gold-h:#e8b820; --gold-l:#fffbeb; --gold-b:#ead96a; --gold-m:#d4a017; --gold-d:#9a6e10; }
+        :root { --gold:#f5c842; --gold-h:#e8b820; --gold-l:#fffbeb; --gold-b:#ead96a; --gold-m:#d4a017; --gold-d:#9a6e10; --bg:#fdf8ec; }
+        body { background: #fdf8ec !important; }
         @keyframes fadeDown  { from{opacity:0;transform:translateY(-12px)} to{opacity:1;transform:translateY(0)} }
         @keyframes slideUp   { from{opacity:0;transform:translateY(16px)}  to{opacity:1;transform:translateY(0)} }
         @keyframes rowIn     { from{opacity:0;transform:translateX(-8px)}  to{opacity:1;transform:translateX(0)} }
@@ -116,7 +117,7 @@
 
         </form>
 
-        <div class="filter-bar" style="justify-content:flex-end;border-top:1px solid var(--border);">
+        <div class="filter-bar" style="justify-content:flex-end;border-top:1px solid var(--border);gap:8px;">
             <form method="POST" action="{{ route('cotizaciones.export-excel-bulk') }}">
                 @csrf
                 <input type="hidden" name="search" value="{{ $search }}">
@@ -126,6 +127,18 @@
                 <input type="hidden" name="fecha_hasta" value="{{ $hasta }}">
                 <button type="submit" class="btn btn-primary">
                     Exportar Excel (según filtros)
+                </button>
+            </form>
+            <form method="POST" action="{{ route('cotizaciones.export-pdf-bulk') }}">
+                @csrf
+                <input type="hidden" name="search" value="{{ $search }}">
+                <input type="hidden" name="tipo" value="{{ $tipo }}">
+                <input type="hidden" name="id_cliente" value="{{ $cliente }}">
+                <input type="hidden" name="fecha_desde" value="{{ $desde }}">
+                <input type="hidden" name="fecha_hasta" value="{{ $hasta }}">
+                <button type="submit" class="btn" style="background:#dc2626;color:#fff;border-color:#dc2626;">
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-2px;margin-right:4px;"><path stroke-linecap="round" stroke-linejoin="round" d="M7 3h7l5 5v12a1 1 0 01-1 1H7a2 2 0 01-2-2V5a2 2 0 012-2z"/><path stroke-linecap="round" stroke-linejoin="round" d="M14 3v6h6"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6M9 17h6"/></svg>
+                    Exportar PDF (según filtros)
                 </button>
             </form>
         </div>

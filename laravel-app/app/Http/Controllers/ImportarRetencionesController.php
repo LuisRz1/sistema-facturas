@@ -10,6 +10,11 @@ use Carbon\Carbon;
 
 class ImportarRetencionesController extends Controller
 {
+    public function index()
+    {
+        return view('facturas.importar_retenciones');
+    }
+
     // ── PASO 1: Parsear Excel y guardar preview en sesión ─────────────────
     public function importar(Request $request)
     {
@@ -74,9 +79,9 @@ class ImportarRetencionesController extends Controller
             }
         }
 
-        session(['ret_preview' => $preview]);
+        session(['ret_preview' => $preview, 'ret_nombre_archivo' => $archivo->getClientOriginalName()]);
 
-        return redirect()->route('facturas.importar')
+        return redirect()->route('facturas.importar.retenciones')
             ->with('ret_preview', $preview)
             ->with('resumen_tipo', 'retencion_preview');
     }
@@ -104,6 +109,17 @@ class ImportarRetencionesController extends Controller
         if (!$idUsuarioActual) {
             $idUsuarioActual = DB::table('usuario')->min('id_usuario');
         }
+
+        $nombreArchivo    = session('ret_nombre_archivo', 'retenciones_' . now()->format('Ymd_His') . '.xlsx');
+        $idSincronizacion = DB::table('sincronizacion_nubefact')->insertGetId([
+            'fecha_inicio'               => now(),
+            'estado'                     => 'EN_PROCESO',
+            'nombre_archivo'             => $nombreArchivo,
+            'total_registros_recibidos'  => count($filas),
+            'total_registros_procesados' => 0,
+            'total_registros_error'      => 0,
+            'activo'                     => 1,
+        ]);
 
         DB::beginTransaction();
         try {
@@ -215,30 +231,10 @@ class ImportarRetencionesController extends Controller
                     $facturaCreadaEnFila = true;
                 }
 
-                if (!$facturaCreadaEnFila) {
-                    $recaudacionExistente = DB::table('recaudacion')
-                        ->where('id_factura', $factura->id_factura)
-                        ->exists();
-
-                    if ($recaudacionExistente) {
-                        $duplicadas++;
-                        $resultados[] = [
-                            'serie'             => $factura->serie,
-                            'numero'            => str_pad($numero, 8, '0', STR_PAD_LEFT),
-                            'emisor'            => $razonSocial,
-                            'ruc_emisor'        => $rucEmisor,
-                            'importe'           => (float)($factura->importe_total ?? 0),
-                            'importe_excel'     => $importeExcel,
-                            'accion'            => 'DUPLICADA_EXISTENTE',
-                            'retencion'         => $totalRetencion,
-                            'importe_pagado'    => $importePagado,
-                            'fecha_emision'     => $fechaEmision,
-                            'fecha_recaudacion' => $fechaRecaudacion,
-                            'estado_anterior'   => $factura->estado,
-                        ];
-                        continue;
-                    }
-                }
+                // Si la factura ya existe, siempre procesar:
+                // el Excel SUNAT de retenciones es autoritativo — cualquier factura
+                // que aparezca en él debe actualizarse con los datos de retención,
+                // independientemente del tipo_recaudacion actual en la BD.
 
                 $importeFactura = (float) ($factura->importe_total ?? 0);
                 if ($importeFactura <= 0 && $importeExcel > 0) {
@@ -285,6 +281,15 @@ class ImportarRetencionesController extends Controller
                     $fechasImportadas[] = $factura->fecha_emision;
                 }
 
+                // Vincular factura al registro de sincronización
+                DB::table('sincronizacion_factura')->insert([
+                    'id_sincronizacion' => $idSincronizacion,
+                    'id_factura'        => $factura->id_factura,
+                    'accion'            => $facturaCreadaEnFila ? 'INSERTADA' : 'ACTUALIZADA',
+                    'observacion'       => $facturaCreadaEnFila ? 'Creada desde importación retenciones' : null,
+                    'fecha_registro'    => now(),
+                ]);
+
                 $procesadas++;
                 $resultados[] = [
                     'serie'              => $factura->serie,
@@ -309,10 +314,23 @@ class ImportarRetencionesController extends Controller
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
+            DB::table('sincronizacion_nubefact')
+                ->where('id_sincronizacion', $idSincronizacion)
+                ->update(['estado' => 'ERROR', 'fecha_fin' => now()]);
             return back()->with('error', 'Error al procesar: ' . $e->getMessage())->withInput();
         }
 
-        session()->forget('ret_preview');
+        // Actualizar registro de sincronización con los totales finales
+        DB::table('sincronizacion_nubefact')
+            ->where('id_sincronizacion', $idSincronizacion)
+            ->update([
+                'fecha_fin'                  => now(),
+                'estado'                     => empty($errores) ? 'COMPLETADO' : 'CON_ERRORES',
+                'total_registros_procesados' => $procesadas,
+                'total_registros_error'      => count($errores),
+            ]);
+
+        session()->forget(['ret_preview', 'ret_nombre_archivo']);
 
         // Si se procesaron retenciones, redirigir a facturas con el rango de fechas
         if ($procesadas > 0 && !empty($fechasImportadas)) {
@@ -323,15 +341,16 @@ class ImportarRetencionesController extends Controller
                 'fecha_desde' => $filtroDesde,
                 'fecha_hasta' => $filtroHasta,
             ])->with('resumen_importacion', [
-                'insertadas'       => $procesadas,
-                'omitidas'         => 0,
-                'duplicadas'       => $duplicadas,
-                'errores'          => $errores,
-                'tipo_recaudacion' => 'RETENCION',
+                'insertadas'        => $procesadas,
+                'omitidas'          => 0,
+                'duplicadas'        => $duplicadas,
+                'errores'           => $errores,
+                'tipo_recaudacion'  => 'RETENCION',
+                'id_sincronizacion' => $idSincronizacion,
             ]);
         }
 
-        return redirect()->route('facturas.importar')->with('resumen', [
+        return redirect()->route('facturas.importar.retenciones')->with('resumen', [
             'procesadas'       => $procesadas,
             'duplicadas'       => $duplicadas,
             'omitidas'         => 0,
@@ -390,8 +409,10 @@ class ImportarRetencionesController extends Controller
         float $totalRetencion,
         ?string $fechaRecaudacion
     ): string {
-        $retencionRegistrada = $totalRetencion > 0 && !empty($fechaRecaudacion);
-        if ($retencionRegistrada) {
+        // Basta con que haya monto de retención para considerar la factura como retenida.
+        // No requerir fechaRecaudacion: si el Excel no tiene la fecha o no se parseó,
+        // la factura sigue estando retenida y debe reflejarse como DIFERENCIA PENDIENTE.
+        if ($totalRetencion > 0) {
             return $montoPendiente <= 0 ? 'PAGADA' : 'DIFERENCIA PENDIENTE';
         }
 
@@ -484,7 +505,7 @@ class ImportarRetencionesController extends Controller
                     $colH    = $rowJ[7] ?? null;
                     $colHStr = trim((string)($colH ?? ''));
                     if (empty($colA) && $colH !== null && $colH !== '' && (is_numeric($colH) || str_starts_with($colHStr, '='))) { $j++; break; }
-                    if (str_contains(strtolower(trim((string)($rowJ[4] ?? ''))), 'total de retenciones')) break 2;
+                    if (str_contains(strtolower(trim((string)($rowJ[4] ?? ''))), 'total de retenciones')) break;
                     $j++;
                 }
                 if (!empty($facturas)) {

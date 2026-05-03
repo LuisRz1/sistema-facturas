@@ -1,73 +1,25 @@
 @extends('layouts.app')
 
-@section('title', 'Importar Facturas Nubefact')
-@section('breadcrumb', 'Importar Facturas')
+@section('title', 'Importar Retenciones')
+@section('breadcrumb', 'Importar Retenciones')
 
 @push('styles')
     <style>
-        .import-wrap { max-width: 640px; margin: 0 auto; }
-
-        .tipo-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:10px; }
-
-        .tipo-card {
-            position: relative;
-            border: 2px solid var(--border);
-            border-radius: 12px;
-            padding: 22px 16px 16px;
-            text-align: center;
-            cursor: pointer;
-            transition: all .18s;
-            background: #f8fafc;
-            user-select: none;
-        }
-        .tipo-card:hover { border-color:#94a3b8; background:#f1f5f9; }
-
-        .tc-icon  { font-size:32px; display:block; margin-bottom:10px; }
-        .tc-label { font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); display:block; }
-        .tc-desc  { font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.4; }
-
-        .tc-check {
-            position:absolute; top:10px; right:12px;
-            width:20px; height:20px; border-radius:50%;
-            border:2px solid var(--border);
-            display:flex; align-items:center; justify-content:center;
-            font-size:11px; font-weight:900;
-        }
-
-        .info-strip {
-            display:none; align-items:flex-start; gap:10px;
-            padding:11px 16px; border-radius:8px;
-            font-size:12px; font-weight:600; margin-top:12px;
-        }
-        .info-strip.show { display:flex; }
-        .strip-det { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
-        .strip-ret { background:#ede9fe; color:#5b21b6; border:1px solid #ddd6fe; }
-
-        /* Bloque formato SUNAT retenciones */
-        .ret-format-box {
-            display:none;
-            background:#f5f3ff; border:1.5px solid #ddd6fe; border-radius:10px;
-            padding:14px 18px; margin-top:14px; font-size:12px; color:#5b21b6;
-        }
-        .ret-format-box.show { display:block; }
-        .ret-format-box h4 { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
-        .ret-format-box ul { padding-left:18px; margin:0; }
-        .ret-format-box ul li { margin-bottom:4px; line-height:1.5; }
-        .ret-format-box strong { color:#4c1d95; }
+        .import-wrap { max-width: 700px; margin: 0 auto; }
 
         .drop-zone {
-            border:2px dashed #e2e8f0; border-radius:12px;
+            border:2px dashed #ddd6fe; border-radius:12px;
             padding:52px 32px; text-align:center;
             cursor:pointer; transition:border-color .2s, background .2s;
-            background:#f8fafc;
+            background:#f5f3ff;
         }
-        .drop-zone:hover, .drop-zone.over { border-color:var(--accent); background:rgba(59,130,246,.05); }
+        .drop-zone:hover, .drop-zone.over { border-color:#7c3aed; background:#ede9fe; }
         .drop-zone h3 { font-size:15px; font-weight:600; color:var(--text-primary); margin:14px 0 6px; }
         .drop-zone p  { font-size:13px; color:var(--text-muted); margin:0; }
 
         .file-pill {
             display:none; align-items:center; gap:12px;
-            background:rgba(34,197,94,.08); border:1px solid rgba(34,197,94,.25);
+            background:rgba(139,92,246,.08); border:1px solid rgba(139,92,246,.3);
             border-radius:10px; padding:12px 16px; margin-top:12px;
         }
         .file-pill.show { display:flex; }
@@ -78,7 +30,22 @@
 
         .btn-submit { margin-top:20px; width:100%; height:46px; font-size:14px; font-weight:700; }
 
-        /* Resultado detracción/nubefact */
+        .info-strip {
+            display:flex; align-items:flex-start; gap:10px;
+            padding:11px 16px; border-radius:8px;
+            font-size:12px; font-weight:600; margin-top:12px;
+        }
+        .strip-ret { background:#ede9fe; color:#5b21b6; border:1px solid #ddd6fe; }
+
+        .ret-format-box {
+            background:#f5f3ff; border:1.5px solid #ddd6fe; border-radius:10px;
+            padding:14px 18px; margin-top:14px; font-size:12px; color:#5b21b6;
+        }
+        .ret-format-box h4 { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+        .ret-format-box ul { padding-left:18px; margin:0; }
+        .ret-format-box ul li { margin-bottom:4px; line-height:1.5; }
+        .ret-format-box strong { color:#4c1d95; }
+
         .result-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:20px; }
         .result-box { background:#f8fafc; border-radius:10px; padding:18px 12px; text-align:center; }
         .result-box .num { font-size:32px; font-weight:700; font-family:'DM Mono',monospace; line-height:1; }
@@ -91,7 +58,6 @@
         .errores-box { margin-top:14px; background:rgba(239,68,68,.06); border:1px solid rgba(239,68,68,.2); border-radius:8px; padding:12px 14px; max-height:140px; overflow-y:auto; font-size:12px; color:#dc2626; }
         .errores-box li { margin-bottom:4px; list-style:none; }
 
-        /* Tabla resultado retenciones */
         .ret-result-wrap { margin-top:20px; }
         .ret-result-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#5b21b6; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
         .ret-table { width:100%; border-collapse:collapse; font-size:11px; }
@@ -123,10 +89,10 @@
             <div class="breadcrumb">
                 <a href="{{ route('facturas.index') }}">Facturas</a>
                 <span>›</span>
-                <span>Importar Facturas</span>
+                <span>Importar Retenciones</span>
             </div>
-            <h1 class="page-title">Importar Facturas</h1>
-            <p class="page-desc">Importa el Excel de Nubefact. El sistema detecta automáticamente las facturas con detracción.</p>
+            <h1 class="page-title">Importar Retenciones</h1>
+            <p class="page-desc">Importa el Excel SUNAT para registrar retenciones en las facturas del sistema.</p>
         </div>
         <a href="{{ route('facturas.index') }}" class="btn btn-ghost">← Volver</a>
     </div>
@@ -137,7 +103,7 @@
         <div class="card" style="margin-bottom:24px;max-width:1100px;">
             <div style="padding:18px 24px;border-bottom:1px solid #ede9fe;background:#f5f3ff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
                 <div>
-                    <p style="font-weight:800;font-size:15px;color:#4c1d95;margin:0;"> Vista Previa de Retenciones — Revisa y Edita antes de Confirmar</p>
+                    <p style="font-weight:800;font-size:15px;color:#4c1d95;margin:0;">🔍 Vista Previa de Retenciones — Revisa y Edita antes de Confirmar</p>
                     <p style="font-size:12px;color:#6d28d9;margin:4px 0 0;">
                         {{ collect($preview)->where('encontrada', true)->count() }} facturas encontradas ·
                         {{ collect($preview)->where('encontrada', false)->count() }} no encontradas.
@@ -145,12 +111,12 @@
                     </p>
                 </div>
                 <div style="display:flex;gap:8px;">
-                <span style="background:#d1fae5;color:#065f46;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;">
-                    ✓ {{ collect($preview)->where('encontrada', true)->count() }} OK
-                </span>
+                    <span style="background:#d1fae5;color:#065f46;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;">
+                        ✓ {{ collect($preview)->where('encontrada', true)->count() }} OK
+                    </span>
                     <span style="background:#fee2e2;color:#7f1d1d;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;">
-                    ✗ {{ collect($preview)->where('encontrada', false)->count() }} No encontradas
-                </span>
+                        ✗ {{ collect($preview)->where('encontrada', false)->count() }} No encontradas
+                    </span>
                 </div>
             </div>
 
@@ -179,15 +145,11 @@
                             @php $enc = $p['encontrada']; @endphp
                             <tr style="border-bottom:1px solid #f3f4f6;background:{{ $enc ? '#fff' : '#fff1f2' }};">
                                 <td style="padding:6px 10px;color:#94a3b8;font-size:10px;">{{ $idx + 1 }}</td>
-
-                                {{-- Serie (editable if not found) --}}
                                 <td style="padding:4px 6px;">
                                     <input type="text" name="filas[{{ $idx }}][serie]"
                                            value="{{ $p['serie_excel'] }}"
                                            style="width:72px;height:30px;border:1.5px solid {{ $enc ? '#e2e8f0' : '#fca5a5' }};border-radius:6px;font-size:11px;padding:0 7px;font-family:monospace;font-weight:700;color:{{ $enc ? '#7c3aed' : '#dc2626' }};">
                                 </td>
-
-                                {{-- Número (editable if not found) --}}
                                 <td style="padding:4px 6px;">
                                     <input type="text" name="filas[{{ $idx }}][numero]"
                                            value="{{ $p['numero_excel'] }}"
@@ -196,77 +158,57 @@
                                         <div style="font-size:8px;color:#059669;">↳ DB: {{ $p['serie_db'] }}</div>
                                     @endif
                                 </td>
-
-                                {{-- Emisor --}}
                                 <td style="padding:4px 6px;">
                                     <input type="text" name="filas[{{ $idx }}][emisor]"
                                            value="{{ $p['emisor'] }}"
                                            style="width:100%;min-width:140px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;">
                                 </td>
-
-                                {{-- RUC Emisor --}}
                                 <td style="padding:4px 6px;">
                                     <input type="text" name="filas[{{ $idx }}][ruc_emisor]"
                                            value="{{ $p['ruc_emisor'] }}"
                                            style="width:110px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;font-family:monospace;">
                                 </td>
-
-                                {{-- Importe --}}
                                 <td style="padding:4px 6px;text-align:right;">
                                     <input type="number" name="filas[{{ $idx }}][importe_excel]"
                                            value="{{ $p['importe_excel'] ?? 0 }}" step="0.01" min="0"
                                            style="width:90px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;text-align:right;color:#0f172a;font-weight:700;">
                                 </td>
-
-                                {{-- Retención --}}
                                 <td style="padding:4px 6px;text-align:right;">
                                     <input type="number" name="filas[{{ $idx }}][total_retencion]"
                                            value="{{ $p['total_retencion'] }}" step="0.01" min="0"
                                            style="width:80px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;text-align:right;color:#7c3aed;font-weight:700;">
                                 </td>
-
-                                {{-- Imp. Pagado --}}
                                 <td style="padding:4px 6px;text-align:right;">
                                     <input type="number" name="filas[{{ $idx }}][importe_pagado]"
                                            value="{{ $p['importe_pagado'] }}" step="0.01" min="0"
                                            style="width:80px;height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;text-align:right;color:#059669;">
                                 </td>
-
-                                {{-- Fecha retención --}}
                                 <td style="padding:4px 6px;">
                                     <input type="date" name="filas[{{ $idx }}][fecha_recaudacion]"
                                            value="{{ $p['fecha_recaudacion'] }}"
                                            style="height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;">
                                 </td>
-
-                                {{-- Fecha emisión --}}
                                 <td style="padding:4px 6px;">
                                     <input type="date" name="filas[{{ $idx }}][fecha_emision]"
                                            value="{{ $p['fecha_emision'] }}"
                                            style="height:30px;border:1.5px solid #e2e8f0;border-radius:6px;font-size:11px;padding:0 7px;">
                                 </td>
-
-                                {{-- Estado DB --}}
                                 <td style="padding:6px 10px;">
                                     @if($enc)
                                         <span style="background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;">
-                                        ✓ {{ $p['estado_actual'] }}
-                                    </span>
+                                            ✓ {{ $p['estado_actual'] }}
+                                        </span>
                                     @else
                                         <span style="background:#fee2e2;color:#7f1d1d;padding:2px 7px;border-radius:8px;font-size:9px;font-weight:700;">
-                                        ✗ No encontrada
-                                    </span>
+                                            ✗ No encontrada
+                                        </span>
                                     @endif
                                 </td>
-
-                                {{-- Omitir --}}
                                 <td style="padding:4px 6px;text-align:center;">
                                     <input type="checkbox" name="filas[{{ $idx }}][omitir]" value="1"
                                            style="width:16px;height:16px;accent-color:#dc2626;cursor:pointer;"
                                            title="Marcar para omitir esta fila">
                                 </td>
-
-                                {{-- Hidden fields --}}
                                 <input type="hidden" name="filas[{{ $idx }}][porcentaje]" value="{{ $p['porcentaje'] }}">
                             </tr>
                         @endforeach
@@ -278,10 +220,9 @@
                     <p style="font-size:11px;color:#6d28d9;margin:0;">
                         ⚠ Puedes editar <strong>serie, número y montos</strong> directamente en la tabla.
                         Marca "Omitir" en las filas que no deseas importar.
-                        Las facturas con serie/número corregido se buscarán al confirmar.
                     </p>
                     <div style="display:flex;gap:8px;">
-                        <a href="{{ route('facturas.importar') }}" class="btn btn-ghost" style="font-size:13px;">Cancelar</a>
+                        <a href="{{ route('facturas.importar.retenciones') }}" class="btn btn-ghost" style="font-size:13px;">Cancelar</a>
                         <button type="submit" class="btn btn-primary" style="background:#7c3aed;border-color:#7c3aed;">
                             ✓ Confirmar e Importar Retenciones
                         </button>
@@ -296,7 +237,7 @@
         @php $r = session('resumen'); @endphp
         <div class="card import-wrap" style="margin-bottom:24px;padding:24px;">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-                <span style="font-size:20px;"></span>
+                <span style="font-size:20px;">✅</span>
                 <div>
                     <p style="font-weight:700;font-size:15px;margin:0;">Importación de Retenciones completada</p>
                     <p style="font-size:12px;color:var(--text-muted);margin:2px 0 0;">Excel SUNAT procesado correctamente</p>
@@ -325,6 +266,7 @@
                     <div class="lbl">Con error</div>
                 </div>
             </div>
+
             @if(($r['clientes_creados'] ?? 0) > 0)
                 <div style="background:#dbeafe;border:1px solid #93c5fd;border-radius:6px;padding:9px 12px;margin-top:10px;font-size:12px;color:#1d4ed8;font-weight:600;">
                     ℹ {{ $r['clientes_creados'] }} cliente(s) nuevo(s) creado(s) automáticamente usando el RUC del campo Emisor del Excel.
@@ -332,7 +274,7 @@
             @endif
 
             @if(!empty($r['errores']))
-                <div class="errores-box" style="margin-top:14px;">
+                <div class="errores-box">
                     <ul style="padding:0;margin:0;">
                         @foreach($r['errores'] as $e)<li>{{ $e }}</li>@endforeach
                     </ul>
@@ -342,7 +284,7 @@
             @if(!empty($r['resultados']))
                 <div class="ret-result-wrap">
                     <div class="ret-result-title">
-                        <span></span> Detalle de facturas procesadas ({{ count($r['resultados']) }})
+                        <span>📋</span> Detalle de facturas procesadas ({{ count($r['resultados']) }})
                     </div>
                     <div style="overflow-x:auto;">
                         <table class="ret-table">
@@ -377,9 +319,7 @@
                                         @endif
                                     </td>
                                     <td class="r">
-                                        @php
-                                            $importeMostrar = $res['importe'] ?? ($res['importe_excel'] ?? 0);
-                                        @endphp
+                                        @php $importeMostrar = $res['importe'] ?? ($res['importe_excel'] ?? 0); @endphp
                                         {{ $importeMostrar > 0 ? 'S/ '.number_format($importeMostrar,2) : '—' }}
                                     </td>
                                     <td class="r" style="color:#7c3aed;font-weight:700;">
@@ -395,9 +335,9 @@
                                         {{ $res['fecha_recaudacion'] ? \Carbon\Carbon::parse($res['fecha_recaudacion'])->format('d/m/Y') : '—' }}
                                     </td>
                                     <td>
-                                            <span style="font-size:10px;font-weight:700;color:#374151;">
-                                                {{ $res['estado_anterior'] ?? '—' }}
-                                            </span>
+                                        <span style="font-size:10px;font-weight:700;color:#374151;">
+                                            {{ $res['estado_anterior'] ?? '—' }}
+                                        </span>
                                     </td>
                                     <td>
                                         @if(in_array($res['accion'], ['RETENCION_REGISTRADA','FACTURA_CREADA_Y_RETENCION_REGISTRADA']))
@@ -426,36 +366,6 @@
         </div>
     @endif
 
-    {{-- ── RESULTADO DETRACCIÓN/NUBEFACT ── --}}
-    @if(session('resumen') && session('resumen_tipo') !== 'retencion')
-        @php $r = session('resumen'); @endphp
-        <div class="card import-wrap" style="margin-bottom:24px;padding:24px;">
-            <p style="font-weight:700;font-size:15px;margin-bottom:4px;">✓ Importación completada</p>
-            <p style="font-size:13px;color:var(--text-muted);margin:0 0 16px;">
-                Tipo seleccionado:
-                <strong>{{ ($r['tipo_recaudacion'] ?? '') === 'DETRACCION' ? 'Detracción' : 'Retención' }}</strong><br>
-                <span style="font-size:12px;color:var(--text-muted);">
-                  ℹ Se aplicó solo a las facturas que lo indicaban en columna AI del Excel.
-                </span>
-            </p>
-            <div class="result-grid">
-                <div class="result-box verde"><div class="num">{{ $r['insertadas'] }}</div><div class="lbl">Insertadas</div></div>
-                <div class="result-box amber"><div class="num">{{ $r['omitidas'] }}</div><div class="lbl">Omitidas</div></div>
-                <div class="result-box azul"><div class="num">{{ $r['duplicadas'] }}</div><div class="lbl">Duplicadas</div></div>
-            </div>
-            @if(!empty($r['errores']))
-                <div class="errores-box">
-                    <ul style="padding:0;margin:0;">
-                        @foreach($r['errores'] as $e)<li>{{ $e }}</li>@endforeach
-                    </ul>
-                </div>
-            @endif
-            <div style="margin-top:16px;">
-                <a href="{{ route('facturas.index') }}" class="btn btn-primary">Ver facturas importadas →</a>
-            </div>
-        </div>
-    @endif
-
     {{-- ── ERROR ── --}}
     @if(session('error'))
         <div class="card import-wrap" style="margin-bottom:24px;border-left:3px solid #dc2626;padding:18px 24px;">
@@ -466,23 +376,37 @@
 
     {{-- ── FORMULARIO ── --}}
     <div class="card import-wrap">
-        <form id="frm" method="POST" action="{{ route('facturas.importar.procesar') }}"
+        <form id="frm" method="POST" action="{{ route('facturas.importar.retenciones.procesar') }}"
               enctype="multipart/form-data">
             @csrf
-
-            {{-- Siempre importa en modo Nubefact (detección automática de detracciones) --}}
-            <input type="hidden" name="tipo_recaudacion" value="DETRACCION">
 
             <div style="padding:24px 24px 20px;">
 
                 <div class="section-label" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;">
-                    Archivo Excel de Nubefact
+                    Archivo Excel de Retenciones SUNAT
                     <span style="flex:1;height:1px;background:var(--border,#e2e8f0);display:block;"></span>
                 </div>
 
-                <div class="info-strip strip-det show" style="display:flex;align-items:flex-start;gap:10px;padding:11px 16px;border-radius:8px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e;border:1px solid #fde68a;">
-                    <span>ℹ</span>
-                    <span>Formato <strong>Nubefact</strong>. Se detecta automáticamente qué facturas tienen detracción (columna AI = "SI"). Las demás quedarán <strong>PENDIENTE</strong> sin recaudación.</span>
+                <div class="info-strip strip-ret">
+                    <span>📌</span>
+                    <span>Formato <strong>SUNAT — Consulta de Comprobantes Emitidos/Recibidos</strong>. Se registra la retención en las facturas encontradas sin cambiar su estado actual.</span>
+                </div>
+
+                <div class="ret-format-box">
+                    <h4>📋 Formato esperado del Excel SUNAT</h4>
+                    <ul>
+                        <li><strong>Emisor:</strong> nombre de la empresa que realizó la retención</li>
+                        <li><strong>Fecha de emisión</strong> (lado derecho del bloque) → fecha de pago de la retención</li>
+                        <li><strong>Total comprobante</strong> → importe total de la factura</li>
+                        <li><strong>Retención S/</strong> → monto retenido que se registra como recaudación</li>
+                        <li><strong>Importe pagado</strong> → se guarda como referencia, requiere validación manual</li>
+                        <li><strong>Serie + Número</strong> → identifica la factura en el sistema</li>
+                        <li><strong>Fecha de emisión</strong> (en la fila de la factura) → fecha de emisión de la factura</li>
+                    </ul>
+                    <p style="margin-top:10px;font-size:11px;color:#6d28d9;">
+                        Se procesan <strong>todas las facturas</strong> del Excel incluyendo las de estado ANULADO.
+                        El estado de la factura <strong>no cambia</strong>; solo se registra la retención y se actualiza el monto pendiente.
+                    </p>
                 </div>
             </div>
 
@@ -490,15 +414,15 @@
 
             <div style="padding:0 24px 24px;">
                 <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">
-                    Formato: <strong>.xlsx</strong> · Exportado directamente desde Nubefact
+                    Formato: <strong>.xlsx</strong> · Exportado desde SUNAT → Consulta de Comprobantes Emitidos/Recibidos
                 </p>
 
                 <div class="drop-zone" id="dz">
-                    <svg width="44" height="44" fill="none" viewBox="0 0 24 24" stroke="#d97706" stroke-width="1.4" style="display:block;margin:0 auto;">
+                    <svg width="44" height="44" fill="none" viewBox="0 0 24 24" stroke="#7c3aed" stroke-width="1.4" style="display:block;margin:0 auto;">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                     </svg>
                     <h3>Arrastra el archivo aquí</h3>
-                    <p>o haz clic para seleccionarlo</p>
+                    <p>o haz clic para seleccionarlo · .xlsx / .xls</p>
                 </div>
 
                 <input type="file" id="fi" name="archivo" accept=".xlsx,.xls" style="display:none;">
@@ -516,8 +440,9 @@
                 <p style="color:#dc2626;font-size:12px;margin-top:8px;font-weight:600;">{{ $message }}</p>
                 @enderror
 
-                <button type="submit" class="btn btn-primary btn-submit" id="btnSub" disabled>
-                    Importar Facturas
+                <button type="submit" class="btn btn-primary btn-submit" id="btnSub" disabled
+                        style="background:#7c3aed;border-color:#7c3aed;">
+                    Importar Retenciones
                 </button>
             </div>
         </form>
@@ -530,58 +455,6 @@
         (function() {
             var tieneArchivo = false;
 
-            // ── Drop zone ─────────────────────────────────────────────────────────
-            // (tipo selección eliminado — siempre importa en modo DETRACCION/Nubefact)
-
-            // ── Dead code fence — keep selTipo as no-op for safety ────────────────
-            window.selTipo = function(tipo) {
-                tipoActual = tipo;
-
-                var cardDet = document.getElementById('cardDet');
-                var cardRet = document.getElementById('cardRet');
-                var chkDet  = document.getElementById('chkDet');
-                var chkRet  = document.getElementById('chkRet');
-
-                // Reset visual
-                cardDet.style.borderColor = cardDet.style.background = '';
-                cardRet.style.borderColor = cardRet.style.background = '';
-                chkDet.textContent = chkDet.style.cssText = '';
-                chkRet.textContent = chkRet.style.cssText = '';
-
-                document.getElementById('stripDet').classList.remove('show');
-                document.getElementById('stripRet').classList.remove('show');
-                document.getElementById('retFormatBox').classList.remove('show');
-
-                var frm = document.getElementById('frm');
-
-                if (tipo === 'DETRACCION') {
-                    cardDet.style.borderColor = '#d97706';
-                    cardDet.style.background  = '#fef3c7';
-                    chkDet.textContent        = '✓';
-                    chkDet.style.cssText      = 'color:#fff;background:#d97706;border-color:#d97706;';
-                    document.getElementById('stripDet').classList.add('show');
-                    document.getElementById('textoArchivo').innerHTML = 'Formato: <strong>.xlsx</strong> · Exportado directamente desde Nubefact';
-                    document.getElementById('labelArchivo').textContent = '② Archivo Excel de Nubefact';
-                    document.getElementById('btnSub').textContent = 'Importar Facturas';
-                    frm.action = RUTA_NUBEFACT;
-
-                } else if (tipo === 'RETENCION') {
-                    cardRet.style.borderColor = '#7c3aed';
-                    cardRet.style.background  = '#ede9fe';
-                    chkRet.textContent        = '✓';
-                    chkRet.style.cssText      = 'color:#fff;background:#7c3aed;border-color:#7c3aed;';
-                    document.getElementById('stripRet').classList.add('show');
-                    document.getElementById('retFormatBox').classList.add('show');
-                    document.getElementById('textoArchivo').innerHTML = 'Formato: <strong>.xlsx</strong> · Exportado desde SUNAT → Consulta de Comprobantes Emitidos/Recibidos';
-                    document.getElementById('labelArchivo').textContent = '② Archivo Excel de Retenciones SUNAT';
-                    document.getElementById('btnSub').textContent = 'Importar Retenciones';
-                    frm.action = RUTA_RETENCION;
-                }
-
-                // (no-op: tipo selection removed)
-            };
-
-            // ── Drop zone ─────────────────────────────────────────────────────────
             var dz = document.getElementById('dz');
             var fi = document.getElementById('fi');
 
@@ -620,7 +493,6 @@
                 document.getElementById('btnSub').disabled = true;
             };
 
-            // ── Submit ────────────────────────────────────────────────────────────
             document.getElementById('frm').addEventListener('submit', function(e) {
                 if (!tieneArchivo) { e.preventDefault(); alert('Selecciona un archivo Excel.'); return; }
                 var btn = document.getElementById('btnSub');

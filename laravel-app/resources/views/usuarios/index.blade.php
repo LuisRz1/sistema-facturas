@@ -4,6 +4,7 @@
 
 @push('styles')
     <style>
+        body { background: #fdf8ec !important; }
         .filter-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
         .filter-row .search-input-wrap { max-width:280px; }
         .actions-cell { display:flex; align-items:center; gap:4px; }

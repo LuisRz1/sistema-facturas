@@ -85,6 +85,17 @@ class ValidarDetraccionesController extends Controller
         $yaValidadas   = 0;
         $omitidas      = 0; // filas de otros proveedores
 
+        $nombreArchivo    = $request->file('archivo')->getClientOriginalName();
+        $idSincronizacion = DB::table('sincronizacion_nubefact')->insertGetId([
+            'fecha_inicio'               => now(),
+            'estado'                     => 'EN_PROCESO',
+            'nombre_archivo'             => $nombreArchivo,
+            'total_registros_recibidos'  => count($dataRows),
+            'total_registros_procesados' => 0,
+            'total_registros_error'      => 0,
+            'activo'                     => 1,
+        ]);
+
         DB::beginTransaction();
         try {
             foreach ($dataRows as $row) {
@@ -106,6 +117,7 @@ class ValidarDetraccionesController extends Controller
                 $factura = DB::table('factura')
                     ->where('serie', $serie)
                     ->where('numero', $numero)
+                    ->where('activo', 1)
                     ->first();
 
                 if (!$factura) { $noEncontradas++; continue; }
@@ -161,10 +173,32 @@ class ValidarDetraccionesController extends Controller
                     'estado_nuevo'      => $nuevoEstado,
                     'fecha_recaudacion' => $fechaPago,
                 ];
+
+                // Vincular factura al registro de sincronización
+                DB::table('sincronizacion_factura')->insert([
+                    'id_sincronizacion' => $idSincronizacion,
+                    'id_factura'        => $factura->id_factura,
+                    'accion'            => 'ACTUALIZADA',
+                    'observacion'       => 'Detracción validada',
+                    'fecha_registro'    => now(),
+                ]);
             }
             DB::commit();
+
+            // Actualizar registro de sincronización con los totales finales
+            DB::table('sincronizacion_nubefact')
+                ->where('id_sincronizacion', $idSincronizacion)
+                ->update([
+                    'fecha_fin'                  => now(),
+                    'estado'                     => 'COMPLETADO',
+                    'total_registros_procesados' => count($validadas),
+                    'total_registros_error'      => $noEncontradas,
+                ]);
         } catch (\Throwable $e) {
             DB::rollBack();
+            DB::table('sincronizacion_nubefact')
+                ->where('id_sincronizacion', $idSincronizacion)
+                ->update(['estado' => 'ERROR', 'fecha_fin' => now()]);
             return response()->json(['success'=>false,'error'=>'Error: '.$e->getMessage().' ['.basename($e->getFile()).':'.$e->getLine().']'],500);
         }
 

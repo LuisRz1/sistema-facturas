@@ -34,12 +34,9 @@ class ImportarFacturasController extends Controller
         ini_set('memory_limit', '256M');
 
         $request->validate([
-            'archivo'          => 'required|file|max:10240',
-            'tipo_recaudacion' => 'required|in:DETRACCION,RETENCION',
+            'archivo' => 'required|file|max:10240',
         ], [
-            'archivo.required'          => 'Selecciona un archivo Excel.',
-            'tipo_recaudacion.required' => 'Selecciona el tipo de recaudación (Detracción o Retención).',
-            'tipo_recaudacion.in'       => 'Tipo de recaudación inválido. Debe ser DETRACCION o RETENCION.',
+            'archivo.required' => 'Selecciona un archivo Excel.',
         ]);
 
         $archivo   = $request->file('archivo');
@@ -49,7 +46,7 @@ class ImportarFacturasController extends Controller
             return back()->with('error', 'El archivo debe ser .xlsx o .xls')->withInput();
         }
 
-        $tipoRecaudacion = $request->input('tipo_recaudacion');
+        $tipoRecaudacion = $request->input('tipo_recaudacion', 'DETRACCION');
 
         try {
             $spreadsheet = IOFactory::load($archivo->getPathname());
@@ -104,6 +101,18 @@ class ImportarFacturasController extends Controller
         $errores          = [];
         $numFila          = null;
         $fechasImportadas = [];
+
+        // Crear registro de sincronización
+        $nombreArchivo = $archivo->getClientOriginalName();
+        $idSincronizacion = DB::table('sincronizacion_nubefact')->insertGetId([
+            'fecha_inicio'               => now(),
+            'estado'                     => 'EN_PROCESO',
+            'nombre_archivo'             => $nombreArchivo,
+            'total_registros_recibidos'  => 0,
+            'total_registros_procesados' => 0,
+            'total_registros_error'      => 0,
+            'activo'                     => 1,
+        ]);
 
         DB::beginTransaction();
 
@@ -193,7 +202,7 @@ class ImportarFacturasController extends Controller
                 $serie  = trim((string)($f['D'] ?? ''));   // SERIE
                 $numero = (int) trim((string)($f['E'] ?? '0')); // NÚMERO
 
-                if (DB::table('factura')->where('serie', $serie)->where('numero', $numero)->exists()) {
+                if (DB::table('factura')->where('serie', $serie)->where('numero', $numero)->where('activo', 1)->exists()) {
                     $duplicadas++;
                     continue;
                 }
@@ -230,26 +239,69 @@ class ImportarFacturasController extends Controller
 
                 $tipoOperacion = trim((string)($f['I'] ?? '')); // TIPO DE OPERACIÓN
 
-                $idFactura = DB::table('factura')->insertGetId([
-                    'serie'             => $serie,
-                    'numero'            => $numero,
-                    'tipo_operacion'    => $tipoOperacion,
-                    'id_cliente'        => $idCliente,
-                    'id_usuario'        => $idUsuario,
-                    'moneda'            => $moneda,
-                    'subtotal_gravado'  => $subtotalGravado,
-                    'monto_igv'         => $montoIgv,
-                    'importe_total'     => $importeTotal,
-                    'estado'            => $estadoFinal,
-                    'glosa'             => $glosa,
-                    'forma_pago'        => trim((string)($f['AE'] ?? '')), // FORMA DE PAGO
-                    'tipo_recaudacion'  => $tipoRecaudacionFila,
-                    'fecha_vencimiento' => $fechaVencimiento,
-                    'fecha_emision'     => $fechaEmision,
-                    'fecha_creacion'    => now(),
-                    'usuario_creacion'  => $idUsuario,
-                    'monto_abonado'     => 0.00,
-                    'monto_pendiente'   => $montoPendiente,
+                // ¿Existe con activo=0? → Reactivar y actualizar en vez de insertar
+                $facturaDesactivada = DB::table('factura')
+                    ->where('serie', $serie)
+                    ->where('numero', $numero)
+                    ->where('activo', 0)
+                    ->first();
+
+                if ($facturaDesactivada) {
+                    $idFactura = $facturaDesactivada->id_factura;
+                    DB::table('factura')->where('id_factura', $idFactura)->update([
+                        'tipo_operacion'    => $tipoOperacion,
+                        'id_cliente'        => $idCliente,
+                        'id_usuario'        => $idUsuario,
+                        'moneda'            => $moneda,
+                        'subtotal_gravado'  => $subtotalGravado,
+                        'monto_igv'         => $montoIgv,
+                        'importe_total'     => $importeTotal,
+                        'estado'            => $estadoFinal,
+                        'glosa'             => $glosa,
+                        'forma_pago'        => trim((string)($f['AE'] ?? '')),
+                        'tipo_recaudacion'  => $tipoRecaudacionFila,
+                        'fecha_vencimiento' => $fechaVencimiento,
+                        'fecha_emision'     => $fechaEmision,
+                        'monto_abonado'     => 0.00,
+                        'monto_pendiente'   => $montoPendiente,
+                        'activo'            => 1,
+                        'fecha_actualizacion' => now(),
+                    ]);
+                    // Limpiar recaudacion y credito anteriores para reescribir limpios
+                    DB::table('recaudacion')->where('id_factura', $idFactura)->delete();
+                    DB::table('credito')->where('id_factura', $idFactura)->delete();
+                    $accionSinc = 'REACTIVADA';
+                } else {
+                    $idFactura = DB::table('factura')->insertGetId([
+                        'serie'             => $serie,
+                        'numero'            => $numero,
+                        'tipo_operacion'    => $tipoOperacion,
+                        'id_cliente'        => $idCliente,
+                        'id_usuario'        => $idUsuario,
+                        'moneda'            => $moneda,
+                        'subtotal_gravado'  => $subtotalGravado,
+                        'monto_igv'         => $montoIgv,
+                        'importe_total'     => $importeTotal,
+                        'estado'            => $estadoFinal,
+                        'glosa'             => $glosa,
+                        'forma_pago'        => trim((string)($f['AE'] ?? '')),
+                        'tipo_recaudacion'  => $tipoRecaudacionFila,
+                        'fecha_vencimiento' => $fechaVencimiento,
+                        'fecha_emision'     => $fechaEmision,
+                        'fecha_creacion'    => now(),
+                        'usuario_creacion'  => $idUsuario,
+                        'monto_abonado'     => 0.00,
+                        'monto_pendiente'   => $montoPendiente,
+                    ]);
+                    $accionSinc = 'INSERTADA';
+                }
+
+                // Vincular factura al registro de sincronización
+                DB::table('sincronizacion_factura')->insert([
+                    'id_sincronizacion' => $idSincronizacion,
+                    'id_factura'        => $idFactura,
+                    'accion'            => $accionSinc,
+                    'fecha_registro'    => now(),
                 ]);
 
                 if ($esNotaCredito && !empty($serieModificada) && $numeroModificada > 0) {
@@ -278,8 +330,23 @@ class ImportarFacturasController extends Controller
 
             DB::commit();
 
+            // Actualizar registro de sincronización con los totales finales
+            $totalFilas = count($filas) - $omitidas - $duplicadas;
+            DB::table('sincronizacion_nubefact')
+                ->where('id_sincronizacion', $idSincronizacion)
+                ->update([
+                    'fecha_fin'                  => now(),
+                    'estado'                     => empty($errores) ? 'COMPLETADO' : 'CON_ERRORES',
+                    'total_registros_recibidos'  => count($filas),
+                    'total_registros_procesados' => $insertadas,
+                    'total_registros_error'      => count($errores),
+                ]);
+
         } catch (\Throwable $e) {
             DB::rollBack();
+            DB::table('sincronizacion_nubefact')
+                ->where('id_sincronizacion', $idSincronizacion)
+                ->update(['estado' => 'ERROR', 'fecha_fin' => now()]);
             return back()->with('error', $this->mensajeErrorImportacionControlado($encabezados))->withInput();
         }
 
@@ -291,20 +358,22 @@ class ImportarFacturasController extends Controller
                 'fecha_desde' => $filtroDesde,
                 'fecha_hasta' => $filtroHasta,
             ])->with('resumen_importacion', [
-                'insertadas'       => $insertadas,
-                'omitidas'         => $omitidas,
-                'duplicadas'       => $duplicadas,
-                'errores'          => $errores,
-                'tipo_recaudacion' => $tipoRecaudacion,
+                'insertadas'          => $insertadas,
+                'omitidas'            => $omitidas,
+                'duplicadas'          => $duplicadas,
+                'errores'             => $errores,
+                'tipo_recaudacion'    => $tipoRecaudacion,
+                'id_sincronizacion'   => $idSincronizacion,
             ]);
         }
 
         return redirect()->route('facturas.importar')->with('resumen', [
-            'insertadas'       => $insertadas,
-            'omitidas'         => $omitidas,
-            'duplicadas'       => $duplicadas,
-            'errores'          => $errores,
-            'tipo_recaudacion' => $tipoRecaudacion,
+            'insertadas'          => $insertadas,
+            'omitidas'            => $omitidas,
+            'duplicadas'          => $duplicadas,
+            'errores'             => $errores,
+            'tipo_recaudacion'    => $tipoRecaudacion,
+            'id_sincronizacion'   => $idSincronizacion,
         ]);
     }
 

@@ -14,6 +14,7 @@
             --gold-xd: #7a5d0f;
             --bg: #fdf8ec;
         }
+        body { background: var(--bg) !important; }
 
         @keyframes fadeDown { from { opacity:0; transform:translateY(-12px); } to { opacity:1; transform:translateY(0); } }
         @keyframes slideUp  { from { opacity:0; transform:translateY(16px);  } to { opacity:1; transform:translateY(0); } }
@@ -180,6 +181,24 @@
         #validarDetraccionWrap label { color:var(--gold-xd); font-weight:600; }
         #validarDetraccionWrap input[type="checkbox"] { accent-color:var(--gold); }
 
+        /* Dropdown Validar Recaudación */
+        .recaudacion-dropdown { position:relative; display:inline-flex; }
+        .recaudacion-dropdown-menu {
+            display:none; position:absolute; top:calc(100% + 6px); left:0;
+            background:#fff; border:1.5px solid #e2e8f0; border-radius:10px;
+            box-shadow:0 8px 24px rgba(0,0,0,.12); min-width:200px; z-index:200;
+            overflow:hidden;
+        }
+        .recaudacion-dropdown-menu.open { display:block; }
+        .recaudacion-dropdown-menu a {
+            display:flex; align-items:center; gap:10px;
+            padding:11px 16px; font-size:13px; font-weight:600; text-decoration:none;
+            color:var(--text-primary); transition:background .12s;
+            border-bottom:1px solid #f1f5f9;
+        }
+        .recaudacion-dropdown-menu a:last-child { border-bottom:none; }
+        .recaudacion-dropdown-menu a:hover { background:#f8fafc; }
+
         #dropZonePago { border:2px dashed var(--gold-b); border-radius:10px; padding:24px; text-align:center; cursor:pointer; transition:all .2s; background:#fff; }
         #dropZonePago:hover { border-color:var(--gold); background:var(--gold-l); }
         #dropZonePago svg { color:var(--gold); }
@@ -267,14 +286,33 @@
             <p class="page-desc">Control de facturas, pagos y notificaciones a clientes.</p>
         </div>
         <div class="page-actions">
+            {{-- Importar Facturas (Nubefact, detección automática) --}}
             <a href="{{ route('facturas.importar') }}" class="btn btn-outline" style="border-color:var(--gold); color:var(--gold);">
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                Importar Excel
+                Importar Facturas
             </a>
-            <a href="{{ route('detracciones.index') }}" class="btn btn-outline" style="border-color:#7c3aed;color:#7c3aed;">
-                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Validar Detracciones
-            </a>
+
+            {{-- Validar Recaudación (dropdown: Detracciones / Retención) --}}
+            <div class="recaudacion-dropdown" id="recaudacionDropdown">
+                <button type="button"
+                        onclick="toggleRecaudacionMenu()"
+                        class="btn btn-outline"
+                        style="border-color:#0ea5e9;color:#0ea5e9;display:inline-flex;align-items:center;gap:6px;">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    Validar Recaudación
+                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div class="recaudacion-dropdown-menu" id="recaudacionMenu">
+                    <a href="{{ route('detracciones.index') }}" style="color:#d97706;">
+                        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="#d97706" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Detracciones
+                    </a>
+                    <a href="{{ route('facturas.importar.retenciones') }}" style="color:#7c3aed;">
+                        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="#7c3aed" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Retención
+                    </a>
+                </div>
+            </div>
             <button type="button" class="btn-pdf-filtros" onclick="generarPDFFiltros()" style="padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 PDF con Filtros
@@ -697,6 +735,113 @@
         </div>
     </div>
 
+    {{-- ═══════════ HISTORIAL DE IMPORTACIONES ═══════════ --}}
+    @if(isset($sincronizaciones) && $sincronizaciones->count() > 0)
+    <div class="card" style="margin-top:20px;" id="seccionHistorialImport">
+        <div class="card-header" style="cursor:pointer;user-select:none;" onclick="toggleHistorialImport()">
+            <div>
+                <div class="card-title" style="display:flex;align-items:center;gap:8px;">
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                    Historial de Importaciones
+                    <span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;">{{ $sincronizaciones->count() }}</span>
+                </div>
+                <div class="card-desc">Importaciones desde Nubefact — click para expandir/colapsar</div>
+            </div>
+            <svg id="historialChevron" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="margin-left:auto;transition:transform .25s;transform:rotate(-90deg)"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+
+        <div id="historialImportBody" style="display:none;">
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead>
+                        <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+                            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#475569;">#</th>
+                            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#475569;">Archivo</th>
+                            <th style="padding:10px 14px;text-align:left;font-weight:600;color:#475569;">Fecha</th>
+                            <th style="padding:10px 14px;text-align:center;font-weight:600;color:#475569;">Facturas</th>
+                            <th style="padding:10px 14px;text-align:center;font-weight:600;color:#475569;">Estado</th>
+                            <th style="padding:10px 14px;text-align:center;font-weight:600;color:#475569;">Visibilidad</th>
+                            <th style="padding:10px 14px;text-align:center;font-weight:600;color:#475569;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach($sincronizaciones as $sinc)
+                        <tr id="sincRow{{ $sinc->id_sincronizacion }}" style="border-bottom:1px solid #f1f5f9;{{ !$sinc->activo ? 'opacity:.6;background:#fafafa;' : '' }}">
+                            <td style="padding:10px 14px;color:#94a3b8;font-size:12px;">{{ $sinc->id_sincronizacion }}</td>
+                            <td style="padding:10px 14px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ $sinc->nombre_archivo }}">
+                                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="#6366f1" stroke-width="2" style="margin-right:4px;vertical-align:middle;"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                {{ $sinc->nombre_archivo }}
+                            </td>
+                            <td style="padding:10px 14px;color:#64748b;white-space:nowrap;">
+                                {{ $sinc->fecha_inicio ? \Carbon\Carbon::parse($sinc->fecha_inicio)->format('d/m/Y H:i') : '—' }}
+                            </td>
+                            <td style="padding:10px 14px;text-align:center;">
+                                <span style="background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:700;padding:2px 10px;border-radius:20px;">{{ $sinc->total_registros_procesados ?? 0 }}</span>
+                            </td>
+                            <td style="padding:10px 14px;text-align:center;">
+                                @php
+                                    $estadoColor = match($sinc->estado ?? '') {
+                                        'COMPLETADO'  => ['#d1fae5','#065f46'],
+                                        'CON_ERRORES' => ['#fef3c7','#92400e'],
+                                        'EN_PROCESO'  => ['#dbeafe','#1e40af'],
+                                        default       => ['#f1f5f9','#64748b'],
+                                    };
+                                @endphp
+                                <span style="background:{{ $estadoColor[0] }};color:{{ $estadoColor[1] }};font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;">{{ $sinc->estado ?? 'N/D' }}</span>
+                            </td>
+                            <td style="padding:10px 14px;text-align:center;">
+                                @if($sinc->activo)
+                                    <span style="background:#d1fae5;color:#065f46;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;">ACTIVO</span>
+                                @else
+                                    <span style="background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;">INACTIVO</span>
+                                @endif
+                            </td>
+                            <td style="padding:10px 14px;text-align:center;white-space:nowrap;">
+                                <button type="button" class="btn btn-ghost btn-sm" onclick="verFacturasSinc({{ $sinc->id_sincronizacion }})" title="Ver facturas">
+                                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                    Ver
+                                </button>
+                                @if($sinc->activo)
+                                    <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#991b1b;border:none;" onclick="desactivarSinc({{ $sinc->id_sincronizacion }})" title="Desactivar importación">
+                                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                                        Desactivar
+                                    </button>
+                                @else
+                                    <button type="button" class="btn btn-sm" style="background:#d1fae5;color:#065f46;border:none;" onclick="activarSinc({{ $sinc->id_sincronizacion }})" title="Reactivar importación">
+                                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                        Reactivar
+                                    </button>
+                                @endif
+                            </td>
+                        </tr>
+                        {{-- Fila expandible con facturas del lote --}}
+                        <tr id="sincDetalle{{ $sinc->id_sincronizacion }}" style="display:none;">
+                            <td colspan="7" style="padding:0 14px 16px 32px;background:#f8fafc;">
+                                <div id="sincDetalleContent{{ $sinc->id_sincronizacion }}" style="font-size:12px;color:#64748b;">Cargando...</div>
+                            </td>
+                        </tr>
+                    @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    @endif
+
+    {{-- ═══════════ MODAL DETALLE IMPORTACIÓN ═══════════ --}}
+    <div class="modal-overlay" id="modalSincOverlay" onclick="if(event.target===this)cerrarModalSinc()">
+        <div class="modal" style="max-width:860px;width:min(860px,96vw);max-height:88vh;display:flex;flex-direction:column;">
+            <div class="modal-header">
+                <h2 id="modalSincTitulo">Facturas de importación</h2>
+                <p id="modalSincDesc">—</p>
+                <button onclick="cerrarModalSinc()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 24px 24px;">
+                <div id="modalSincBody">Cargando...</div>
+            </div>
+        </div>
+    </div>
+
     {{-- ═══════════ TOAST ═══════════ --}}
     <div class="inline-alert" id="toastFactura">
         <svg id="toastFacturaIco" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"></svg>
@@ -1079,6 +1224,18 @@
 
     @push('scripts')
         <script>
+            // ── Dropdown Validar Recaudación ──────────────────────────────────────
+            function toggleRecaudacionMenu() {
+                var menu = document.getElementById('recaudacionMenu');
+                menu.classList.toggle('open');
+            }
+            document.addEventListener('click', function(e) {
+                var dropdown = document.getElementById('recaudacionDropdown');
+                if (dropdown && !dropdown.contains(e.target)) {
+                    document.getElementById('recaudacionMenu').classList.remove('open');
+                }
+            });
+
             let facturaActualId = null;
             let facturaImporte  = 0;
             let facturaMoneda   = 'S/';
@@ -1165,6 +1322,7 @@
                 const moneda      = document.getElementById('filterMoneda').value;
                 const empresa     = document.getElementById('filterEmpresa').value;
                 const recaudacion = document.getElementById('filterRecaudacion').value;
+                let visibles = 0;
                 document.querySelectorAll('#facturasBody tr[data-estado]').forEach(row => {
                     const rowRec = row.dataset.recaudacion || 'SIN';
                     const okRec  = !recaudacion || rowRec === recaudacion;
@@ -1174,7 +1332,15 @@
                         && (!empresa || row.dataset.cliente === empresa)
                         && okRec;
                     row.style.display = ok ? '' : 'none';
+                    if (ok) visibles++;
                 });
+                const hayFiltro = search || estado || moneda || empresa || recaudacion;
+                const cardDesc = document.querySelector('.card-desc');
+                if (cardDesc) {
+                    cardDesc.textContent = hayFiltro
+                        ? visibles + ' factura' + (visibles !== 1 ? 's' : '') + ' (filtrado)'
+                        : '{{ $facturas->count() }} facturas en el período seleccionado';
+                }
             }
 
             function generarPDFFiltros() {
@@ -1823,6 +1989,110 @@
             ['modalPagoMasivoOverlay','modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay'].forEach(id => {
                 document.getElementById(id)?.addEventListener('click', e => { if(e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
             });
+
+            // ── Historial de importaciones ────────────────────────────────
+
+            function toggleHistorialImport() {
+                const body    = document.getElementById('historialImportBody');
+                const chevron = document.getElementById('historialChevron');
+                if (!body) return;
+                const open = body.style.display !== 'none';
+                body.style.display    = open ? 'none' : '';
+                chevron.style.transform = open ? 'rotate(-90deg)' : 'rotate(0deg)';
+            }
+
+            function verFacturasSinc(id) {
+                document.getElementById('modalSincTitulo').textContent = 'Facturas de importación #' + id;
+                document.getElementById('modalSincDesc').textContent   = 'Cargando...';
+                document.getElementById('modalSincBody').innerHTML     = '<div style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</div>';
+                document.getElementById('modalSincOverlay').classList.add('open');
+
+                fetch('/facturas/sincronizaciones/' + id + '/facturas', {
+                    headers: {'X-Requested-With': 'XMLHttpRequest'}
+                })
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('modalSincDesc').textContent = data.length + ' factura(s) en este lote';
+                    if (!data.length) {
+                        document.getElementById('modalSincBody').innerHTML = '<p style="color:#94a3b8;padding:20px;">Sin facturas vinculadas.</p>';
+                        return;
+                    }
+                    let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+                    html += '<thead><tr style="background:#f8fafc;"><th style="padding:8px 10px;text-align:left;color:#475569;">Serie-Nro</th><th style="padding:8px 10px;text-align:left;color:#475569;">Cliente</th><th style="padding:8px 10px;text-align:left;color:#475569;">Fecha</th><th style="padding:8px 10px;text-align:right;color:#475569;">Total</th><th style="padding:8px 10px;text-align:center;color:#475569;">Estado</th><th style="padding:8px 10px;text-align:center;color:#475569;">Vis.</th></tr></thead><tbody>';
+                    data.forEach(f => {
+                        const num = String(f.numero).padStart(8,'0');
+                        const actBadge = f.activo ? '<span style="background:#d1fae5;color:#065f46;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;">✓</span>'
+                                                  : '<span style="background:#fee2e2;color:#991b1b;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;">✗</span>';
+                        html += `<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:7px 10px;font-weight:600;">${f.serie}-${num}</td><td style="padding:7px 10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.razon_social}</td><td style="padding:7px 10px;white-space:nowrap;">${f.fecha_emision ?? '—'}</td><td style="padding:7px 10px;text-align:right;">${f.moneda} ${parseFloat(f.importe_total).toLocaleString('es-PE',{minimumFractionDigits:2})}</td><td style="padding:7px 10px;text-align:center;"><span style="font-size:11px;">${f.estado}</span></td><td style="padding:7px 10px;text-align:center;">${actBadge}</td></tr>`;
+                    });
+                    html += '</tbody></table>';
+                    document.getElementById('modalSincBody').innerHTML = html;
+                })
+                .catch(() => {
+                    document.getElementById('modalSincBody').innerHTML = '<p style="color:#ef4444;padding:20px;">Error al cargar las facturas.</p>';
+                });
+            }
+
+            function cerrarModalSinc() {
+                document.getElementById('modalSincOverlay').classList.remove('open');
+            }
+
+            function desactivarSinc(id) {
+                if (!confirm('¿Desactivar esta importación? Las facturas de este lote dejarán de aparecer en la lista.')) return;
+                fetch('/facturas/sincronizaciones/' + id + '/desactivar', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': CSRF},
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        showToastFactura('Importación desactivada — ' + data.total + ' factura(s) ocultada(s).');
+                        setTimeout(() => location.reload(), 1200);
+                    } else {
+                        alert('Error: ' + (data.error ?? 'Error desconocido'));
+                    }
+                })
+                .catch(() => alert('Error al comunicarse con el servidor.'));
+            }
+
+            function activarSinc(id) {
+                fetch('/facturas/sincronizaciones/' + id + '/activar', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': CSRF},
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        showToastFactura('Importación reactivada — ' + data.total + ' factura(s) visibles nuevamente.');
+                        setTimeout(() => location.reload(), 1200);
+                    } else if (data.conflictos) {
+                        let msg = (data.error ?? 'Conflictos detectados') + '\n\n';
+                        data.conflictos.forEach(c => {
+                            msg += '• ' + c.factura + ' → ya está en: ' + c.en_importacion + '\n';
+                        });
+                        alert(msg);
+                    } else {
+                        alert('Error: ' + (data.error ?? 'Error desconocido'));
+                    }
+                })
+                .catch(() => alert('Error al comunicarse con el servidor.'));
+            }
+
+            // Resaltar la importación recién creada si viene del redirect
+            @if(session('resumen_importacion.id_sincronizacion'))
+            document.addEventListener('DOMContentLoaded', function() {
+                const sincId = {{ session('resumen_importacion.id_sincronizacion') }};
+                const row = document.getElementById('sincRow' + sincId);
+                if (row) {
+                    // Abrir el acordeón y hacer scroll
+                    const body = document.getElementById('historialImportBody');
+                    if (body) { body.style.display = ''; document.getElementById('historialChevron').style.transform = 'rotate(0deg)'; }
+                    row.style.background = '#fef9c3';
+                    row.scrollIntoView({ behavior:'smooth', block:'center' });
+                    setTimeout(() => row.style.background = '', 3000);
+                }
+            });
+            @endif
         </script>
     @endpush
 

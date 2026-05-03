@@ -28,6 +28,7 @@ class DashboardController extends Controller
                         ->on('fo.numero', '=', 'cr.numero_doc_modificado');
                 })
                 ->whereBetween('f.fecha_emision', [$desde, $hasta])
+                ->where('f.activo', 1)
                 ->where('c.tipo_cliente', $tipoCliente)
                 ->whereNull('fo.id_factura')
                 ->pluck('f.id_factura')
@@ -61,6 +62,7 @@ class DashboardController extends Controller
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
+            ->where('f.activo', 1)
             ->where('c.tipo_cliente', $tipoCliente);
 
         $kpis = $applyTotalesScope($kpisQuery, $orphanPeriodo)
@@ -81,6 +83,7 @@ class DashboardController extends Controller
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->where('f.fecha_emision', '>=', $fechaTendenciaDesde)
             ->where('f.fecha_emision', '<=', $fechaHasta)
+            ->where('f.activo', 1)
             ->where('c.tipo_cliente', $tipoCliente);
 
         $tendencia = $applyTotalesScope($tendenciaQuery, $orphanTendencia)
@@ -97,6 +100,7 @@ class DashboardController extends Controller
         $topClientesQuery = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
+            ->where('f.activo', 1)
             ->where('c.tipo_cliente', $tipoCliente);
 
         $topClientes = $applyTotalesScope($topClientesQuery, $orphanPeriodo)
@@ -114,6 +118,7 @@ class DashboardController extends Controller
         $ultimasFacturasQuery = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
+            ->where('f.activo', 1)
             ->where('c.tipo_cliente', $tipoCliente);
 
         $ultimasFacturas = $applyTotalesScope($ultimasFacturasQuery, $orphanPeriodo)
@@ -131,6 +136,7 @@ class DashboardController extends Controller
         $porEstadoQuery = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
+            ->where('f.activo', 1)
             ->where('c.tipo_cliente', $tipoCliente);
 
         $porEstado = $applyTotalesScope($porEstadoQuery, $orphanPeriodo)

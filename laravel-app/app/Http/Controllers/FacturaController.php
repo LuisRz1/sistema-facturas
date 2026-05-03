@@ -57,6 +57,7 @@ class FacturaController extends Controller
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('usuario as u', 'u.id_usuario', '=', 'f.usuario_creacion')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
+            ->where('f.activo', 1)
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
             ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
                 $q->where('c.tipo_cliente', $tipoClienteVista);
@@ -125,6 +126,21 @@ class FacturaController extends Controller
         $usuarios = DB::table('usuario')->whereNotNull('celular')->orderBy('nombre')
             ->get(['id_usuario', 'nombre', 'apellido', 'celular', 'correo']);
 
+        // Historial de importaciones para el acordeón
+        $sincronizaciones = DB::table('sincronizacion_nubefact as sn')
+            ->select([
+                'sn.id_sincronizacion',
+                'sn.nombre_archivo',
+                'sn.fecha_inicio',
+                'sn.fecha_fin',
+                'sn.estado',
+                'sn.total_registros_procesados',
+                'sn.activo',
+            ])
+            ->orderByDesc('sn.fecha_inicio')
+            ->limit(50)
+            ->get();
+
         return view('facturas.index', [
             'facturas'            => $facturasCollection,
             'facturasParaTotales' => $facturasParaTotales,
@@ -135,6 +151,7 @@ class FacturaController extends Controller
             'fechaHasta'          => $fechaHasta,
             'tipoClienteVista'    => $tipoClienteVista,
             'facturasRoute'       => $facturasRoute,
+            'sincronizaciones'    => $sincronizaciones,
         ]);
     }
 
@@ -282,6 +299,7 @@ class FacturaController extends Controller
         $facturas = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->where('f.id_cliente', (int) $validated['id_cliente'])
+            ->where('f.activo', 1)
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
             ->whereIn('f.estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'])
             ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
@@ -533,7 +551,8 @@ class FacturaController extends Controller
 
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
-            ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura');
+            ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
+            ->where('f.activo', 1);
 
         if ($validated['tipo'] === 'vencidos') $query->where('f.estado', 'VENCIDO');
         else $query->whereIn('f.estado', self::ESTADOS_PENDIENTES);

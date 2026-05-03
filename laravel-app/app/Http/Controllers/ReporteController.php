@@ -634,6 +634,7 @@ class ReporteController extends Controller
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
+            ->where('f.activo', 1)
             ->select([
                 'f.id_factura', 'f.serie', 'f.numero',
                 'f.fecha_emision', 'f.fecha_vencimiento', 'f.fecha_abono',
@@ -683,6 +684,7 @@ class ReporteController extends Controller
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
+            ->where('f.activo', 1)
             ->whereIn('f.estado', $estadosFiltro)
             ->select([
                 'f.id_factura', 'c.id_cliente', 'c.razon_social', 'c.ruc',
@@ -821,25 +823,68 @@ class ReporteController extends Controller
         $facturasAgrupParaTotales = $facturasParaTotales->groupBy('razon_social')->sortKeys();
 
         $spreadsheet = new Spreadsheet();
-        $sheet       = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Resumen');
 
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
         $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
 
-        // ── Hoja resumen general ───────────────────────────────────────────
-        $sheet->setCellValue('A1', 'CONSORCIO RODRIGUEZ CABALLERO S.A.C.');
-        $sheet->setCellValue('A2', 'Reporte Financiero de Gestión — Por Empresa');
-        $sheet->setCellValue('A3', 'PERÍODO: ' . $periodoLabel . '  |  ESTADO: ' . $estadoLabel);
-        $sheet->setCellValue('A4', 'Generado: ' . now()->format('d/m/Y H:i'));
+        // ── Hoja 0: TODAS LAS FACTURAS (unificada con estilo) ─────────────
+        $unifiedSheet = $spreadsheet->getActiveSheet();
+        $unifiedSheet->setTitle('TODAS LAS FACTURAS');
+        $this->buildUnifiedSheet($unifiedSheet, $facturas, $facturasParaTotales, $orphanFacturaIds, $periodoLabel, $estadoLabel);
 
-        $headersResumen = ['#', 'EMPRESA', 'RUC', 'SUB TOTAL', 'IGV', 'RECAUDACIÓN', 'TOTAL', 'ABONADO', 'PENDIENTE', 'FACTURAS', 'ESTADOS'];
-        $row = 6;
-        foreach ($headersResumen as $col => $header) {
-            $sheet->setCellValue($this->getColumn($col + 1) . $row, $header);
+        // ── Hoja 1: Resumen general ───────────────────────────────────────
+        $sheet = $spreadsheet->createSheet(1);
+        $sheet->setTitle('Resumen');
+
+        // ── Hoja resumen general (con estilos) ────────────────────────────
+        $FILL_SOLID  = \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID;
+        $BORDER_THIN = \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN;
+        $BORDER_MED  = \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM;
+        $H_CTR = \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER;
+        $H_RT  = \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT;
+        $V_CTR = \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER;
+        $estadoColorsXl = [
+            'VENCIDO'              => ['FEE2E2','991B1B'],
+            'PAGO PARCIAL'         => ['E0E7FF','3730A3'],
+            'DIFERENCIA PENDIENTE' => ['FCE7F3','9D174D'],
+            'PAGADA'               => ['D1FAE5','065F46'],
+            'PENDIENTE'            => ['FEF3C7','92400E'],
+        ];
+
+        foreach (['A'=>5,'B'=>34,'C'=>14,'D'=>13,'E'=>11,'F'=>14,'G'=>13,'H'=>13,'I'=>13,'J'=>7,'K'=>28] as $c => $w) {
+            $sheet->getColumnDimension($c)->setWidth($w);
         }
 
-        $row++;
+        // Row 1: title block
+        $sheet->mergeCells('A1:K1');
+        $sheet->setCellValue('A1', 'CONSORCIO RODRIGUEZ CABALLERO S.A.C. — REPORTE FINANCIERO DE GESTIÓN');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle('A1')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('0F172A');
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal($H_CTR)->setVertical($V_CTR);
+        $sheet->getRowDimension(1)->setRowHeight(26);
+
+        // Row 2: period / state
+        $sheet->mergeCells('A2:K2');
+        $sheet->setCellValue('A2', 'PERÍODO: ' . $periodoLabel . '   |   ESTADO: ' . $estadoLabel . '   |   Generado: ' . now()->format('d/m/Y H:i'));
+        $sheet->getStyle('A2')->getFont()->setSize(9)->getColor()->setRGB('94A3B8');
+        $sheet->getStyle('A2')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('0F172A');
+        $sheet->getStyle('A2')->getAlignment()->setHorizontal($H_CTR)->setVertical($V_CTR);
+        $sheet->getRowDimension(2)->setRowHeight(16);
+
+        $sheet->getRowDimension(3)->setRowHeight(6);
+
+        // Row 4: column headers
+        $headersResumen = ['#','EMPRESA','RUC','SUB TOTAL','IGV','RECAUDACIÓN','TOTAL','ABONADO','PENDIENTE','FACT.','ESTADOS'];
+        foreach ($headersResumen as $ci => $hdr) {
+            $sheet->setCellValue($this->getColumn($ci + 1) . '4', $hdr);
+        }
+        $sheet->getStyle('A4:K4')->getFont()->setBold(true)->setSize(9)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle('A4:K4')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('1E3A5F');
+        $sheet->getStyle('A4:K4')->getAlignment()->setHorizontal($H_CTR)->setVertical($V_CTR)->setWrapText(true);
+        $sheet->getStyle('A4:K4')->getBorders()->getAllBorders()->setBorderStyle($BORDER_THIN);
+        $sheet->getRowDimension(4)->setRowHeight(28);
+
+        $row = 5;
         $idxEmpresa = 1;
         foreach ($facturasAgrupadas as $empresa => $facturasPorEmpresa) {
             $facturasTot = $facturasAgrupParaTotales[$empresa] ?? collect();
@@ -855,123 +900,193 @@ class ReporteController extends Controller
                     : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
             });
 
-            $ruc = (string) ($facturasPorEmpresa->first()->ruc ?? '');
+            $ruc    = (string) ($facturasPorEmpresa->first()->ruc ?? '');
             $estados = $facturasPorEmpresa->pluck('estado')->unique()->values()->implode(', ');
+            $rowBg  = ($idxEmpresa % 2 === 0) ? 'F1F5F9' : 'FFFFFF';
 
-            $sheet->setCellValue('A' . $row, $idxEmpresa++);
+            $sheet->setCellValue('A' . $row, $idxEmpresa);
             $sheet->setCellValue('B' . $row, $empresa);
             $sheet->setCellValue('C' . $row, $ruc);
-            $sheet->setCellValue('D' . $row, number_format($totSub, 2, '.', ''));
-            $sheet->setCellValue('E' . $row, number_format($totIgv, 2, '.', ''));
-            $sheet->setCellValue('F' . $row, number_format($totRec, 2, '.', ''));
-            $sheet->setCellValue('G' . $row, number_format($totAll, 2, '.', ''));
-            $sheet->setCellValue('H' . $row, number_format($totAbo, 2, '.', ''));
-            $sheet->setCellValue('I' . $row, number_format($totPen, 2, '.', ''));
+            $sheet->setCellValue('D' . $row, $totSub);
+            $sheet->setCellValue('E' . $row, $totIgv);
+            $sheet->setCellValue('F' . $row, $totRec);
+            $sheet->setCellValue('G' . $row, $totAll);
+            $sheet->setCellValue('H' . $row, $totAbo);
+            $sheet->setCellValue('I' . $row, $totPen);
             $sheet->setCellValue('J' . $row, $facturasTot->count());
             $sheet->setCellValue('K' . $row, $estados);
+
+            foreach (['D','E','F','G','H','I'] as $nc) {
+                $sheet->getStyle($nc . $row)->getNumberFormat()->setFormatCode('#,##0.00');
+                $sheet->getStyle($nc . $row)->getAlignment()->setHorizontal($H_RT);
+            }
+            $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal($H_CTR);
+            $sheet->getStyle('J' . $row)->getAlignment()->setHorizontal($H_CTR);
+            $sheet->getStyle('A' . $row . ':K' . $row)->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB($rowBg);
+            $sheet->getStyle('A' . $row . ':K' . $row)->getBorders()->getAllBorders()->setBorderStyle($BORDER_THIN);
+
+            // Estado cell: pick worst status color
+            $estadosList = $facturasPorEmpresa->pluck('estado')->unique()->values()->toArray();
+            foreach (['VENCIDO','DIFERENCIA PENDIENTE','PAGO PARCIAL','PENDIENTE','PAGADA'] as $ep) {
+                if (in_array($ep, $estadosList) && isset($estadoColorsXl[$ep])) {
+                    [$eBg, $eFg] = $estadoColorsXl[$ep];
+                    $sheet->getStyle('K' . $row)->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB($eBg);
+                    $sheet->getStyle('K' . $row)->getFont()->setBold(true)->getColor()->setRGB($eFg);
+                    break;
+                }
+            }
+            $sheet->getRowDimension($row)->setRowHeight(15);
+            $idxEmpresa++;
             $row++;
         }
 
-        $sheet->setCellValue('B' . $row, 'TOTALES GENERALES');
-        $sheet->setCellValue('D' . $row, number_format((float) $facturasParaTotales->sum('subtotal_gravado'), 2, '.', ''));
-        $sheet->setCellValue('E' . $row, number_format((float) $facturasParaTotales->sum('monto_igv'), 2, '.', ''));
-        $sheet->setCellValue('F' . $row, number_format((float) $facturasParaTotales->sum('monto_recaudacion'), 2, '.', ''));
-        $sheet->setCellValue('G' . $row, number_format((float) $facturasParaTotales->sum('importe_total'), 2, '.', ''));
-        $sheet->setCellValue('H' . $row, number_format((float) $facturasParaTotales->sum('monto_abonado'), 2, '.', ''));
-        $sheet->setCellValue('I' . $row, number_format((float) $facturasParaTotales->sum(function ($f) {
+        // Total row
+        $sheet->mergeCells('A' . $row . ':C' . $row);
+        $sheet->setCellValue('A' . $row, 'TOTALES GENERALES — ' . $facturasParaTotales->count() . ' facturas');
+        $sheet->setCellValue('D' . $row, (float) $facturasParaTotales->sum('subtotal_gravado'));
+        $sheet->setCellValue('E' . $row, (float) $facturasParaTotales->sum('monto_igv'));
+        $sheet->setCellValue('F' . $row, (float) $facturasParaTotales->sum('monto_recaudacion'));
+        $sheet->setCellValue('G' . $row, (float) $facturasParaTotales->sum('importe_total'));
+        $sheet->setCellValue('H' . $row, (float) $facturasParaTotales->sum('monto_abonado'));
+        $sheet->setCellValue('I' . $row, (float) $facturasParaTotales->sum(function ($f) {
             return $f->estado === 'DIFERENCIA PENDIENTE'
                 ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
                 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
-        }), 2, '.', ''));
+        }));
         $sheet->setCellValue('J' . $row, $facturasParaTotales->count());
-        $sheet->getStyle('B' . $row . ':K' . $row)->getFont()->setBold(true);
-
-        foreach (range('A', 'K') as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
+        foreach (['D','E','F','G','H','I'] as $nc) {
+            $sheet->getStyle($nc . $row)->getNumberFormat()->setFormatCode('#,##0.00');
+            $sheet->getStyle($nc . $row)->getAlignment()->setHorizontal($H_RT);
         }
+        $sheet->getStyle('A' . $row . ':K' . $row)->getFont()->setBold(true)->setSize(10)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle('A' . $row . ':K' . $row)->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('1E293B');
+        $sheet->getStyle('A' . $row . ':K' . $row)->getBorders()->getAllBorders()->setBorderStyle($BORDER_MED);
+        $sheet->getRowDimension($row)->setRowHeight(20);
+        $sheet->freezePane('A5');
 
-        // ── Hojas por cliente/empresa con detalle de facturas ─────────────
-        $empresaSheetIndex = 1;
+        // ── Hojas por cliente/empresa con detalle de facturas (con estilos) ─
+        $empresaSheetIndex = 2;
         foreach ($facturasAgrupadas as $empresa => $facturasPorEmpresa) {
             $detalleSheet = $spreadsheet->createSheet($empresaSheetIndex++);
             $sheetName = preg_replace('~[\\\\/*?:\[\]]~', '-', (string) $empresa);
             $sheetName = trim((string) $sheetName);
-            if ($sheetName === '') {
-                $sheetName = 'Cliente_' . $empresaSheetIndex;
-            }
+            if ($sheetName === '') { $sheetName = 'Cliente_' . $empresaSheetIndex; }
             $detalleSheet->setTitle(substr($sheetName, 0, 31));
 
-            $detalleSheet->setCellValue('A1', 'CONSORCIO RODRIGUEZ CABALLERO S.A.C.');
-            $detalleSheet->setCellValue('A2', 'Reporte Financiero de Gestión — Por Empresa');
-            $detalleSheet->setCellValue('A3', 'PERÍODO: ' . $periodoLabel . '  |  ESTADO: ' . $estadoLabel);
-            $detalleSheet->setCellValue('A4', 'EMPRESA: ' . $empresa);
-            $detalleSheet->setCellValue('A5', 'Generado: ' . now()->format('d/m/Y H:i'));
-
-            $headersDetalle = [
-                '#', 'EMISIÓN', 'FVENCIMIENTO', 'FACTURA', 'GLOSA', 'SUBTOTAL', 'IGV',
-                'RECAUDACIÓN', 'F.RECAUDACIÓN', 'TOTAL', 'TIPO RECAUDACIÓN',
-                'MONTO ABONADO', 'F.ABONO', 'MONTO PENDIENTE', 'ESTADO'
-            ];
-            $rowDetalle = 7;
-            foreach ($headersDetalle as $col => $header) {
-                $detalleSheet->setCellValue($this->getColumn($col + 1) . $rowDetalle, $header);
+            foreach (['A'=>5,'B'=>11,'C'=>13,'D'=>17,'E'=>38,'F'=>13,'G'=>11,'H'=>13,'I'=>13,'J'=>13,'K'=>15,'L'=>13,'M'=>11,'N'=>13,'O'=>22] as $c => $w) {
+                $detalleSheet->getColumnDimension($c)->setWidth($w);
             }
-            $rowDetalle++;
 
-            foreach ($facturasPorEmpresa as $idx => $f) {
-                $esHuerfana = in_array((int) $f->id_factura, $orphanFacturaIds);
+            // Row 1: title block
+            $detalleSheet->mergeCells('A1:O1');
+            $detalleSheet->setCellValue('A1', 'CONSORCIO RODRIGUEZ CABALLERO S.A.C. — DETALLE DE FACTURAS POR EMPRESA');
+            $detalleSheet->getStyle('A1')->getFont()->setBold(true)->setSize(11)->getColor()->setRGB('FFFFFF');
+            $detalleSheet->getStyle('A1')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('0F172A');
+            $detalleSheet->getStyle('A1')->getAlignment()->setHorizontal($H_CTR)->setVertical($V_CTR);
+            $detalleSheet->getRowDimension(1)->setRowHeight(24);
+
+            // Row 2: period / state
+            $detalleSheet->mergeCells('A2:O2');
+            $detalleSheet->setCellValue('A2', 'PERÍODO: ' . $periodoLabel . '   |   ESTADO: ' . $estadoLabel . '   |   Generado: ' . now()->format('d/m/Y H:i'));
+            $detalleSheet->getStyle('A2')->getFont()->setSize(8)->getColor()->setRGB('94A3B8');
+            $detalleSheet->getStyle('A2')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('0F172A');
+            $detalleSheet->getStyle('A2')->getAlignment()->setHorizontal($H_CTR)->setVertical($V_CTR);
+            $detalleSheet->getRowDimension(2)->setRowHeight(14);
+
+            // Row 3: company name
+            $detalleSheet->mergeCells('A3:O3');
+            $detalleSheet->setCellValue('A3', strtoupper($empresa) . '  ·  RUC: ' . ($facturasPorEmpresa->first()->ruc ?? ''));
+            $detalleSheet->getStyle('A3')->getFont()->setBold(true)->setSize(10)->getColor()->setRGB('1E3A5F');
+            $detalleSheet->getStyle('A3')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('DBEAFE');
+            $detalleSheet->getStyle('A3')->getAlignment()->setHorizontal($H_CTR)->setVertical($V_CTR);
+            $detalleSheet->getRowDimension(3)->setRowHeight(18);
+
+            $detalleSheet->getRowDimension(4)->setRowHeight(6);
+
+            // Row 5: column headers
+            $headersDetalle = ['#','EMISIÓN','F.VENCIM.','FACTURA','GLOSA','SUBTOTAL','IGV','RECAUDACIÓN','F.RECAUDA.','TOTAL','TIPO RECAUD.','ABONADO','F.ABONO','PENDIENTE','ESTADO'];
+            foreach ($headersDetalle as $ci => $hdr) {
+                $detalleSheet->setCellValue($this->getColumn($ci + 1) . '5', $hdr);
+            }
+            $detalleSheet->getStyle('A5:O5')->getFont()->setBold(true)->setSize(8)->getColor()->setRGB('FFFFFF');
+            $detalleSheet->getStyle('A5:O5')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('1E3A5F');
+            $detalleSheet->getStyle('A5:O5')->getAlignment()->setHorizontal($H_CTR)->setVertical($V_CTR)->setWrapText(true);
+            $detalleSheet->getStyle('A5:O5')->getBorders()->getAllBorders()->setBorderStyle($BORDER_THIN);
+            $detalleSheet->getRowDimension(5)->setRowHeight(28);
+
+            // Data rows starting at 6
+            $rowDetalle = 6;
+            $dIdx = 1;
+            foreach ($facturasPorEmpresa as $f) {
+                $esHuerfana  = in_array((int) $f->id_factura, $orphanFacturaIds);
                 $recaudacion = (float) ($f->monto_recaudacion ?? 0);
-                $pendiente = $esHuerfana
-                    ? 0
+                $pendiente   = $esHuerfana ? 0.0
                     : ($f->estado === 'DIFERENCIA PENDIENTE'
-                        ? max(0, ($f->importe_total ?? 0) - $recaudacion)
-                        : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
-                $estadoExcel = $f->estado . ($esHuerfana ? ' [NC SIN FACTURA - NO SUMA]' : '');
+                        ? max(0.0, (float)($f->importe_total ?? 0) - $recaudacion)
+                        : (float)($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                $estadoExcel = $f->estado . ($esHuerfana ? ' [NC]' : '');
+                $rowBg = ($dIdx % 2 === 0) ? 'F1F5F9' : 'FFFFFF';
 
-                $detalleSheet->setCellValue('A' . $rowDetalle, $idx + 1);
-                $detalleSheet->setCellValue('B' . $rowDetalle, $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—');
+                $detalleSheet->setCellValue('A' . $rowDetalle, $dIdx);
+                $detalleSheet->setCellValue('B' . $rowDetalle, $f->fecha_emision     ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y')     : '—');
                 $detalleSheet->setCellValue('C' . $rowDetalle, $f->fecha_vencimiento ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—');
-                $detalleSheet->setCellValue('D' . $rowDetalle, $f->serie . '-' . str_pad((string) $f->numero, 8, '0', STR_PAD_LEFT));
+                $detalleSheet->setCellValue('D' . $rowDetalle, ($f->serie ?? '') . '-' . str_pad((string)($f->numero ?? ''), 8, '0', STR_PAD_LEFT));
                 $detalleSheet->setCellValue('E' . $rowDetalle, $f->glosa ?? '—');
-                $detalleSheet->setCellValue('F' . $rowDetalle, !$esHuerfana && ($f->subtotal_gravado ?? 0) > 0 ? number_format((float) $f->subtotal_gravado, 2, '.', '') : '—');
-                $detalleSheet->setCellValue('G' . $rowDetalle, !$esHuerfana && ($f->monto_igv ?? 0) > 0 ? number_format((float) $f->monto_igv, 2, '.', '') : '—');
-                $detalleSheet->setCellValue('H' . $rowDetalle, $recaudacion > 0 ? number_format($recaudacion, 2, '.', '') : '—');
-                $detalleSheet->setCellValue('I' . $rowDetalle, $f->fecha_recaudacion ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—');
-                $detalleSheet->setCellValue('J' . $rowDetalle, number_format((float) ($f->importe_total ?? 0), 2, '.', ''));
+                $detalleSheet->setCellValue('F' . $rowDetalle, !$esHuerfana ? (float)($f->subtotal_gravado ?? 0) : 0.0);
+                $detalleSheet->setCellValue('G' . $rowDetalle, !$esHuerfana ? (float)($f->monto_igv ?? 0) : 0.0);
+                $detalleSheet->setCellValue('H' . $rowDetalle, $recaudacion);
+                $detalleSheet->setCellValue('I' . $rowDetalle, !empty($f->fecha_recaudacion) ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—');
+                $detalleSheet->setCellValue('J' . $rowDetalle, !$esHuerfana ? (float)($f->importe_total ?? 0) : 0.0);
                 $detalleSheet->setCellValue('K' . $rowDetalle, $f->tipo_recaudacion ?? '—');
-                $detalleSheet->setCellValue('L' . $rowDetalle, ($f->monto_abonado ?? 0) > 0 ? number_format((float) $f->monto_abonado, 2, '.', '') : '—');
+                $detalleSheet->setCellValue('L' . $rowDetalle, !$esHuerfana ? (float)($f->monto_abonado ?? 0) : 0.0);
                 $detalleSheet->setCellValue('M' . $rowDetalle, !empty($f->fecha_abono) ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—');
-                $detalleSheet->setCellValue('N' . $rowDetalle, $esHuerfana ? '—' : number_format((float) $pendiente, 2, '.', ''));
+                $detalleSheet->setCellValue('N' . $rowDetalle, $esHuerfana ? 0.0 : (float)$pendiente);
                 $detalleSheet->setCellValue('O' . $rowDetalle, $estadoExcel);
 
-                if ($esHuerfana) {
-                    $detalleSheet->getStyle('A' . $rowDetalle . ':O' . $rowDetalle)
-                        ->getFont()
-                        ->setStrikethrough(true)
-                        ->getColor()
-                        ->setRGB('999999');
+                foreach (['F','G','H','J','L','N'] as $nc) {
+                    $detalleSheet->getStyle($nc . $rowDetalle)->getNumberFormat()->setFormatCode('#,##0.00');
+                    $detalleSheet->getStyle($nc . $rowDetalle)->getAlignment()->setHorizontal($H_RT);
                 }
+                $detalleSheet->getStyle('A' . $rowDetalle)->getAlignment()->setHorizontal($H_CTR);
+                $detalleSheet->getStyle('A' . $rowDetalle . ':O' . $rowDetalle)->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB($rowBg);
+                $detalleSheet->getStyle('A' . $rowDetalle . ':O' . $rowDetalle)->getBorders()->getAllBorders()->setBorderStyle($BORDER_THIN);
 
+                // Estado color
+                [$eBg, $eFg] = $estadoColorsXl[$f->estado ?? 'PENDIENTE'] ?? ['FEF3C7','92400E'];
+                $detalleSheet->getStyle('O' . $rowDetalle)->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB($eBg);
+                $detalleSheet->getStyle('O' . $rowDetalle)->getFont()->setBold(true)->getColor()->setRGB($eFg);
+
+                if ($esHuerfana) {
+                    $detalleSheet->getStyle('A' . $rowDetalle . ':N' . $rowDetalle)->getFont()->setStrikethrough(true)->getColor()->setRGB('9CA3AF');
+                }
+                $detalleSheet->getRowDimension($rowDetalle)->setRowHeight(15);
                 $rowDetalle++;
+                $dIdx++;
             }
 
+            // Total row
             $detalleTot = $facturasAgrupParaTotales[$empresa] ?? collect();
-            $detalleSheet->setCellValue('B' . $rowDetalle, 'TOTALES');
-            $detalleSheet->setCellValue('F' . $rowDetalle, number_format((float) $detalleTot->sum('subtotal_gravado'), 2, '.', ''));
-            $detalleSheet->setCellValue('G' . $rowDetalle, number_format((float) $detalleTot->sum('monto_igv'), 2, '.', ''));
-            $detalleSheet->setCellValue('H' . $rowDetalle, number_format((float) $detalleTot->sum('monto_recaudacion'), 2, '.', ''));
-            $detalleSheet->setCellValue('J' . $rowDetalle, number_format((float) $detalleTot->sum('importe_total'), 2, '.', ''));
-            $detalleSheet->setCellValue('L' . $rowDetalle, number_format((float) $detalleTot->sum('monto_abonado'), 2, '.', ''));
-            $detalleSheet->setCellValue('N' . $rowDetalle, number_format((float) $detalleTot->sum(function ($f) {
+            $detalleSheet->mergeCells('A' . $rowDetalle . ':E' . $rowDetalle);
+            $detalleSheet->setCellValue('A' . $rowDetalle, 'TOTALES — ' . $detalleTot->count() . ' facturas');
+            $detalleSheet->setCellValue('F' . $rowDetalle, (float)$detalleTot->sum('subtotal_gravado'));
+            $detalleSheet->setCellValue('G' . $rowDetalle, (float)$detalleTot->sum('monto_igv'));
+            $detalleSheet->setCellValue('H' . $rowDetalle, (float)$detalleTot->sum('monto_recaudacion'));
+            $detalleSheet->setCellValue('J' . $rowDetalle, (float)$detalleTot->sum('importe_total'));
+            $detalleSheet->setCellValue('L' . $rowDetalle, (float)$detalleTot->sum('monto_abonado'));
+            $detalleSheet->setCellValue('N' . $rowDetalle, (float)$detalleTot->sum(function ($f) {
                 return $f->estado === 'DIFERENCIA PENDIENTE'
                     ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
                     : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
-            }), 2, '.', ''));
-            $detalleSheet->getStyle('B' . $rowDetalle . ':O' . $rowDetalle)->getFont()->setBold(true);
-
-            foreach (range('A', 'O') as $col) {
-                $detalleSheet->getColumnDimension($col)->setAutoSize(true);
+            }));
+            foreach (['F','G','H','J','L','N'] as $nc) {
+                $detalleSheet->getStyle($nc . $rowDetalle)->getNumberFormat()->setFormatCode('#,##0.00');
+                $detalleSheet->getStyle($nc . $rowDetalle)->getAlignment()->setHorizontal($H_RT);
             }
+            $detalleSheet->getStyle('A' . $rowDetalle . ':O' . $rowDetalle)->getFont()->setBold(true)->setSize(10)->getColor()->setRGB('FFFFFF');
+            $detalleSheet->getStyle('A' . $rowDetalle . ':O' . $rowDetalle)->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('1E293B');
+            $detalleSheet->getStyle('A' . $rowDetalle . ':O' . $rowDetalle)->getBorders()->getAllBorders()->setBorderStyle($BORDER_MED);
+            $detalleSheet->getRowDimension($rowDetalle)->setRowHeight(20);
+            $detalleSheet->freezePane('A6');
         }
 
         $spreadsheet->setActiveSheetIndex(0);
@@ -982,6 +1097,165 @@ class ReporteController extends Controller
         $writer->save($tempFile);
 
         return response()->download($tempFile, $filename)->deleteFileAfterSend(true);
+    }
+
+    // ── Hoja unificada con todas las facturas y estilos de color ─────────
+    private function buildUnifiedSheet(
+        \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet,
+        \Illuminate\Support\Collection $facturas,
+        \Illuminate\Support\Collection $facturasParaTotales,
+        array $orphanFacturaIds,
+        string $periodoLabel,
+        string $estadoLabel
+    ): void {
+        $FILL_SOLID    = \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID;
+        $BORDER_THIN   = \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN;
+        $BORDER_MEDIUM = \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_MEDIUM;
+        $H_CENTER      = \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER;
+        $H_RIGHT       = \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT;
+        $V_CENTER      = \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER;
+
+        // Column widths (A–Q = 17 columns)
+        $colWidths = [
+            'A'=>5,  'B'=>30, 'C'=>14, 'D'=>16, 'E'=>12, 'F'=>13,
+            'G'=>38, 'H'=>13, 'I'=>11, 'J'=>13, 'K'=>14, 'L'=>14,
+            'M'=>13, 'N'=>13, 'O'=>12, 'P'=>13, 'Q'=>22,
+        ];
+        foreach ($colWidths as $col => $w) {
+            $sheet->getColumnDimension($col)->setWidth($w);
+        }
+
+        // ── Row 1: Company / report title ────────────────────────────────
+        $sheet->mergeCells('A1:Q1');
+        $sheet->setCellValue('A1', 'CONSORCIO RODRIGUEZ CABALLERO S.A.C. — REPORTE FINANCIERO DE GESTIÓN');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle('A1')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('0F172A');
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal($H_CENTER)->setVertical($V_CENTER);
+        $sheet->getRowDimension(1)->setRowHeight(28);
+
+        // ── Row 2: Period / state / generation date ───────────────────────
+        $sheet->mergeCells('A2:Q2');
+        $sheet->setCellValue('A2', 'PERÍODO: ' . $periodoLabel . '   |   ESTADO: ' . $estadoLabel . '   |   Generado: ' . now()->format('d/m/Y H:i'));
+        $sheet->getStyle('A2')->getFont()->setSize(9)->getColor()->setRGB('94A3B8');
+        $sheet->getStyle('A2')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('0F172A');
+        $sheet->getStyle('A2')->getAlignment()->setHorizontal($H_CENTER)->setVertical($V_CENTER);
+        $sheet->getRowDimension(2)->setRowHeight(18);
+
+        // ── Row 3: Column headers (colored) ──────────────────────────────
+        $cols    = range('A', 'Q');
+        $headers = [
+            '#', 'EMPRESA', 'RUC', 'FACTURA', 'F. EMISIÓN', 'F. VENCIMIENTO', 'GLOSA',
+            'SUBTOTAL', 'IGV', 'RECAUDACIÓN', 'F. RECAUDACIÓN', 'TIPO RECAUD.',
+            'TOTAL', 'ABONADO', 'F. ABONO', 'PENDIENTE', 'ESTADO',
+        ];
+        foreach ($headers as $i => $h) {
+            $sheet->setCellValue($cols[$i] . '3', $h);
+        }
+        $sheet->getStyle('A3:Q3')->getFont()->setBold(true)->setSize(9)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle('A3:Q3')->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('1E3A5F');
+        $sheet->getStyle('A3:Q3')->getAlignment()->setHorizontal($H_CENTER)->setVertical($V_CENTER)->setWrapText(true);
+        $sheet->getStyle('A3:Q3')->getBorders()->getAllBorders()->setBorderStyle($BORDER_THIN);
+        $sheet->getRowDimension(3)->setRowHeight(32);
+
+        // ── Data rows starting at row 4 ───────────────────────────────────
+        $estadoColors = [
+            'VENCIDO'              => ['FEE2E2', '991B1B'],
+            'PAGO PARCIAL'         => ['E0E7FF', '3730A3'],
+            'DIFERENCIA PENDIENTE' => ['FCE7F3', '9D174D'],
+            'PAGADA'               => ['D1FAE5', '065F46'],
+            'PENDIENTE'            => ['FEF3C7', '92400E'],
+        ];
+
+        $uRow = 4;
+        $uIdx = 1;
+        $numCols = ['H', 'I', 'J', 'M', 'N', 'P'];
+
+        $facturasOrdenadas = $facturas->sortBy([
+            ['razon_social', 'asc'],
+            ['fecha_emision', 'asc'],
+        ]);
+
+        foreach ($facturasOrdenadas as $f) {
+            $esHuerfana  = in_array((int)($f->id_factura ?? 0), $orphanFacturaIds);
+            $recaudacion = (float)($f->monto_recaudacion ?? 0);
+            $pendiente   = $esHuerfana ? 0.0 : (
+                $f->estado === 'DIFERENCIA PENDIENTE'
+                    ? max(0.0, (float)($f->importe_total ?? 0) - $recaudacion)
+                    : (float)($f->pendiente_display ?? $f->monto_pendiente ?? 0)
+            );
+
+            $rowBg = ($uIdx % 2 === 0) ? 'F1F5F9' : 'FFFFFF';
+
+            $sheet->setCellValue('A' . $uRow, $uIdx);
+            $sheet->setCellValue('B' . $uRow, $f->razon_social ?? '');
+            $sheet->setCellValue('C' . $uRow, $f->ruc ?? '');
+            $sheet->setCellValue('D' . $uRow, ($f->serie ?? '') . '-' . str_pad((string)($f->numero ?? ''), 8, '0', STR_PAD_LEFT));
+            $sheet->setCellValue('E' . $uRow, !empty($f->fecha_emision)     ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y')     : '—');
+            $sheet->setCellValue('F' . $uRow, !empty($f->fecha_vencimiento) ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—');
+            $sheet->setCellValue('G' . $uRow, $f->glosa ?? '');
+            $sheet->setCellValue('H' . $uRow, !$esHuerfana ? (float)($f->subtotal_gravado ?? 0) : 0.0);
+            $sheet->setCellValue('I' . $uRow, !$esHuerfana ? (float)($f->monto_igv ?? 0) : 0.0);
+            $sheet->setCellValue('J' . $uRow, $recaudacion);
+            $sheet->setCellValue('K' . $uRow, !empty($f->fecha_recaudacion) ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—');
+            $sheet->setCellValue('L' . $uRow, $f->tipo_recaudacion ?? '—');
+            $sheet->setCellValue('M' . $uRow, !$esHuerfana ? (float)($f->importe_total ?? 0) : 0.0);
+            $sheet->setCellValue('N' . $uRow, !$esHuerfana ? (float)($f->monto_abonado ?? 0) : 0.0);
+            $sheet->setCellValue('O' . $uRow, !empty($f->fecha_abono) ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—');
+            $sheet->setCellValue('P' . $uRow, $esHuerfana ? 0.0 : $pendiente);
+            $sheet->setCellValue('Q' . $uRow, ($f->estado ?? '') . ($esHuerfana ? ' [NC]' : ''));
+
+            // Number formats + right-align
+            foreach ($numCols as $nc) {
+                $sheet->getStyle($nc . $uRow)->getNumberFormat()->setFormatCode('#,##0.00');
+                $sheet->getStyle($nc . $uRow)->getAlignment()->setHorizontal($H_RIGHT);
+            }
+
+            // Row background
+            $sheet->getStyle('A' . $uRow . ':Q' . $uRow)->getFill()
+                ->setFillType($FILL_SOLID)->getStartColor()->setRGB($rowBg);
+
+            // Estado cell color
+            [$eBg, $eFg] = $estadoColors[$f->estado ?? 'PENDIENTE'] ?? ['FEF3C7', '92400E'];
+            $sheet->getStyle('Q' . $uRow)->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB($eBg);
+            $sheet->getStyle('Q' . $uRow)->getFont()->setBold(true)->getColor()->setRGB($eFg);
+
+            // Thin border around entire row
+            $sheet->getStyle('A' . $uRow . ':Q' . $uRow)->getBorders()->getAllBorders()->setBorderStyle($BORDER_THIN);
+
+            // Strikethrough for orphan NC rows
+            if ($esHuerfana) {
+                $sheet->getStyle('A' . $uRow . ':P' . $uRow)->getFont()->setStrikethrough(true)->getColor()->setRGB('9CA3AF');
+            }
+
+            $sheet->getRowDimension($uRow)->setRowHeight(15);
+            $uRow++;
+            $uIdx++;
+        }
+
+        // ── Total row ─────────────────────────────────────────────────────
+        $sheet->mergeCells('A' . $uRow . ':G' . $uRow);
+        $sheet->setCellValue('A' . $uRow, 'TOTALES GENERALES  —  ' . $facturasParaTotales->count() . ' facturas');
+        $sheet->setCellValue('H' . $uRow, (float)$facturasParaTotales->sum('subtotal_gravado'));
+        $sheet->setCellValue('I' . $uRow, (float)$facturasParaTotales->sum('monto_igv'));
+        $sheet->setCellValue('J' . $uRow, (float)$facturasParaTotales->sum('monto_recaudacion'));
+        $sheet->setCellValue('M' . $uRow, (float)$facturasParaTotales->sum('importe_total'));
+        $sheet->setCellValue('N' . $uRow, (float)$facturasParaTotales->sum('monto_abonado'));
+        $sheet->setCellValue('P' . $uRow, (float)$facturasParaTotales->sum(function ($f) {
+            return $f->estado === 'DIFERENCIA PENDIENTE'
+                ? max(0.0, (float)($f->importe_total ?? 0) - (float)($f->monto_recaudacion ?? 0))
+                : (float)($f->pendiente_display ?? $f->monto_pendiente ?? 0);
+        }));
+        foreach ($numCols as $nc) {
+            $sheet->getStyle($nc . $uRow)->getNumberFormat()->setFormatCode('#,##0.00');
+            $sheet->getStyle($nc . $uRow)->getAlignment()->setHorizontal($H_RIGHT);
+        }
+        $sheet->getStyle('A' . $uRow . ':Q' . $uRow)->getFont()->setBold(true)->setSize(10)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle('A' . $uRow . ':Q' . $uRow)->getFill()->setFillType($FILL_SOLID)->getStartColor()->setRGB('1E293B');
+        $sheet->getStyle('A' . $uRow . ':Q' . $uRow)->getBorders()->getAllBorders()->setBorderStyle($BORDER_MEDIUM);
+        $sheet->getRowDimension($uRow)->setRowHeight(22);
+
+        // Freeze header rows
+        $sheet->freezePane('A4');
     }
 
     private function getColumn(int $number): string

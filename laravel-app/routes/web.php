@@ -17,7 +17,7 @@ use App\Http\Controllers\CotizacionExportController;
 use App\Http\Controllers\Configuracioncontroller;
 use App\Http\Controllers\ImportarClientesController;
 use App\Http\Controllers\CotizacionDocumentController;
-
+use App\Http\Controllers\SincronizacionController;
 
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────────────
@@ -63,6 +63,10 @@ Route::middleware('auth')->group(function () {
         [ValidarDetraccionesController::class, 'procesar']
     )->name('detracciones.procesar');
 
+    Route::get('/facturas/importar-retenciones',
+        [ImportarRetencionesController::class, 'index']
+    )->name('facturas.importar.retenciones');
+
     Route::post('/facturas/importar-retenciones/procesar',
         [ImportarRetencionesController::class, 'importar']
     )->name('facturas.importar.retenciones.procesar');
@@ -107,6 +111,23 @@ Route::middleware('auth')->group(function () {
         [ImportarFacturasController::class, 'importar']
     )->name('facturas.importar.procesar');
 
+    // ── SINCRONIZACIONES / HISTORIAL DE IMPORTACIONES ─────────────────
+    Route::get('/facturas/historial-importaciones',
+        [SincronizacionController::class, 'index']
+    )->name('sincronizaciones.index');
+
+    Route::post('/facturas/sincronizaciones/{id}/desactivar',
+        [SincronizacionController::class, 'desactivar']
+    )->whereNumber('id')->name('sincronizaciones.desactivar');
+
+    Route::post('/facturas/sincronizaciones/{id}/activar',
+        [SincronizacionController::class, 'activar']
+    )->whereNumber('id')->name('sincronizaciones.activar');
+
+    Route::get('/facturas/sincronizaciones/{id}/facturas',
+        [SincronizacionController::class, 'facturas']
+    )->whereNumber('id')->name('sincronizaciones.facturas');
+
     // ── IMPORTAR CLIENTES ─────────────────────────────────────────────
     Route::get('/clientes/importar',  [ImportarClientesController::class, 'index'])
         ->name('clientes.importar');
@@ -125,6 +146,8 @@ Route::middleware('auth')->group(function () {
     // Excel export para cotizaciones (debe ir antes de /cotizaciones/{id})
     Route::post('/cotizaciones/export-excel-bulk',
         [CotizacionExportController::class, 'exportExcelBulk'])->name('cotizaciones.export-excel-bulk');
+    Route::post('/cotizaciones/export-pdf-bulk',
+        [CotizacionExportController::class, 'exportPdfBulk'])->name('cotizaciones.export-pdf-bulk');
 
     Route::get('/cotizaciones',
         [CotizacionController::class, 'index'])->name('cotizaciones.index');

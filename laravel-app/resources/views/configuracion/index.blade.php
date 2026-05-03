@@ -4,7 +4,8 @@
 
 @push('styles')
     <style>
-        :root{--gold:#f5c842;--gold-b:#ead96a;--gold-m:#d4a017;--gold-l:#fffbeb;--gold-d:#9a6e10;}
+        :root{--gold:#f5c842;--gold-b:#ead96a;--gold-m:#d4a017;--gold-l:#fffbeb;--gold-d:#9a6e10;--bg:#fdf8ec;}
+        body { background: #fdf8ec !important; }
         @keyframes fadeDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
         @keyframes spin{to{transform:rotate(360deg)}}
@@ -46,7 +47,7 @@
         .info-box{background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 14px;font-size:12px;color:#0369a1;margin-top:14px;line-height:1.6;}
         .warn-box{background:#fffbeb;border:1px solid var(--gold-b);border-radius:8px;padding:12px 14px;font-size:12px;color:#92400e;margin-top:14px;line-height:1.6;}
 
-        #stateConectado,#stateQR,#stateError,#stateLoading{display:none;}
+        #stateConectado,#stateQR,#stateError,#stateLoading,#stateIdle{display:none;}
     </style>
 @endpush
 
@@ -63,19 +64,25 @@
         <div class="wa-card">
 
             <div class="wa-card-header">
-                <div class="wa-icon" id="waIconWrap">
-                    <div class="spinner-sm" style="width:24px;height:24px;border-width:3px;"></div>
+                <div class="wa-icon" id="waIconWrap" style="background:#f1f5f9;">
+                    <span style="font-size:22px;">📡</span>
                 </div>
                 <div style="flex:1;">
                     <div style="font-size:15px;font-weight:800;color:var(--text-primary);">Conexión WhatsApp</div>
-                    <div style="font-size:12px;color:var(--text-muted);margin-top:2px;" id="waStatusText">Verificando estado…</div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:2px;" id="waStatusText">Haz clic en Verificar para comprobar el estado</div>
                 </div>
                 <span id="statusBadge" style="padding:4px 12px;border-radius:20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;background:#f1f5f9;color:#64748b;">
-                    <span class="spinner-sm" style="width:14px;height:14px;border-width:2px;"></span>
+                    Sin verificar
                 </span>
             </div>
 
             <div class="wa-card-body">
+
+                <div id="stateIdle" style="text-align:center;padding:30px 0;display:block;">
+                    <div style="font-size:48px;margin-bottom:12px;">📡</div>
+                    <div style="font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">Estado no verificado</div>
+                    <div style="font-size:12px;color:var(--text-muted);">Haz clic en <strong>Verificar</strong> para comprobar la conexión con el worker.</div>
+                </div>
 
                 <div id="stateLoading" style="text-align:center;padding:30px 0;">
                     <div class="spinner-sm" style="width:36px;height:36px;border-width:4px;margin:0 auto 12px;"></div>
@@ -151,7 +158,7 @@
             </div>
 
             <div style="padding:12px 24px;border-top:1px solid var(--gold-b);background:var(--gold-l);display:flex;align-items:center;justify-content:space-between;gap:10px;">
-                <span style="font-size:11px;color:var(--text-muted);">Auto-verifica cada <strong>30 segundos</strong></span>
+                <span style="font-size:11px;color:var(--text-muted);">Verificación <strong>manual</strong></span>
                 <button class="btn-wa-action btn-refresh" style="height:32px;font-size:12px;" onclick="verificarEstado()">
                     <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     Verificar ahora
@@ -181,7 +188,7 @@
         }
 
         function showState(estado) {
-            ['stateConectado','stateQR','stateError','stateLoading'].forEach(id => {
+            ['stateConectado','stateQR','stateError','stateLoading','stateIdle'].forEach(id => {
                 document.getElementById(id).style.display = 'none';
             });
             document.getElementById('state' + estado).style.display = 'block';
@@ -308,7 +315,6 @@
                     statusText.textContent = 'Escanea el QR para conectar';
                     showState('QR');
                     cargarQR();
-                    startQrPoll(); // Detectar automáticamente cuando se escanee
                 }
 
             } catch(e) {
@@ -413,8 +419,6 @@
             }
         }
 
-        // ── Arranque ─────────────────────────────────────────────────────────────────
-        verificarEstado();
-        setInterval(verificarEstado, 30000);
+        // ── Sin auto-arranque: el usuario verifica manualmente ──────────────────────
     </script>
 @endpush

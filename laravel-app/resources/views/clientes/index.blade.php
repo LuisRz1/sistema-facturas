@@ -11,8 +11,6 @@
 @section('breadcrumb', 'Directorio de Clientes')
 
 @push('styles')
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --gold:       #f5c842;
@@ -35,7 +33,7 @@
             --gray-bg:    #f1f5f9;
             --gray-t:     #64748b;
         }
-        body { font-family: 'Plus Jakarta Sans', sans-serif !important; background: var(--bg) !important; }
+        body { background: var(--bg) !important; }
         @keyframes fadeDown  { from { opacity:0; transform:translateY(-14px) } to { opacity:1; transform:translateY(0) } }
         @keyframes slideUp   { from { opacity:0; transform:translateY(22px)  } to { opacity:1; transform:translateY(0) } }
         @keyframes rowIn     { from { opacity:0; transform:translateX(-8px)  } to { opacity:1; transform:translateX(0) } }
@@ -59,15 +57,15 @@
         .card-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px !important; border-bottom: 1px solid #fef3c7 !important; background: transparent !important; }
         .card-title { font-size: 15px !important; font-weight: 700 !important; color: var(--text) !important; }
         .card-desc  { font-size: 12px; color: var(--text-s); margin-top: 2px; }
-        .btn-add, .btn.btn-primary { display: inline-flex !important; align-items: center !important; gap: 7px !important; background: var(--gold) !important; color: var(--text) !important; border: none !important; border-radius: 10px !important; padding: 9px 18px !important; font-size: 13px !important; font-weight: 700 !important; font-family: 'Plus Jakarta Sans', sans-serif !important; cursor: pointer; transition: background .15s, transform .12s, box-shadow .15s; position: relative; overflow: hidden; text-decoration: none; }
+        .btn-add, .btn.btn-primary { display: inline-flex !important; align-items: center !important; gap: 7px !important; background: var(--gold) !important; color: var(--text) !important; border: none !important; border-radius: 10px !important; padding: 9px 18px !important; font-size: 13px !important; font-weight: 700 !important; cursor: pointer; transition: background .15s, transform .12s, box-shadow .15s; position: relative; overflow: hidden; text-decoration: none; }
         .btn-add:hover, .btn.btn-primary:hover { background: var(--gold-h) !important; transform: translateY(-1px); box-shadow: 0 6px 20px #f5c84230; color: var(--text) !important; }
-        .btn-import { display: inline-flex !important; align-items: center !important; gap: 7px !important; background: #fff !important; color: var(--gold-d) !important; border: 1.5px solid var(--gold-b) !important; border-radius: 10px !important; padding: 9px 18px !important; font-size: 13px !important; font-weight: 700 !important; font-family: 'Plus Jakarta Sans', sans-serif !important; cursor: pointer; transition: all .15s; text-decoration: none; }
+        .btn-import { display: inline-flex !important; align-items: center !important; gap: 7px !important; background: #fff !important; color: var(--gold-d) !important; border: 1.5px solid var(--gold-b) !important; border-radius: 10px !important; padding: 9px 18px !important; font-size: 13px !important; font-weight: 700 !important; cursor: pointer; transition: all .15s; text-decoration: none; }
         .btn-import:hover { background: var(--gold-l) !important; border-color: var(--gold-m) !important; color: var(--gold-d) !important; transform: translateY(-1px); }
         .search-bar, .toolbar { display: flex; align-items: center; gap: 10px; padding: 14px 24px; border-bottom: 1px solid #fef9e0; flex-wrap: wrap; }
         .search-input-wrap { position: relative; max-width: 300px; flex: 1; }
         .search-input-wrap svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #c8a832; pointer-events: none; }
         .search-input-wrap .form-input, input[type="text"].form-input { padding-left: 34px !important; }
-        .form-input, .form-select { height: 38px !important; border: 1.5px solid var(--gold-b) !important; border-radius: 10px !important; font-size: 13px !important; font-family: 'Plus Jakarta Sans', sans-serif !important; color: var(--text) !important; background: var(--white) !important; outline: none; transition: border-color .15s, box-shadow .15s; }
+        .form-input, .form-select { height: 38px !important; border: 1.5px solid var(--gold-b) !important; border-radius: 10px !important; font-size: 13px !important; color: var(--text) !important; background: var(--white) !important; outline: none; transition: border-color .15s, box-shadow .15s; }
         .form-input:focus, .form-select:focus { border-color: var(--gold-m) !important; box-shadow: 0 0 0 3px #f5c84220 !important; }
         .form-input::placeholder { color: #c4af70; }
         .form-select { padding: 0 12px !important; cursor: pointer; width: auto !important; min-width: 170px !important; }
@@ -116,7 +114,7 @@
         .form-label { display: block; font-size: 11px !important; font-weight: 700 !important; letter-spacing: .6px !important; text-transform: uppercase !important; color: var(--text-s) !important; margin-bottom: 6px !important; }
         .modal .form-input { height: 42px !important; font-size: 13.5px !important; }
         .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 28px; border-top: 1px solid #fef9e0; }
-        .btn-outline, .btn.btn-outline { height: 40px; padding: 0 18px; border: 1.5px solid var(--gold-b) !important; border-radius: 10px !important; background: var(--white) !important; color: var(--text-m) !important; font-size: 13px !important; font-weight: 600 !important; font-family: 'Plus Jakarta Sans', sans-serif !important; cursor: pointer; transition: all .15s; }
+        .btn-outline, .btn.btn-outline { height: 40px; padding: 0 18px; border: 1.5px solid var(--gold-b) !important; border-radius: 10px !important; background: var(--white) !important; color: var(--text-m) !important; font-size: 13px !important; font-weight: 600 !important; cursor: pointer; transition: all .15s; }
         .btn-outline:hover, .btn.btn-outline:hover { background: var(--gold-l) !important; border-color: var(--gold-m) !important; }
         .btn.btn-primary#btnSubmit { height: 40px; }
         .font-mono { font-family: 'Courier New', monospace; }

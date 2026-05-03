@@ -3,59 +3,54 @@
 @section('breadcrumb', 'Panel Principal')
 
 @push('styles')
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Outfit:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --gold: #F5C518;
-            --gold-light: #FFF3B0;
-            --gold-mid: #FFE166;
-            --gold-dark: #C49A00;
-            --onyx: #111111;
-            --slate: #4A4A4A;
-            --smoke: #F8F8F6;
-            --border-light: #E8E4D9;
+            --gold:   #f5c842;
+            --gold-h: #e8b820;
+            --gold-l: #fffbeb;
+            --gold-b: #ead96a;
+            --gold-m: #d4a017;
+            --gold-d: #9a6e10;
+            --bg:     #fdf8ec;
         }
         body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--smoke);
-            color: var(--onyx);
+            background: var(--bg);
+            color: var(--text-primary);
         }
         .page-title {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 38px;
-            font-weight: 700;
-            color: var(--onyx);
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--text-primary);
+            letter-spacing: -.4px;
         }
         .page-desc {
-            font-size: 12.5px;
-            color: var(--slate);
-            font-weight: 500;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 4px;
         }
         .btn {
-            font-family: 'Outfit', sans-serif;
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 10px;
         }
         .btn-outline {
-            background: transparent;
-            color: var(--onyx);
-            border: 1.5px solid var(--border-light);
+            background: #fff;
+            color: var(--gold-d);
+            border: 1.5px solid var(--gold-b);
         }
         .btn-outline:hover {
-            border-color: var(--gold);
-            color: var(--gold-dark);
+            background: var(--gold-l);
+            border-color: var(--gold-m);
+            color: var(--gold-d);
         }
         .btn-ghost {
             background: transparent;
-            color: var(--slate);
+            color: var(--text-muted);
             border: 1px solid transparent;
         }
         .btn-ghost:hover {
-            background: var(--gold-light);
-            color: var(--onyx);
+            background: var(--gold-l);
+            color: var(--text-primary);
         }
 
         /* ── PERÍODO SELECTOR ─────────────────────────────────────── */
@@ -67,94 +62,93 @@
             margin-bottom: 28px;
             padding: 14px 22px;
             background: #fff;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+            border-radius: 14px;
+            border: 1.5px solid var(--gold-b);
             border-top: 3px solid var(--gold);
         }
         .period-bar label {
-            font-size: 10px;
-            font-weight: 500;
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: .16em;
-            color: var(--slate);
+            letter-spacing: .1em;
+            color: var(--text-muted);
             white-space: nowrap;
         }
         .period-bar input[type="date"] {
-            height: 36px;
+            height: 38px;
             padding: 0 12px;
-            border: 1.5px solid var(--border-light);
-            border-radius: 4px;
+            border: 1.5px solid var(--gold-b);
+            border-radius: 10px;
             font-size: 13px;
             font-family: 'DM Mono', monospace;
-            background: var(--smoke);
-            color: var(--onyx);
+            background: #fff;
+            color: var(--text-primary);
             outline: none;
-            transition: border-color .15s, background .15s;
+            transition: border-color .15s;
             cursor: pointer;
         }
-        .period-bar input[type="date"]:focus { border-color: var(--gold); background: #fff; }
-        .period-bar .sep { color: var(--gold-dark); font-weight: 900; font-size: 16px; }
+        .period-bar input[type="date"]:focus { border-color: var(--gold-m); box-shadow: 0 0 0 3px #f5c84220; }
+        .period-bar .sep { color: var(--gold-m); font-weight: 900; font-size: 16px; }
         .period-bar .period-info {
             font-size: 12px;
-            color: var(--slate);
+            color: var(--text-muted);
             margin-left: auto;
-            background: var(--gold-light);
+            background: var(--gold-l);
             padding: 5px 14px;
             border-radius: 20px;
-            border: 1px solid var(--gold-mid);
+            border: 1px solid var(--gold-b);
         }
-        .period-bar .period-info strong { color: var(--onyx); font-family: 'DM Mono', monospace; }
+        .period-bar .period-info strong { color: var(--text-primary); font-family: 'DM Mono', monospace; }
         .tipo-cliente-toggle {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
             padding: 3px;
-            border: 1.5px solid var(--border-light);
-            border-radius: 6px;
+            border: 1.5px solid var(--gold-b);
+            border-radius: 10px;
             background: #fff;
         }
         .tipo-btn {
-            height: 30px;
-            padding: 0 12px;
+            height: 32px;
+            padding: 0 14px;
             border: 0;
-            border-radius: 4px;
+            border-radius: 8px;
             background: transparent;
-            color: var(--slate);
-            font-size: 10px;
-            font-weight: 500;
-            letter-spacing: .12em;
-            text-transform: uppercase;
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
             cursor: pointer;
             transition: all .15s;
         }
         .tipo-btn:hover {
-            color: var(--onyx);
-            background: var(--gold-light);
+            color: var(--text-primary);
+            background: var(--gold-l);
         }
         .tipo-btn.active {
             background: var(--gold);
-            color: var(--onyx);
+            color: #1c1600;
+            font-weight: 700;
         }
 
         /* ── KPI CARDS ────────────────────────────────────────────── */
         .kpi-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 18px;
+            gap: 16px;
             margin-bottom: 28px;
         }
         .kpi-card {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            padding: 22px 22px 18px;
-            box-shadow: var(--shadow);
+            background: #fff;
+            border: 1.5px solid var(--gold-b);
+            border-radius: 14px;
+            padding: 20px 22px 16px;
             position: relative;
             overflow: hidden;
             transition: box-shadow .2s, transform .2s;
             cursor: default;
         }
         .kpi-card:hover {
-            box-shadow: var(--shadow-lg);
+            box-shadow: 0 6px 22px #f5c84222;
             transform: translateY(-2px);
         }
         .kpi-card::before {
@@ -162,10 +156,11 @@
             position: absolute;
             top: 0; left: 0; right: 0;
             height: 3px;
+            border-radius: 14px 14px 0 0;
         }
         .kpi-blue::before  { background: linear-gradient(90deg, #1d4ed8, #3b82f6); }
         .kpi-green::before { background: linear-gradient(90deg, #059669, #34d399); }
-        .kpi-amber::before { background: linear-gradient(90deg, #d97706, #fbbf24); }
+        .kpi-amber::before { background: var(--gold); }
         .kpi-red::before   { background: linear-gradient(90deg, #dc2626, #f87171); }
 
         .kpi-header {
@@ -287,15 +282,16 @@
         .rank-num {
             width: 22px; height: 22px;
             border-radius: 6px;
-            background: #f1f5f9;
+            background: var(--gold-l);
+            border: 1px solid var(--gold-b);
             display: flex; align-items: center; justify-content: center;
             font-size: 10px; font-weight: 800;
-            color: var(--text-muted);
+            color: var(--gold-d);
             flex-shrink: 0;
         }
-        .rank-num.top1 { background: #fef3c7; color: #92400e; }
-        .rank-num.top2 { background: #f3f4f6; color: #374151; }
-        .rank-num.top3 { background: #fef3c7; color: #b45309; }
+        .rank-num.top1 { background: var(--gold); color: #1c1600; border-color: var(--gold-m); }
+        .rank-num.top2 { background: #f3f4f6; color: #374151; border-color: #e5e7eb; }
+        .rank-num.top3 { background: var(--gold-l); color: var(--gold-d); border-color: var(--gold-b); }
         .rank-name {
             flex: 1;
             font-size: 12.5px;
@@ -334,10 +330,11 @@
         .recent-icon {
             width: 34px; height: 34px;
             border-radius: 8px;
-            background: #f1f5f9;
+            background: var(--gold-l);
+            border: 1px solid var(--gold-b);
             display: flex; align-items: center; justify-content: center;
             flex-shrink: 0;
-            color: var(--text-muted);
+            color: var(--gold-m);
         }
         .recent-main { flex: 1; min-width: 0; }
         .recent-num  { font-size: 12.5px; font-weight: 700; font-family: 'DM Mono', monospace; color: var(--text-primary); }
@@ -370,7 +367,9 @@
 
     <div class="page-header">
         <div>
-            <h1 class="page-title">Panel Principal</h1>
+            <h1 class="page-title">
+                <span style="display:inline-block;width:28px;height:3px;background:var(--gold);border-radius:2px;margin-right:8px;vertical-align:middle;margin-bottom:3px;"></span>Panel Principal
+            </h1>
             <p class="page-desc">Resumen financiero del período seleccionado — Consorcio Rodriguez Caballero S.A.C.</p>
         </div>
         <a href="{{ route('facturas.index', ['fecha_desde' => $fechaDesde, 'fecha_hasta' => $fechaHasta]) }}"

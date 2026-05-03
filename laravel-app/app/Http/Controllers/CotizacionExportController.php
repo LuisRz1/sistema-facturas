@@ -124,7 +124,129 @@ class CotizacionExportController extends Controller
         $filename = 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.xlsx';
         return $this->streamDownload($spreadsheet, $filename);
     }
+    // ── Bulk PDF export (POST with filter params) ───────────────────────
+    public function exportPdfBulk(Request $request)
+    {
+        $ids = $request->input('ids', []);
 
+        if (empty($ids)) {
+            $query = DB::table('cotizacion')->where('activo', 1);
+            if ($request->filled('tipo'))        $query->where('tipo_cotizacion', $request->tipo);
+            if ($request->filled('id_cliente'))  $query->where('id_cliente', $request->id_cliente);
+            if ($request->filled('fecha_desde')) $query->where('periodo_inicio', '>=', $request->fecha_desde);
+            if ($request->filled('fecha_hasta')) $query->where('periodo_fin', '<=', $request->fecha_hasta);
+            if ($request->filled('search')) {
+                $search = trim((string)$request->search);
+                $query->join('cliente as cl', 'cl.id_cliente', '=', 'cotizacion.id_cliente')
+                    ->where(function ($q) use ($search) {
+                        $q->where('cotizacion.obra', 'like', "%{$search}%")
+                            ->orWhere('cotizacion.numero_valorizacion', 'like', "%{$search}%")
+                            ->orWhere('cl.razon_social', 'like', "%{$search}%");
+                    });
+            }
+            $ids = $query->orderBy('cotizacion.id_cotizacion')->pluck('cotizacion.id_cotizacion')->toArray();
+        }
+
+        if (empty($ids)) {
+            return back()->with('error', 'No hay valorizaciones que exportar.');
+        }
+
+        $htmlParts    = [];
+        $hasLandscape = false;
+
+        foreach ($ids as $id) {
+            $cotizacion = $this->getCotizacionWithDetails($id);
+            if (!$cotizacion) continue;
+
+            $filas        = $this->getFilas($cotizacion);
+            $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
+            if ($esMaquinaria) $hasLandscape = true;
+
+            $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria'))->render();
+            $html = preg_replace('/<div class="no-print".*?<\/div>/s', '', $html);
+            $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
+            $htmlParts[] = $html;
+        }
+
+        if (empty($htmlParts)) {
+            return back()->with('error', 'No se encontraron valorizaciones válidas para exportar.');
+        }
+
+        // Extract CSS from first render and body content from all renders
+        $sharedCss = '';
+        $bodyParts  = [];
+        foreach ($htmlParts as $html) {
+            if ($sharedCss === '' && preg_match('/<style[^>]*>(.*?)<\/style>/s', $html, $cm)) {
+                $sharedCss = $cm[1];
+            }
+            if (preg_match('/<body[^>]*>(.*?)<\/body>/s', $html, $bm)) {
+                $bodyParts[] = $bm[1];
+            } else {
+                $bodyParts[] = $html;
+            }
+        }
+
+        // Build a single valid HTML document — page-break-before on sections 2+
+        $sections = '';
+        foreach ($bodyParts as $i => $body) {
+            $pb = $i > 0 ? 'style="page-break-before:always;"' : '';
+            $sections .= "<div {$pb}>{$body}</div>";
+        }
+
+        $orientation = $hasLandscape ? 'landscape' : 'portrait';
+        $pageSize    = $hasLandscape ? 'A4 landscape' : 'A4';
+
+        $combinedHtml = <<<HTML
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+{$sharedCss}
+/* ── PDF compact overrides ─────────────────────────────────── */
+body   { font-size: 9.5px; }
+.page  { padding: 6px 8px; max-width: 100%; }
+table  { font-size: 9px; table-layout: fixed; width: 100%; }
+thead tr th {
+    padding: 4px 4px;
+    font-size: 8.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+tbody td {
+    padding: 3px 4px;
+    font-size: 9px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.header-top       { margin-bottom: 6px; padding-bottom: 6px; }
+.logo-circle      { width: 48px; height: 48px; font-size: 15px; }
+.empresa-name-big { font-size: 15px; }
+.header-right h1  { font-size: 15px; }
+.header-right .ruc-big { font-size: 13px; }
+.val-title        { font-size: 11px; padding: 4px 8px; }
+.val-subtitle     { font-size: 10px; padding: 3px 8px; }
+.meta-grid        { font-size: 9.5px; margin-bottom: 6px; }
+.summary-block    { margin-top: 8px; }
+.signatures       { margin-top: 16px; }
+@page { size: {$pageSize}; margin: 7mm; }
+</style>
+</head>
+<body>
+{$sections}
+</body>
+</html>
+HTML;
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($combinedHtml)
+            ->setPaper('a4', $orientation)
+            ->setOptions(['isHtml5ParserEnabled' => true, 'isRemoteEnabled' => false, 'defaultPaperOrientation' => $orientation]);
+
+        $filename = 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.pdf';
+        return $pdf->download($filename);
+    }
     // ── Build one sheet matching the provided Excel format ────────────────
     private function buildSheet(
         \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet,

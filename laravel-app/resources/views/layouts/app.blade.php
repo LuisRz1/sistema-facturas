@@ -154,6 +154,45 @@
         .nav-item svg { flex-shrink: 0; opacity: .9; }
         .nav-item.active svg { opacity: 1; }
 
+        .nav-sub-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px 7px 30px;
+            border-radius: var(--radius-sm);
+            color: var(--sidebar-muted);
+            text-decoration: none;
+            font-size: 12.5px;
+            font-weight: 500;
+            transition: all .18s ease;
+            margin-bottom: 2px;
+            border: 1px solid transparent;
+            position: relative;
+        }
+        .nav-sub-item::before {
+            content: '';
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--sidebar-muted);
+            opacity: .5;
+        }
+        .nav-sub-item:hover {
+            background: var(--sidebar-hover);
+            color: #fff4cf;
+        }
+        .nav-sub-item:hover::before { background: #f5c842; opacity: 1; }
+        .nav-sub-item.active {
+            color: #f5c842;
+            background: rgba(245,200,66,.08);
+            border-color: rgba(245,200,66,.15);
+        }
+        .nav-sub-item.active::before { background: #f5c842; opacity: 1; }
+
         .sidebar-footer {
             padding: 16px 12px;
             border-top: 1px solid var(--sidebar-border);
@@ -616,11 +655,18 @@
             Panel Principal
         </a>
 
-        <a href="{{ route('facturas.index') }}" class="nav-item {{ request()->routeIs('facturas.*') ? 'active' : '' }}">
+        <a href="{{ route('facturas.index') }}" class="nav-item {{ request()->routeIs('facturas.*') && !request()->routeIs('sincronizaciones.*') ? 'active' : '' }}">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             Gestión de Facturas
+        </a>
+
+        <a href="{{ route('sincronizaciones.index') }}" class="nav-sub-item {{ request()->routeIs('sincronizaciones.index') ? 'active' : '' }}">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+            Historial de Importaciones
         </a>
 
         <a href="{{ route('clientes.index') }}" class="nav-item {{ request()->routeIs('clientes.*') ? 'active' : '' }}">
