@@ -10,6 +10,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 /**
  * Handles Excel export for cotizaciones.
@@ -24,6 +25,9 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
  */
 class CotizacionExportController extends Controller
 {
+    private const LOGO_WIDTH_CM = 9.45;
+    private const LOGO_HEIGHT_CM = 3.89;
+
     // ── Single cotización export ───────────────────────────────────────────
     public function exportExcel(int $id)
     {
@@ -37,10 +41,7 @@ class CotizacionExportController extends Controller
 
         $this->buildSheet($sheet, $cotizacion, $filas);
 
-        $filename = 'Valorizacion_'
-            . preg_replace('/[^A-Za-z0-9\-_]/', '_', $cotizacion->numero_valorizacion)
-            . '_' . preg_replace('/[^A-Za-z0-9\-_]/', '_', $cotizacion->obra)
-            . '_' . now()->format('Ymd') . '.xlsx';
+        $filename = $this->buildValorizacionFilename($cotizacion, 'xlsx');
 
         return $this->streamDownload($spreadsheet, $filename);
     }
@@ -56,44 +57,91 @@ class CotizacionExportController extends Controller
         $filas = $this->getFilas($cotizacion);
         $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
 
-        $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria'))->render();
+        $forPdf = true;
+        $logoDataUri = $this->getLogoDataUri();
+        $logoPath = $this->getLogoFilePath();
+
+        $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria', 'forPdf', 'logoDataUri', 'logoPath'))->render();
         $html = preg_replace('/<div class="no-print".*?<\/div>/s', '', $html);
         $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)
             ->setPaper('a4', $esMaquinaria ? 'landscape' : 'portrait');
 
-        $filename = 'Valorizacion_'
-            . preg_replace('/[^A-Za-z0-9\-_]/', '_', (string) $cotizacion->numero_valorizacion)
-            . '_' . preg_replace('/[^A-Za-z0-9\-_]/', '_', (string) $cotizacion->obra)
-            . '_' . now()->format('Ymd') . '.pdf';
+        $filename = $this->buildValorizacionFilename($cotizacion, 'pdf');
 
         return $pdf->download($filename);
+    }
+
+    // ── Bulk PDF export (POST with array of ids or filter params) ────────
+    public function exportPdfBulk(Request $request)
+    {
+        $ids = $this->resolveBulkIds($request);
+
+        if (empty($ids)) {
+            return back()->with('error', 'No hay cotizaciones que exportar.');
+        }
+
+        $tempDir = storage_path('app/temp');
+        @mkdir($tempDir, 0755, true);
+
+        $pdfPaths = [];
+
+        foreach ($ids as $id) {
+            $cotizacion = $this->getCotizacionWithDetails((int) $id);
+            if (!$cotizacion) {
+                continue;
+            }
+
+            $filas = $this->getFilas($cotizacion);
+            $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
+            $forPdf = true;
+            $logoDataUri = $this->getLogoDataUri();
+            $logoPath = $this->getLogoFilePath();
+
+            $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria', 'forPdf', 'logoDataUri', 'logoPath'))->render();
+            $html = preg_replace('/<div class="no-print".*?<\/div>/s', '', $html);
+            $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
+
+            $pdfContent = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)
+                ->setPaper('a4', $esMaquinaria ? 'landscape' : 'portrait')
+                ->output();
+
+            $tmpPath = $tempDir . '/cot_bulk_' . $cotizacion->id_cotizacion . '_' . time() . '_' . mt_rand(1000, 9999) . '.pdf';
+            file_put_contents($tmpPath, $pdfContent);
+            $pdfPaths[] = $tmpPath;
+        }
+
+        if (empty($pdfPaths)) {
+            return back()->with('error', 'No se encontraron cotizaciones válidas para exportar.');
+        }
+
+        if (count($pdfPaths) === 1) {
+            $single = $pdfPaths[0];
+            return response()->download($single, 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.pdf')
+                ->deleteFileAfterSend(true);
+        }
+
+        $outputPath = $tempDir . '/valorizaciones_bulk_' . time() . '.pdf';
+        if (!$this->mergePdfsWithFpdi($pdfPaths, $outputPath) && !$this->mergePdfsWithQpdf($pdfPaths, $outputPath)) {
+            foreach ($pdfPaths as $p) {
+                @unlink($p);
+            }
+            return back()->with('error', 'No se pudo combinar los PDFs para exportación masiva.');
+        }
+
+        foreach ($pdfPaths as $p) {
+            @unlink($p);
+        }
+
+        return response()->download($outputPath, 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.pdf')
+            ->deleteFileAfterSend(true);
     }
 
     // ── Bulk export (POST with array of ids or filter params) ─────────────
     public function exportExcelBulk(Request $request)
     {
-        $ids = $request->input('ids', []);
-
-        // If no specific IDs, export all matching filters
-        if (empty($ids)) {
-            $query = DB::table('cotizacion')->where('activo', 1);
-            if ($request->filled('tipo'))        $query->where('tipo_cotizacion', $request->tipo);
-            if ($request->filled('id_cliente'))  $query->where('id_cliente', $request->id_cliente);
-            if ($request->filled('fecha_desde')) $query->where('periodo_inicio', '>=', $request->fecha_desde);
-            if ($request->filled('fecha_hasta')) $query->where('periodo_fin', '<=', $request->fecha_hasta);
-            if ($request->filled('search')) {
-                $search = trim((string)$request->search);
-                $query->join('cliente as cl', 'cl.id_cliente', '=', 'cotizacion.id_cliente')
-                    ->where(function ($q) use ($search) {
-                        $q->where('cotizacion.obra', 'like', "%{$search}%")
-                            ->orWhere('cotizacion.numero_valorizacion', 'like', "%{$search}%")
-                            ->orWhere('cl.razon_social', 'like', "%{$search}%");
-                    });
-            }
-            $ids = $query->pluck('id_cotizacion')->toArray();
-        }
+        $ids = $this->resolveBulkIds($request);
 
         if (empty($ids)) {
             return back()->with('error', 'No hay cotizaciones que exportar.');
@@ -121,132 +169,39 @@ class CotizacionExportController extends Controller
             return back()->with('error', 'No se encontraron cotizaciones válidas para exportar.');
         }
 
+        // Mantiene el encabezado visible en cada página al imprimir/exportar.
+        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 12);
+
         $filename = 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.xlsx';
         return $this->streamDownload($spreadsheet, $filename);
     }
-    // ── Bulk PDF export (POST with filter params) ───────────────────────
-    public function exportPdfBulk(Request $request)
+
+    private function resolveBulkIds(Request $request): array
     {
         $ids = $request->input('ids', []);
 
-        if (empty($ids)) {
-            $query = DB::table('cotizacion')->where('activo', 1);
-            if ($request->filled('tipo'))        $query->where('tipo_cotizacion', $request->tipo);
-            if ($request->filled('id_cliente'))  $query->where('id_cliente', $request->id_cliente);
-            if ($request->filled('fecha_desde')) $query->where('periodo_inicio', '>=', $request->fecha_desde);
-            if ($request->filled('fecha_hasta')) $query->where('periodo_fin', '<=', $request->fecha_hasta);
-            if ($request->filled('search')) {
-                $search = trim((string)$request->search);
-                $query->join('cliente as cl', 'cl.id_cliente', '=', 'cotizacion.id_cliente')
-                    ->where(function ($q) use ($search) {
-                        $q->where('cotizacion.obra', 'like', "%{$search}%")
-                            ->orWhere('cotizacion.numero_valorizacion', 'like', "%{$search}%")
-                            ->orWhere('cl.razon_social', 'like', "%{$search}%");
-                    });
-            }
-            $ids = $query->orderBy('cotizacion.id_cotizacion')->pluck('cotizacion.id_cotizacion')->toArray();
+        if (!empty($ids)) {
+            return array_values(array_filter(array_map('intval', (array) $ids)));
         }
 
-        if (empty($ids)) {
-            return back()->with('error', 'No hay valorizaciones que exportar.');
+        $query = DB::table('cotizacion')->where('activo', 1);
+        if ($request->filled('tipo'))        $query->where('tipo_cotizacion', $request->tipo);
+        if ($request->filled('id_cliente'))  $query->where('id_cliente', $request->id_cliente);
+        if ($request->filled('fecha_desde')) $query->where('periodo_inicio', '>=', $request->fecha_desde);
+        if ($request->filled('fecha_hasta')) $query->where('periodo_fin', '<=', $request->fecha_hasta);
+        if ($request->filled('search')) {
+            $search = trim((string) $request->search);
+            $query->join('cliente as cl', 'cl.id_cliente', '=', 'cotizacion.id_cliente')
+                ->where(function ($q) use ($search) {
+                    $q->where('cotizacion.obra', 'like', "%{$search}%")
+                        ->orWhere('cotizacion.numero_valorizacion', 'like', "%{$search}%")
+                        ->orWhere('cl.razon_social', 'like', "%{$search}%");
+                });
         }
 
-        $htmlParts    = [];
-        $hasLandscape = false;
-
-        foreach ($ids as $id) {
-            $cotizacion = $this->getCotizacionWithDetails($id);
-            if (!$cotizacion) continue;
-
-            $filas        = $this->getFilas($cotizacion);
-            $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
-            if ($esMaquinaria) $hasLandscape = true;
-
-            $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria'))->render();
-            $html = preg_replace('/<div class="no-print".*?<\/div>/s', '', $html);
-            $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
-            $htmlParts[] = $html;
-        }
-
-        if (empty($htmlParts)) {
-            return back()->with('error', 'No se encontraron valorizaciones válidas para exportar.');
-        }
-
-        // Extract CSS from first render and body content from all renders
-        $sharedCss = '';
-        $bodyParts  = [];
-        foreach ($htmlParts as $html) {
-            if ($sharedCss === '' && preg_match('/<style[^>]*>(.*?)<\/style>/s', $html, $cm)) {
-                $sharedCss = $cm[1];
-            }
-            if (preg_match('/<body[^>]*>(.*?)<\/body>/s', $html, $bm)) {
-                $bodyParts[] = $bm[1];
-            } else {
-                $bodyParts[] = $html;
-            }
-        }
-
-        // Build a single valid HTML document — page-break-before on sections 2+
-        $sections = '';
-        foreach ($bodyParts as $i => $body) {
-            $pb = $i > 0 ? 'style="page-break-before:always;"' : '';
-            $sections .= "<div {$pb}>{$body}</div>";
-        }
-
-        $orientation = $hasLandscape ? 'landscape' : 'portrait';
-        $pageSize    = $hasLandscape ? 'A4 landscape' : 'A4';
-
-        $combinedHtml = <<<HTML
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<style>
-{$sharedCss}
-/* ── PDF compact overrides ─────────────────────────────────── */
-body   { font-size: 9.5px; }
-.page  { padding: 6px 8px; max-width: 100%; }
-table  { font-size: 9px; table-layout: fixed; width: 100%; }
-thead tr th {
-    padding: 4px 4px;
-    font-size: 8.5px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-tbody td {
-    padding: 3px 4px;
-    font-size: 9px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.header-top       { margin-bottom: 6px; padding-bottom: 6px; }
-.logo-circle      { width: 48px; height: 48px; font-size: 15px; }
-.empresa-name-big { font-size: 15px; }
-.header-right h1  { font-size: 15px; }
-.header-right .ruc-big { font-size: 13px; }
-.val-title        { font-size: 11px; padding: 4px 8px; }
-.val-subtitle     { font-size: 10px; padding: 3px 8px; }
-.meta-grid        { font-size: 9.5px; margin-bottom: 6px; }
-.summary-block    { margin-top: 8px; }
-.signatures       { margin-top: 16px; }
-@page { size: {$pageSize}; margin: 7mm; }
-</style>
-</head>
-<body>
-{$sections}
-</body>
-</html>
-HTML;
-
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($combinedHtml)
-            ->setPaper('a4', $orientation)
-            ->setOptions(['isHtml5ParserEnabled' => true, 'isRemoteEnabled' => false, 'defaultPaperOrientation' => $orientation]);
-
-        $filename = 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.pdf';
-        return $pdf->download($filename);
+        return array_values(array_filter(array_map('intval', $query->pluck('id_cotizacion')->toArray())));
     }
+
     // ── Build one sheet matching the provided Excel format ────────────────
     private function buildSheet(
         \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet,
@@ -294,11 +249,14 @@ HTML;
         $sheet->getColumnDimension('A')->setWidth(3);
 
         // ── Row heights ──────────────────────────────────────────────────
-        $sheet->getRowDimension(1)->setRowHeight(40);
+        $sheet->getRowDimension(1)->setRowHeight(48);
         $sheet->getRowDimension(2)->setRowHeight(20);
-        $sheet->getRowDimension(3)->setRowHeight(28);
+        $sheet->getRowDimension(3)->setRowHeight(26);
+        $sheet->getRowDimension(4)->setRowHeight(18);
         $sheet->getRowDimension(5)->setRowHeight(6);
         $sheet->getRowDimension(9)->setRowHeight(6);
+
+        $this->addLogoToSheet($sheet);
 
         // ── Row 1-4: Header block ────────────────────────────────────────
         // Left: logo placeholder + company name
@@ -531,6 +489,9 @@ HTML;
         $sheet->getStyle("{$numCol}{$s3}")->getFont()->setBold(true);
         $sheet->getStyle("{$numCol}{$s3}")->getFill()
             ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFFC0');
+
+        // Repite el bloque superior al imprimir o guardar el archivo.
+        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 12);
     }
 
     private function extraerCorrelativoValorizacion(string $numeroValorizacion): string
@@ -591,6 +552,14 @@ HTML;
 
         foreach ($tmpSheet->getMergeCells() as $mergedRange) {
             $targetSheet->mergeCells($this->offsetRangeRows($mergedRange, $startRow - 1));
+        }
+
+        foreach ($tmpSheet->getDrawingCollection() as $drawing) {
+            $newDrawing = clone $drawing;
+            $newDrawing->setCoordinates(
+                $this->offsetCellRow($drawing->getCoordinates(), $startRow - 1)
+            );
+            $newDrawing->setWorksheet($targetSheet);
         }
 
         $tmpSpreadsheet->disconnectWorksheets();
@@ -663,6 +632,178 @@ HTML;
         $sheet->getStyle($range)->getAlignment()
             ->setHorizontal(Alignment::HORIZONTAL_CENTER)
             ->setVertical(Alignment::VERTICAL_CENTER);
+    }
+
+    private function addLogoToSheet(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet): void
+    {
+        $logoPath = resource_path('img/logo.png');
+        if (!is_file($logoPath)) {
+            return;
+        }
+
+        $drawing = new Drawing();
+        $drawing->setName('CRC Logo');
+        $drawing->setDescription('Logo CRC');
+        $drawing->setPath($logoPath);
+        $drawing->setCoordinates('B1');
+        $drawing->setOffsetX(2);
+        $drawing->setOffsetY(2);
+        $drawing->setResizeProportional(false);
+        $drawing->setWidth((int) round(self::LOGO_WIDTH_CM * 37.795275591));
+        $drawing->setHeight((int) round(self::LOGO_HEIGHT_CM * 37.795275591));
+        $drawing->setWorksheet($sheet);
+    }
+
+    private function mergePdfsWithFpdi(array $pdfPaths, string $outputPath): bool
+    {
+        if (!class_exists('setasign\\Fpdi\\Fpdi')) {
+            return false;
+        }
+
+        try {
+            $pdf = new \setasign\Fpdi\Fpdi();
+
+            foreach ($pdfPaths as $path) {
+                $pageCount = $pdf->setSourceFile($path);
+                for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+                    $templateId = $pdf->importPage($pageNo);
+                    $size = $pdf->getTemplateSize($templateId);
+                    $orientation = ($size['width'] > $size['height']) ? 'L' : 'P';
+
+                    $pdf->AddPage($orientation, [$size['width'], $size['height']]);
+                    $pdf->useTemplate($templateId);
+                }
+            }
+
+            $pdf->Output('F', $outputPath);
+
+            return is_file($outputPath) && filesize($outputPath) > 0;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function mergePdfsWithQpdf(array $pdfPaths, string $outputPath): bool
+    {
+        $qpdfPath = $this->findCommand('qpdf');
+        if (!$qpdfPath) {
+            return false;
+        }
+
+        $escapedPaths = implode(' ', array_map('escapeshellarg', $pdfPaths));
+        @exec(escapeshellarg($qpdfPath) . " --empty --pages {$escapedPaths} -- " . escapeshellarg($outputPath) . ' 2>&1', $out, $code);
+
+        return $code === 0 && is_file($outputPath) && filesize($outputPath) > 0;
+    }
+
+    private function findCommand(string $binary): ?string
+    {
+        $isWindows = PHP_OS_FAMILY === 'Windows';
+        $lookupCmd = $isWindows
+            ? "where {$binary} 2>NUL"
+            : "command -v {$binary} 2>/dev/null";
+
+        $output = trim((string) @shell_exec($lookupCmd));
+        if ($output === '') {
+            return null;
+        }
+
+        $firstLine = trim((string) strtok($output, "\n"));
+        return $firstLine !== '' ? $firstLine : null;
+    }
+
+    private function getLogoDataUri(): ?string
+    {
+        $logoPath = resource_path('img/logo.png');
+        if (!is_file($logoPath)) {
+            return null;
+        }
+
+        $bytes = @file_get_contents($logoPath);
+        if (!is_string($bytes) || $bytes === '') {
+            return null;
+        }
+
+        return 'data:image/png;base64,' . base64_encode($bytes);
+    }
+
+    private function getLogoFilePath(): ?string
+    {
+        $logoPath = resource_path('img/logo.png');
+        if (!is_file($logoPath)) {
+            return null;
+        }
+
+        return str_replace('\\', '/', $logoPath);
+    }
+
+    private function buildValorizacionFilename(object $cotizacion, string $extension): string
+    {
+        $empresa = $this->empresaCode((string) ($cotizacion->razon_social ?? 'EMPRESA'));
+        $correlativo = $this->extraerCorrelativoValorizacion((string) ($cotizacion->numero_valorizacion ?? '00'));
+        $maquina = strtoupper($this->resolveItemNombre($cotizacion));
+        $periodo = $this->buildPeriodoTexto((string) $cotizacion->periodo_inicio, (string) $cotizacion->periodo_fin, 'd.m.y');
+
+        $base = "V-CRC-{$empresa}-{$correlativo} {$maquina} {$periodo}";
+
+        return $this->sanitizeFilename($base) . '.' . strtolower($extension);
+    }
+
+    private function resolveItemNombre(object $cotizacion): string
+    {
+        $item = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
+            ? (string) ($cotizacion->maquinaria_nombre ?? '')
+            : (string) ($cotizacion->agregado_nombre ?? '');
+
+        $item = trim($item);
+
+        if ($item === '') {
+            $item = (string) ($cotizacion->obra ?? 'ITEM');
+        }
+
+        return $item;
+    }
+
+    private function buildPeriodoTexto(string $inicio, string $fin, string $format): string
+    {
+        if ($inicio !== '' && $fin !== '') {
+            return \Carbon\Carbon::parse($inicio)->format($format)
+                . ' AL '
+                . \Carbon\Carbon::parse($fin)->format($format);
+        }
+
+        if ($inicio !== '') {
+            return \Carbon\Carbon::parse($inicio)->format($format);
+        }
+
+        if ($fin !== '') {
+            return \Carbon\Carbon::parse($fin)->format($format);
+        }
+
+        return now()->format($format);
+    }
+
+    private function empresaCode(string $razonSocial): string
+    {
+        $clean = strtoupper(preg_replace('/[^A-Z0-9\s]/', ' ', $razonSocial));
+        $tokens = array_values(array_filter(preg_split('/\s+/', $clean)));
+        $stopWords = ['SAC', 'SA', 'EIRL', 'SRL', 'CONSORCIO', 'EMPRESA', 'EMPRESAS', 'DE', 'DEL', 'LA', 'LAS', 'LOS', 'Y'];
+
+        foreach ($tokens as $token) {
+            if (!in_array($token, $stopWords, true)) {
+                return substr($token, 0, 12);
+            }
+        }
+
+        return substr((string) ($tokens[0] ?? 'EMPRESA'), 0, 12);
+    }
+
+    private function sanitizeFilename(string $name): string
+    {
+        $name = str_replace(['\\', '/', ':', '*', '?', '"', '<', '>', '|'], ' ', $name);
+        $name = preg_replace('/\s+/', ' ', trim($name));
+
+        return $name !== '' ? $name : 'archivo';
     }
 
     private function streamDownload(Spreadsheet $spreadsheet, string $filename)
