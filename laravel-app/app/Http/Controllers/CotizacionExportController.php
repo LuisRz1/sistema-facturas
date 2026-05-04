@@ -232,14 +232,14 @@ class CotizacionExportController extends Controller
         // ── Column widths ────────────────────────────────────────────────
         if ($esMaquinaria) {
             $colDefs = [
-                'B'=>10,'C'=>22,'D'=>30,'E'=>14,'F'=>18,'G'=>14,
-                'H'=>8,'I'=>8,'J'=>16,'K'=>14,'L'=>10,'M'=>12,
+                'B'=>8,'C'=>14,'D'=>20,'E'=>10,'F'=>14,'G'=>10,
+                'H'=>6,'I'=>6,'J'=>11,'K'=>10,'L'=>8,'M'=>10,
             ];
             $lastCol = 'M';
         } else {
             $colDefs = [
-                'B'=>10,'C'=>22,'D'=>30,'E'=>12,'F'=>16,'G'=>14,
-                'H'=>8,'I'=>10,'J'=>12,'K'=>12,
+                'B'=>8,'C'=>16,'D'=>24,'E'=>10,'F'=>14,'G'=>12,
+                'H'=>7,'I'=>9,'J'=>10,'K'=>10,
             ];
             $lastCol = 'K';
         }
@@ -492,6 +492,11 @@ class CotizacionExportController extends Controller
 
         // Repite el bloque superior al imprimir o guardar el archivo.
         $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 12);
+        $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_PORTRAIT);
+        $sheet->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_A4);
+        $sheet->getPageSetup()->setFitToPage(true);
+        $sheet->getPageSetup()->setFitToWidth(1);
+        $sheet->getPageSetup()->setFitToHeight(0);
     }
 
     private function extraerCorrelativoValorizacion(string $numeroValorizacion): string

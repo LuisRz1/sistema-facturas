@@ -18,7 +18,7 @@
         .page { padding: 16px 20px; max-width: 1100px; margin: 0 auto; }
 
         /* ── HEADER ── */
-        .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
+        .header-top { display: flex; justify-content: flex-start; align-items: flex-start; margin-bottom: 12px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
         .logo-area { display: flex; align-items: center; gap: 12px; }
         .logo-box { width: 240px; height: 110px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .logo-box img { max-width: 100%; max-height: 100%; width: auto; height: auto; }
@@ -67,7 +67,7 @@
         .summary-table tr.total-summary td { background: #374151; color: #fff; font-weight: 800; font-size: 12px; }
 
         @if($forPdf)
-            @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 10mm; }
+            @page { size: A4 portrait; margin: 10mm; }
             body { font-size: 9px; }
             .page { padding: 2mm 1mm; max-width: none; }
             .header-top {
@@ -77,9 +77,17 @@
             .header-right h1 { font-size: 17px; }
             .header-right .ruc-big { font-size: 14px; }
             .header-right .period-top { font-size: 8.5px; }
-            table { table-layout: fixed; }
-            thead tr th { font-size: 8px; padding: 5px 4px; white-space: normal; }
-            tbody td { font-size: 8.5px; padding: 4px 4px; }
+            table { table-layout: fixed; width: 100%; }
+            thead tr th { font-size: 7.5px; padding: 4px 3px; white-space: normal; word-break: break-word; }
+            tbody td { font-size: 8px; padding: 3px 3px; word-break: break-word; }
+            @if($esMaquinaria)
+            thead tr th { font-size: 6.5px; padding: 3px 2px; }
+            tbody td { font-size: 7.5px; padding: 3px 2px; }
+            .empresa-name-big { font-size: 13px; }
+            .header-right h1 { font-size: 13px; }
+            .header-right .ruc-big { font-size: 11px; }
+            .logo-box { width: 160px; height: 70px; }
+            @endif
             .summary-block { margin-top: 10px; }
             .summary-table td { font-size: 10px; padding: 5px 10px; }
             .logo-box { width: 220px; height: 95px; }
@@ -106,8 +114,11 @@
         @media print {
             .no-print { display: none !important; }
             body { font-size: 9px; }
+            table { table-layout: fixed; width: 100%; }
+            thead tr th { font-size: 7.5px; padding: 4px 3px; white-space: normal; word-break: break-word; }
+            tbody td { font-size: 8px; padding: 3px 3px; word-break: break-word; }
             @if(!$forPdf)
-                @page { size: A4 {{ $esMaquinaria ? 'landscape' : 'portrait' }}; margin: 8mm; }
+                @page { size: A4 portrait; margin: 8mm; }
             @endif
         }
     </style>
@@ -123,30 +134,16 @@
 
     {{-- ── HEADER ── --}}
     <div class="header-top">
-        <div class="logo-area">
-            @if($logoDataUri || $logoPath)
-                <div class="logo-box">
-                    <img class="img-logo-pdf" src="{{ $forPdf ? ($logoPath ?: $logoDataUri) : ($logoDataUri ?: $logoPath) }}" alt="Logo CRC">
-                </div>
-            @else
-                <div class="logo-circle">CRC</div>
-            @endif
-            <div>
-                <div class="company-name">Consorcio Rodriguez Caballero SAC</div>
-                <div class="empresa-name-big">Consorcio Rodriguez Caballero</div>
-                <div class="ruc-line">RUC: 20482304665</div>
-                <div class="tagline">Abastecimiento de agua en cisternas, venta de agregados para la construcción,<br>alquiler maquinaria pesada y otras actividades de transporte.</div>
+        @if($logoDataUri || $logoPath)
+            <div class="logo-box">
+                <img class="img-logo-pdf" src="{{ $forPdf ? ($logoPath ?: $logoDataUri) : ($logoDataUri ?: $logoPath) }}" alt="Logo CRC">
             </div>
-        </div>
-        <div class="header-right">
-            <h1>Consorcio Rodriguez Caballero</h1>
-            <div class="ruc-big">RUC: 20482304665</div>
-            <div class="period-top">
-                <strong>Periodo:</strong>
-                {{ strtoupper(\Carbon\Carbon::parse($cotizacion->periodo_inicio)->locale('es')->isoFormat('D [DE] MMMM [DEL] Y')) }}
-                AL
-                {{ strtoupper(\Carbon\Carbon::parse($cotizacion->periodo_fin)->locale('es')->isoFormat('D [DE] MMMM [DEL] Y')) }}
-            </div>
+        @else
+            <div class="logo-circle">CRC</div>
+        @endif
+        <div class="tagline" style="margin-left:12px;align-self:flex-end;">
+            Abastecimiento de agua en cisternas, venta de agregados para la construcción,<br>
+            alquiler maquinaria pesada y otras actividades de transporte.
         </div>
     </div>
 
