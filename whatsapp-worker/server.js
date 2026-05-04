@@ -8,74 +8,116 @@ const app = express();
 app.use(express.json({ limit: '80mb' }));
 
 const PORT = process.env.PORT || 3001;
-let listo    = false;
-let qrActual = null;
-let client   = null;
+let listo      = false;
+let qrActual   = null;
+let client     = null;
+let restarting = false;
+
+const PUPPETEER_ARGS = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--no-first-run',
+    '--no-zygote',
+    '--disable-extensions',
+    '--disable-background-networking',
+    '--disable-sync',
+    '--disable-default-apps',
+    '--disable-translate',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-breakpad',
+    '--disable-client-side-phishing-detection',
+    '--disable-component-update',
+    '--disable-hang-monitor',
+    '--disable-ipc-flooding-protection',
+    '--disable-popup-blocking',
+    '--disable-prompt-on-repost',
+    '--disable-renderer-backgrounding',
+    '--metrics-recording-only',
+    '--mute-audio',
+    '--no-default-browser-check',
+    '--safebrowsing-disable-auto-update',
+    '--password-store=basic',
+    '--use-mock-keychain',
+    '--js-flags=--max-old-space-size=256',
+];
+
+// ── Destruir cliente anterior completamente (libera proceso Chrome) ───────
+async function destruirCliente() {
+    if (!client) return;
+    const old = client;
+    client = null;
+    try { old.removeAllListeners(); } catch (e) {}
+    try { await old.destroy(); } catch (e) { console.log('Destroy ignorado:', e.message); }
+}
 
 // ── Crear / Recrear el cliente WhatsApp ──────────────────────────────────
-function crearCliente() {
-    if (client) {
-        try { client.removeAllListeners(); } catch(e) {}
-    }
+async function crearCliente() {
+    if (restarting) return;
+    restarting = true;
 
-    listo    = false;
-    qrActual = null;
+    try {
+        await destruirCliente();
 
-    client = new Client({
-        authStrategy: new LocalAuth({ clientId: 'facturacion-local' }),
-        puppeteer: {
+        listo    = false;
+        qrActual = null;
+
+        const puppeteerOpts = {
             headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process'
-            ]
+            args: PUPPETEER_ARGS,
+        };
+        if (process.env.CHROMIUM_PATH) {
+            puppeteerOpts.executablePath = process.env.CHROMIUM_PATH;
         }
-    });
 
-    client.on('qr', (qr) => {
-        qrActual = qr;
-        console.log('\nEscanea este QR con WhatsApp:\n');
-        qrcode.generate(qr, { small: true });
-    });
+        client = new Client({
+            authStrategy: new LocalAuth({ clientId: 'facturacion-local' }),
+            puppeteer: puppeteerOpts,
+        });
 
-    client.on('authenticated', () => {
-        qrActual = null;
-        console.log('Sesión autenticada');
-    });
+        client.on('qr', (qr) => {
+            qrActual = qr;
+            console.log('\nEscanea este QR con WhatsApp:\n');
+            qrcode.generate(qr, { small: true });
+        });
 
-    client.on('ready', () => {
-        listo    = true;
-        qrActual = null;
-        console.log('WhatsApp listo');
-    });
+        client.on('authenticated', () => {
+            qrActual = null;
+            console.log('Sesión autenticada');
+        });
 
-    client.on('auth_failure', (msg) => {
-        listo    = false;
-        qrActual = null;
-        console.error('Fallo de autenticación:', msg);
-        // Reintentar en 5 segundos
-        setTimeout(() => crearCliente(), 5000);
-    });
+        client.on('ready', () => {
+            listo    = true;
+            qrActual = null;
+            console.log('WhatsApp listo');
+        });
 
-    client.on('disconnected', (reason) => {
-        listo    = false;
-        qrActual = null;
-        console.log('WhatsApp desconectado:', reason);
-        // Si fue desconectado (no por logout manual), reinicializar para mostrar QR
-        if (reason !== 'LOGOUT') {
-            setTimeout(() => crearCliente(), 3000);
-        }
-    });
+        client.on('auth_failure', (msg) => {
+            listo    = false;
+            qrActual = null;
+            console.error('Fallo de autenticación:', msg);
+            setTimeout(() => crearCliente(), 10000);
+        });
 
-    client.initialize().catch(err => {
-        console.error('Error al inicializar:', err.message);
-        setTimeout(() => crearCliente(), 5000);
-    });
+        client.on('disconnected', (reason) => {
+            listo    = false;
+            qrActual = null;
+            console.log('WhatsApp desconectado:', reason);
+            if (reason !== 'LOGOUT') {
+                setTimeout(() => crearCliente(), 5000);
+            }
+        });
+
+        client.initialize().catch(err => {
+            console.error('Error al inicializar:', err.message);
+            setTimeout(() => crearCliente(), 10000);
+        });
+
+    } finally {
+        restarting = false;
+    }
 }
 
 // Iniciar al arrancar
