@@ -1,20 +1,22 @@
 {
   "name": "whatsapp-worker",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Worker de WhatsApp para envío de mensajes",
   "main": "server.js",
   "scripts": {
-    "start": "node --max-old-space-size=512 server.js"
+    "start": "node --max-old-space-size=256 server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.16",
     "express": "^5.2.1",
     "pdf-lib": "^1.17.1",
+    "pino": "^9.6.0",
     "qrcode": "^1.5.4",
-    "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.34.6"
+    "qrcode-terminal": "^0.12.0"
   }
 }

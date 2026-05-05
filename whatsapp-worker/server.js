@@ -1,118 +1,97 @@
-const express = require('express');
-const qrcode = require('qrcode-terminal');
-const QRCode = require('qrcode');
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const { PDFDocument } = require('pdf-lib');
+import express from 'express';
+import qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
+import { PDFDocument } from 'pdf-lib';
+import {
+    makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+} from '@whiskeysockets/baileys';
+import { Boom } from '@hapi/boom';
+import pino from 'pino';
+import fs from 'fs';
 
 const app = express();
 app.use(express.json({ limit: '80mb' }));
 
-const PORT = process.env.PORT || 3001;
+const PORT     = process.env.PORT || 3001;
+const AUTH_DIR = process.env.AUTH_DIR || './auth_state';
+const logger   = pino({ level: 'silent' });
+
 let listo      = false;
 let qrActual   = null;
-let client     = null;
+let sock       = null;
 let restarting = false;
 
-const PUPPETEER_ARGS = [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-gpu',
-    '--no-first-run',
-    '--no-zygote',
-    '--disable-extensions',
-    '--disable-background-networking',
-    '--disable-sync',
-    '--disable-default-apps',
-    '--disable-translate',
-    '--disable-background-timer-throttling',
-    '--disable-backgrounding-occluded-windows',
-    '--disable-breakpad',
-    '--disable-client-side-phishing-detection',
-    '--disable-component-update',
-    '--disable-hang-monitor',
-    '--disable-ipc-flooding-protection',
-    '--disable-popup-blocking',
-    '--disable-prompt-on-repost',
-    '--disable-renderer-backgrounding',
-    '--metrics-recording-only',
-    '--mute-audio',
-    '--no-default-browser-check',
-    '--safebrowsing-disable-auto-update',
-    '--password-store=basic',
-    '--use-mock-keychain',
-    '--js-flags=--max-old-space-size=256',
-];
-
-// ── Destruir cliente anterior completamente (libera proceso Chrome) ───────
-async function destruirCliente() {
-    if (!client) return;
-    const old = client;
-    client = null;
-    try { old.removeAllListeners(); } catch (e) {}
-    try { await old.destroy(); } catch (e) { console.log('Destroy ignorado:', e.message); }
+// ── Destruir socket anterior (libera recursos de red) ────────────────────
+async function destruirSocket() {
+    if (!sock) return;
+    const old = sock;
+    sock     = null;
+    listo    = false;
+    qrActual = null;
+    try { old.ev.removeAllListeners(); } catch (e) {}
+    try { await old.end(new Error('Recreando cliente')); } catch (e) {}
 }
 
-// ── Crear / Recrear el cliente WhatsApp ──────────────────────────────────
-async function crearCliente() {
+// ── Crear / Recrear conexión WhatsApp ────────────────────────────────────
+async function crearCliente(eliminarAuth = false) {
     if (restarting) return;
     restarting = true;
 
     try {
-        await destruirCliente();
+        await destruirSocket();
 
-        listo    = false;
-        qrActual = null;
-
-        const puppeteerOpts = {
-            headless: true,
-            args: PUPPETEER_ARGS,
-        };
-        if (process.env.CHROMIUM_PATH) {
-            puppeteerOpts.executablePath = process.env.CHROMIUM_PATH;
+        if (eliminarAuth && fs.existsSync(AUTH_DIR)) {
+            fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+            console.log('Auth state eliminado para nuevo QR');
         }
 
-        client = new Client({
-            authStrategy: new LocalAuth({ clientId: 'facturacion-local' }),
-            puppeteer: puppeteerOpts,
+        const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+        const { version }          = await fetchLatestBaileysVersion();
+
+        sock = makeWASocket({
+            version,
+            auth:                  state,
+            logger,
+            printQRInTerminal:     false,
+            browser:               ['sistema-facturas', 'Chrome', '126.0.0'],
+            connectTimeoutMs:      30_000,
+            defaultQueryTimeoutMs: 60_000,
+            keepAliveIntervalMs:   30_000,
+            markOnlineOnConnect:   false,
         });
 
-        client.on('qr', (qr) => {
-            qrActual = qr;
-            console.log('\nEscanea este QR con WhatsApp:\n');
-            qrcode.generate(qr, { small: true });
-        });
+        sock.ev.on('creds.update', saveCreds);
 
-        client.on('authenticated', () => {
-            qrActual = null;
-            console.log('Sesión autenticada');
-        });
+        sock.ev.on('connection.update', (update) => {
+            const { connection, lastDisconnect, qr } = update;
 
-        client.on('ready', () => {
-            listo    = true;
-            qrActual = null;
-            console.log('WhatsApp listo');
-        });
-
-        client.on('auth_failure', (msg) => {
-            listo    = false;
-            qrActual = null;
-            console.error('Fallo de autenticación:', msg);
-            setTimeout(() => crearCliente(), 10000);
-        });
-
-        client.on('disconnected', (reason) => {
-            listo    = false;
-            qrActual = null;
-            console.log('WhatsApp desconectado:', reason);
-            if (reason !== 'LOGOUT') {
-                setTimeout(() => crearCliente(), 5000);
+            if (qr) {
+                qrActual = qr;
+                console.log('\nEscanea este QR con WhatsApp:\n');
+                qrcode.generate(qr, { small: true });
             }
-        });
 
-        client.initialize().catch(err => {
-            console.error('Error al inicializar:', err.message);
-            setTimeout(() => crearCliente(), 10000);
+            if (connection === 'open') {
+                listo    = true;
+                qrActual = null;
+                console.log('WhatsApp listo');
+            }
+
+            if (connection === 'close') {
+                listo    = false;
+                qrActual = null;
+                const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
+                console.log('WhatsApp desconectado, código:', code);
+
+                if (code === DisconnectReason.loggedOut) {
+                    console.log('Sesión cerrada (loggedOut). Esperando reconexión manual.');
+                } else {
+                    setTimeout(() => crearCliente(), 5000);
+                }
+            }
         });
 
     } finally {
@@ -149,38 +128,24 @@ app.get('/qr', async (req, res) => {
 });
 
 // ── POST /logout ──────────────────────────────────────────────────────────
-// Cierra la sesión actual Y reinicializa el cliente para generar nuevo QR
 app.post('/logout', async (req, res) => {
     try {
         listo    = false;
         qrActual = null;
 
-        if (client) {
-            try {
-                await client.logout();
-                console.log('Sesión cerrada, destruyendo cliente...');
-            } catch(e) {
-                console.log('Error en logout (ignorado):', e.message);
-            }
-
-            try {
-                await client.destroy();
-                console.log('Cliente destruido.');
-            } catch(e) {
-                console.log('Error en destroy (ignorado):', e.message);
+        if (sock) {
+            try { await sock.logout(); } catch (e) {
+                console.log('Logout ignorado:', e.message);
             }
         }
 
-        // Esperar un momento y reinicializar para generar nuevo QR
-        console.log('Reinicializando cliente para nuevo QR...');
-        setTimeout(() => crearCliente(), 2000);
+        console.log('Reinicializando para nuevo QR...');
+        setTimeout(() => crearCliente(true), 2000);
 
         res.json({ ok: true, message: 'Sesión cerrada. Generando nuevo QR en 2 segundos...' });
-
     } catch (err) {
         console.error('Error en logout:', err.message);
-        // Intentar reinicializar de todas formas
-        setTimeout(() => crearCliente(), 3000);
+        setTimeout(() => crearCliente(true), 3000);
         res.status(500).json({ ok: false, error: err.message });
     }
 });
@@ -190,7 +155,7 @@ app.post('/send-message', async (req, res) => {
     try {
         const { phone, message, imageUrl, documentUrl, fileName } = req.body;
 
-        if (!listo) {
+        if (!listo || !sock) {
             return res.status(503).json({ ok: false, error: 'WhatsApp no está listo' });
         }
         if (!phone) {
@@ -198,18 +163,21 @@ app.post('/send-message', async (req, res) => {
         }
 
         const phoneClean = String(phone).replace(/\D/g, '');
-        const chatId = `${phoneClean}@c.us`;
+        const jid        = `${phoneClean}@s.whatsapp.net`;
 
         if (documentUrl) {
             try {
-                console.log(`[DOC] Enviando PDF a ${chatId}: ${documentUrl}`);
-                const media = await MessageMedia.fromUrl(documentUrl, { unsafeMime: true });
-                if (fileName) media.filename = fileName;
-                const sent = await client.sendMessage(chatId, media, {
-                    sendMediaAsDocument: true,
-                    caption: message || '',
+                console.log(`[DOC] Descargando PDF: ${documentUrl}`);
+                const response = await fetch(documentUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status} al descargar PDF`);
+                const buffer = Buffer.from(await response.arrayBuffer());
+                const sent   = await sock.sendMessage(jid, {
+                    document : buffer,
+                    fileName : fileName || 'documento.pdf',
+                    mimetype : 'application/pdf',
+                    caption  : message || '',
                 });
-                return res.json({ ok: true, id: sent.id._serialized, tipo: 'documento' });
+                return res.json({ ok: true, id: sent.key.id, tipo: 'documento' });
             } catch (docError) {
                 console.error('Error enviando documento:', docError.message);
                 return res.status(500).json({ ok: false, error: docError.message, tipo: 'documento' });
@@ -218,14 +186,19 @@ app.post('/send-message', async (req, res) => {
 
         if (imageUrl) {
             try {
-                const media = await MessageMedia.fromUrl(imageUrl, { unsafeMime: true });
-                const sent  = await client.sendMessage(chatId, media, { caption: message || '' });
-                return res.json({ ok: true, id: sent.id._serialized, tipo: 'imagen' });
+                const response = await fetch(imageUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status} al descargar imagen`);
+                const buffer = Buffer.from(await response.arrayBuffer());
+                const sent   = await sock.sendMessage(jid, {
+                    image   : buffer,
+                    caption : message || '',
+                });
+                return res.json({ ok: true, id: sent.key.id, tipo: 'imagen' });
             } catch (imgError) {
                 console.error('Error enviando imagen, fallback a texto:', imgError.message);
                 const textoConUrl = `${message || ''}\n\nVer comprobante:\n${imageUrl}`;
-                const sent = await client.sendMessage(chatId, textoConUrl.trim());
-                return res.json({ ok: true, id: sent.id._serialized, tipo: 'texto_fallback', warning: imgError.message });
+                const sent = await sock.sendMessage(jid, { text: textoConUrl.trim() });
+                return res.json({ ok: true, id: sent.key.id, tipo: 'texto_fallback', warning: imgError.message });
             }
         }
 
@@ -233,8 +206,8 @@ app.post('/send-message', async (req, res) => {
             return res.status(400).json({ ok: false, error: 'Se requiere message, imageUrl o documentUrl' });
         }
 
-        const sent = await client.sendMessage(chatId, message);
-        return res.json({ ok: true, id: sent.id._serialized, tipo: 'texto' });
+        const sent = await sock.sendMessage(jid, { text: message });
+        return res.json({ ok: true, id: sent.key.id, tipo: 'texto' });
 
     } catch (error) {
         console.error('Error general:', error);
@@ -243,7 +216,6 @@ app.post('/send-message', async (req, res) => {
 });
 
 // ── POST /merge-pdfs ─────────────────────────────────────────────────────
-// Endpoint utilitario para fusionar PDFs (sin afectar lógica de WhatsApp).
 app.post('/merge-pdfs', async (req, res) => {
     try {
         const { files } = req.body || {};
@@ -259,16 +231,11 @@ app.post('/merge-pdfs', async (req, res) => {
             if (!b64) continue;
 
             let bytes;
-            try {
-                bytes = Buffer.from(b64, 'base64');
-            } catch (e) {
-                continue;
-            }
-
+            try { bytes = Buffer.from(b64, 'base64'); } catch (e) { continue; }
             if (!bytes || bytes.length === 0) continue;
 
             const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-            const pages = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+            const pages  = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
             pages.forEach((p) => outDoc.addPage(p));
         }
 
@@ -289,5 +256,5 @@ app.post('/merge-pdfs', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Worker WhatsApp escuchando en puerto ${PORT}`);
+    console.log(`Worker WhatsApp (Baileys) escuchando en puerto ${PORT}`);
 });
