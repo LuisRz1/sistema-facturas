@@ -4,7 +4,7 @@
   "description": "Worker de WhatsApp para envío de mensajes",
   "main": "server.js",
   "scripts": {
-    "start": "node --max-old-space-size=256 server.js"
+    "start": "node --max-old-space-size=128 --optimize-for-size server.js"
   },
   "keywords": [],
   "author": "",

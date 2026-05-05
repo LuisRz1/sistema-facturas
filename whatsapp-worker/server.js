@@ -61,6 +61,12 @@ async function crearCliente(eliminarAuth = false) {
             defaultQueryTimeoutMs: 60_000,
             keepAliveIntervalMs:   30_000,
             markOnlineOnConnect:   false,
+            // No guardar historial de mensajes en memoria
+            getMessage:            async () => undefined,
+            shouldIgnoreJid:       () => false,
+            // No sincronizar chats al conectar (ahorra RAM y tiempo de inicio)
+            syncFullHistory:       false,
+            fireInitQueries:       false,
         });
 
         sock.ev.on('creds.update', saveCreds);
