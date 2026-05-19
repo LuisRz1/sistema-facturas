@@ -428,6 +428,7 @@
             <tr>
                 <td style="font-family:'DM Mono',monospace;font-weight:700;font-size:11px;color:#d97706;">
                     ${f.serie}-${f.numero}
+                    ${f.corregida_detraccion ? '<br><span style="font-size:9px;font-family:sans-serif;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:1px 5px;font-weight:700;">CORREGIDA A DETRACCIÓN</span>' : ''}
                 </td>
                 <td style="font-size:11px;font-weight:600;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                     ${f.razon_social}

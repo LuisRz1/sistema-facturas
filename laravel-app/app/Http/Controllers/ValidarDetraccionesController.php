@@ -122,8 +122,18 @@ class ValidarDetraccionesController extends Controller
 
                 if (!$factura) { $noEncontradas++; continue; }
 
-                // Solo procesar facturas con detracción que aún no se validaron
-                if ($factura->tipo_recaudacion !== 'DETRACCION') { $yaValidadas++; continue; }
+                // Si la factura existe en el Excel de detracciones pero fue importada
+                // como NO detracción, corregirla automáticamente a DETRACCION.
+                $corregidaADetraccion = false;
+                if ($factura->tipo_recaudacion !== 'DETRACCION') {
+                    DB::table('factura')->where('id_factura', $factura->id_factura)->update([
+                        'tipo_recaudacion'    => 'DETRACCION',
+                        'fecha_actualizacion' => now(),
+                    ]);
+                    $factura->tipo_recaudacion = 'DETRACCION';
+                    $corregidaADetraccion = true;
+                }
+
                 if (!in_array($factura->estado, ['PENDIENTE', 'DIFERENCIA PENDIENTE', 'VENCIDO'])) {
                     $yaValidadas++;
                     continue;
@@ -161,25 +171,30 @@ class ValidarDetraccionesController extends Controller
 
                 $cliente = DB::table('cliente')->where('id_cliente',$factura->id_cliente)->value('razon_social');
                 $validadas[] = [
-                    'id_factura'        => $factura->id_factura,
-                    'serie'             => $factura->serie,
-                    'numero'            => str_pad($factura->numero,8,'0',STR_PAD_LEFT),
-                    'razon_social'      => $cliente ?? '—',
-                    'moneda'            => $factura->moneda,
-                    'importe_total'     => number_format($importeTotal,2),
-                    'monto_detraccion'  => number_format($totalRecaudacion,2),
-                    'monto_pendiente'   => number_format($montoPendiente,2),
-                    'estado_anterior'   => $factura->estado,
-                    'estado_nuevo'      => $nuevoEstado,
-                    'fecha_recaudacion' => $fechaPago,
+                    'id_factura'          => $factura->id_factura,
+                    'serie'               => $factura->serie,
+                    'numero'              => str_pad($factura->numero,8,'0',STR_PAD_LEFT),
+                    'razon_social'        => $cliente ?? '—',
+                    'moneda'              => $factura->moneda,
+                    'importe_total'       => number_format($importeTotal,2),
+                    'monto_detraccion'    => number_format($totalRecaudacion,2),
+                    'monto_pendiente'     => number_format($montoPendiente,2),
+                    'estado_anterior'     => $factura->estado,
+                    'estado_nuevo'        => $nuevoEstado,
+                    'fecha_recaudacion'   => $fechaPago,
+                    'corregida_detraccion'=> $corregidaADetraccion,
                 ];
+
+                $observacion = $corregidaADetraccion
+                    ? 'Detracción validada (corregida de NO a DETRACCION)'
+                    : 'Detracción validada';
 
                 // Vincular factura al registro de sincronización
                 DB::table('sincronizacion_factura')->insert([
                     'id_sincronizacion' => $idSincronizacion,
                     'id_factura'        => $factura->id_factura,
                     'accion'            => 'ACTUALIZADA',
-                    'observacion'       => 'Detracción validada',
+                    'observacion'       => $observacion,
                     'fecha_registro'    => now(),
                 ]);
             }
