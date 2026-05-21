@@ -601,26 +601,19 @@
                         </td>
 
                         <td style="text-align:left;font-size:12px;">
-                            @if($factura->cuenta_pago)
-                                <div title="{{ $factura->cuenta_pago }}" style="color:#1f2937;font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                                    {{ $factura->cuenta_pago }}
-                                </div>
-                            @else
-                                <span style="color:var(--text-muted);">—</span>
-                            @endif
+                            <span style="color:var(--text-muted);">—</span>
                         </td>
 
                         <td style="text-align:right;">
                             @if($montoAbonado > 0)
-                                <div style="font-weight:700;font-family:'DM Mono',monospace;font-size:12px;color:#059669;">
-                                    {{ $factura->moneda }} {{ number_format($montoAbonado,2) }}
-                                </div>
-                                @if($factura->fecha_abono)
-                                    <div style="font-size:10px;color:var(--text-muted);">{{ \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y') }}</div>
-                                @endif
-                            @else
-                                <span style="font-size:12px;color:var(--text-muted);">—</span>
-                            @endif
+                                <button type="button"
+                                    onclick="abrirModalVerPagos({{ $factura->id_factura }}, '{{ $factura->moneda }}')"
+                                    style="background:none;border:none;padding:0;cursor:pointer;text-align:right;width:100%;"
+                                    title="Ver detalle de pagos">
+                                    <div style="font-weight:700;font-family:'DM Mono',monospace;font-size:12px;color:#059669;text-decoration:underline dotted #059669;">
+                                        {{ $factura->moneda }} {{ number_format($montoAbonado,2) }}
+                                    </div>
+                                </button>
 
                             @if($creditoInfo)
                                 <div style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:3px;">
@@ -632,6 +625,7 @@
                                     NC: {{ $creditoAsociado->id_factura ? DB::table('factura')->where('id_factura',$creditoAsociado->id_factura)->value('serie') : '—' }}
                                     → {{ $factura->serie }}-{{ str_pad($factura->numero,8,'0',STR_PAD_LEFT) }}
                                 </div>
+                            @endif
                             @endif
                         </td>
 
@@ -685,9 +679,7 @@
                                         data-porcentaje="{{ (float) $porcentaje }}"
                                         data-tipo-rec="{{ e((string) $tipoRecaudacion) }}"
                                         data-estado="{{ e((string) $estado) }}"
-                                        data-cuenta-pago="{{ e((string) ($factura->cuenta_pago ?? '')) }}"
                                         data-fecha-recaudacion="{{ e((string) ($factura->fecha_recaudacion ?? '')) }}"
-                                        data-comprobante-url="{{ e((string) ($factura->comprobante_url ?? '')) }}"
                                         onclick="abrirModalPagoDesdeBtn(this)"
                                         class="action-btn"
                                         title="{{ $estado === 'PAGADA' ? 'Ver/Actualizar pago' : 'Registrar pago' }}"
@@ -961,121 +953,194 @@
         </div>
     </div>
 
-    {{-- ═══════════ MODAL REGISTRAR PAGO ═══════════ --}}
-    <div class="modal-overlay" id="modalPagoOverlay">
-        <div class="modal" style="max-width:700px;">
-            <div class="modal-header">
-                <h2>Registrar Pago / Abono</h2>
-                <p id="modalPagoSubtitle">Ingresa el monto abonado y datos de recaudación</p>
-                <button onclick="cerrarModalPago()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+    {{-- ═══════════ MODAL VER PAGOS (solo lectura) ═══════════ --}}
+    <div class="modal-overlay" id="modalVerPagosOverlay">
+        <div class="modal" style="max-width:600px;width:min(600px,96vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;">
+            <div class="modal-header" style="background:linear-gradient(135deg,#059669,#047857);">
+                <h2>Historial de Pagos</h2>
+                <p id="modalVerPagosSubtitle" style="font-size:13px;opacity:.85;"></p>
+                <button onclick="cerrarModalVerPagos()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;line-height:1;">×</button>
             </div>
-            <form id="formPago" onsubmit="guardarPago(event)">
-                @csrf
-                <div class="modal-body" style="padding:24px;">
-                    <div class="pago-section">
-                        <div class="pago-section-title">
-                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                            Monto Abonado
+            <div class="modal-body" style="padding:20px 24px;overflow-y:auto;flex:1;min-height:0;">
+                <div id="verPagosLoading" style="display:none;text-align:center;color:#6b7280;padding:20px;">Cargando...</div>
+                <div id="verPagosVacio" style="display:none;text-align:center;color:#9ca3af;padding:24px;">
+                    No hay pagos registrados para esta factura.
+                </div>
+                <table id="verPagosTable" style="display:none;width:100%;border-collapse:collapse;font-size:12px;">
+                    <thead>
+                        <tr style="background:#f0fdf4;border-bottom:2px solid #bbf7d0;">
+                            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">#</th>
+                            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">Fecha</th>
+                            <th style="padding:8px 10px;text-align:right;font-weight:700;color:#065f46;">Monto</th>
+                            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">Cuenta</th>
+                            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">N° Operación</th>
+                            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">Forma</th>
+                            <th style="padding:8px 10px;text-align:center;font-weight:700;color:#065f46;">Comprobante</th>
+                        </tr>
+                    </thead>
+                    <tbody id="verPagosTbody"></tbody>
+                    <tfoot>
+                        <tr style="background:#f0fdf4;border-top:2px solid #bbf7d0;font-weight:700;">
+                            <td colspan="2" style="padding:8px 10px;color:#065f46;">TOTAL ABONADO</td>
+                            <td id="verPagosTotal" style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:#059669;"></td>
+                            <td colspan="4"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="cerrarModalVerPagos()" class="btn btn-ghost">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    {{-- ═══════════ MODAL PAGOS (múltiples abonos por factura) ═══════════ --}}
+    <div class="modal-overlay" id="modalPagoOverlay">
+        <div class="modal" style="max-width:860px;width:min(860px,96vw);max-height:93vh;display:flex;flex-direction:column;overflow:hidden;">
+            <div class="modal-header">
+                <h2>Registro de Pagos</h2>
+                <p id="modalPagoSubtitle" style="font-size:13px;opacity:.85;">Factura · Administra los abonos</p>
+                <button onclick="cerrarModalPago()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;line-height:1;">×</button>
+            </div>
+            <div class="modal-body" style="padding:20px 24px 24px;overflow-y:auto;flex:1;min-height:0;">
+
+                {{-- ── Barra de progreso ── --}}
+                <div style="background:#fff;border:1.5px solid var(--gold-b);border-radius:12px;padding:16px 18px;margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+                        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gold-xd);">Progreso de cobro</span>
+                        <span id="prPctLabel" style="font-size:12px;font-weight:800;color:#059669;">0%</span>
+                    </div>
+                    <div style="height:12px;border-radius:6px;background:#f1f5f9;overflow:hidden;margin-bottom:14px;position:relative;">
+                        <div id="prBarPagado"  style="position:absolute;left:0;top:0;height:100%;background:#059669;transition:width .4s;width:0%;border-radius:6px;"></div>
+                        <div id="prBarCola"    style="position:absolute;top:0;height:100%;background:#3b82f6;transition:all .4s;width:0%;left:0%;border-radius:0 6px 6px 0;"></div>
+                        <div id="prBarOver"    style="position:absolute;top:0;height:100%;background:#ef4444;transition:all .4s;width:0%;left:0%;border-radius:0 6px 6px 0;"></div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;">
+                        <div>
+                            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:2px;">Total Factura</div>
+                            <div id="prImporte" style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px;">S/ 0.00</div>
                         </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                            <div class="form-group">
-                                <label class="form-label">Monto Abonado</label>
-                                <input type="number" id="pagoMontoAbonado" name="monto_abonado" step="0.01" min="0" class="form-input" placeholder="0.00 (opcional)" oninput="recalcularPago()">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Fecha de Abono</label>
-                                <input type="date" id="pagoFechaAbono" name="fecha_abono" class="form-input">
-                            </div>
+                        <div>
+                            <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#059669;margin-bottom:2px;">Ya Pagado</div>
+                            <div id="prPagado" style="font-family:'DM Mono',monospace;font-weight:700;font-size:13px;color:#059669;">S/ 0.00</div>
                         </div>
-                        <div class="form-group" style="margin-top:14px;">
-                            <label class="form-label">Cuenta de Pago (Referencia)</label>
-                            <select id="pagoCuentaPagoPreset" class="form-input" onchange="onCuentaPagoPresetChange()">
-                                <option value="">Seleccionar cuenta...</option>
-                                <option value="BBVA">BBVA</option>
-                                <option value="BCP">BCP</option>
-                                <option value="INTERBANK SOLES">Interbank Soles</option>
-                                <option value="INTERBANK DOLARES">Interbank Dólares</option>
-                                <option value="YAPE">Yape</option>
-                                <option value="OTROS">Otros</option>
-                            </select>
-                            <input type="text" id="pagoCuentaPagoOtro" class="form-input" placeholder="Especifica la cuenta de pago" style="display:none;margin-top:8px;" oninput="syncCuentaPagoFinal()">
-                            <input type="hidden" id="pagoCuentaPago" name="cuenta_pago">
+                        <div id="prPendienteBox">
+                            <div id="prPendienteLabel" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#dc2626;margin-bottom:2px;">Saldo Pendiente</div>
+                            <div id="prPendiente" style="font-family:'DM Mono',monospace;font-weight:700;font-size:15px;color:#dc2626;">S/ 0.00</div>
                         </div>
                     </div>
+                    <div id="prRecaudacionRow" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid #f1f5f9;justify-content:space-between;align-items:center;font-size:11px;color:#92400e;">
+                        <span>Recaudación (Det./Ret.)</span>
+                        <span id="prRecaudacion" style="font-family:'DM Mono',monospace;font-weight:700;">S/ 0.00</span>
+                    </div>
+                    <div id="prColaRow" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed #bfdbfe;justify-content:space-between;align-items:center;font-size:11px;color:#1d4ed8;">
+                        <span style="font-weight:600;">En cola (pendiente guardar)</span>
+                        <span id="prCola" style="font-family:'DM Mono',monospace;font-weight:700;">S/ 0.00</span>
+                    </div>
+                </div>
 
-                    <div class="pago-section" id="seccionRecaudacion">
-                        <div class="pago-section-title">
-                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
-                            Recaudación (Detracción / Autodetracción / Retención)
-                        </div>
-                        <div class="tipo-rec-grid">
-                            <div class="tipo-rec-card" id="btnTipoNinguna" onclick="seleccionarTipoRec('')">Sin recaudación</div>
-                            <div class="tipo-rec-card" id="btnTipoDet"     onclick="seleccionarTipoRec('DETRACCION')">Detracción</div>
-                            <div class="tipo-rec-card" id="btnTipoAuto"    onclick="seleccionarTipoRec('AUTODETRACCION')">Autodetracción</div>
-                            <div class="tipo-rec-card" id="btnTipoRet"     onclick="seleccionarTipoRec('RETENCION')">Retención</div>
-                        </div>
-                        <input type="hidden" id="pagoTipoRecaudacion" name="tipo_recaudacion" value="">
+                {{-- ── Alerta overflow ── --}}
+                <div id="alertaOverflow" style="display:none;margin-bottom:14px;padding:10px 14px;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;align-items:center;gap:10px;">
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="#dc2626" stroke-width="2.5" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                    <div>
+                        <div style="font-size:12px;font-weight:700;color:#dc2626;">Los pagos en cola superan el saldo pendiente</div>
+                        <div id="alertaOverflowMsg" style="font-size:11px;color:#b91c1c;margin-top:2px;"></div>
+                    </div>
+                </div>
 
-                        <div id="validarDetraccionWrap" style="display:none;margin-bottom:12px;padding:10px 14px;background:#fef3c7;border-radius:8px;border:1px solid #fde68a;">
-                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;font-weight:600;color:#92400e;">
-                                <input type="checkbox" name="validar_detraccion" id="chkValidarDetraccion" value="1" style="width:16px;height:16px;accent-color:#d97706;" onchange="recalcularPago()">
-                                Confirmo que esta factura SÍ aplica detracción
-                            </label>
-                            <p style="font-size:11px;color:#92400e;margin-top:6px;margin-left:26px;">Al marcar esta opción, se validará la detracción y cambiará el estado de la factura.</p>
-                        </div>
+                {{-- ── Abonos registrados ── --}}
+                <div class="pago-section">
+                    <div class="pago-section-title">
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                        Abonos Registrados
+                    </div>
+                    <div id="listaPagosLoading" style="text-align:center;color:#9ca3af;padding:12px 0;font-size:12px;">Cargando...</div>
+                    <div id="listaPagosVacio" style="display:none;text-align:center;color:#9ca3af;padding:12px 0;font-size:12px;">Sin abonos registrados aún</div>
+                    <div style="overflow-x:auto;">
+                        <table id="listaPagosTable" style="display:none;width:100%;border-collapse:collapse;font-size:12px;">
+                            <thead>
+                            <tr style="background:var(--gold-l);border-bottom:1.5px solid var(--gold-b);">
+                                <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">#</th>
+                                <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">Fecha</th>
+                                <th style="padding:7px 8px;text-align:right;font-weight:700;color:var(--gold-xd);">Monto</th>
+                                <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">Cuenta / Banco</th>
+                                <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">N° Operación</th>
+                                <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">Forma</th>
+                                <th style="padding:7px 8px;text-align:center;font-weight:700;color:var(--gold-xd);">Comp.</th>
+                                <th style="padding:7px 8px;width:32px;"></th>
+                            </tr>
+                            </thead>
+                            <tbody id="listaPagosTbody"></tbody>
+                        </table>
+                    </div>
+                </div>
 
-                        <div id="camposRecaudacion" style="display:none;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                            <div class="form-group">
-                                <label class="form-label">Porcentaje (%)</label>
-                                <input type="number" id="pagoPorcentaje" name="porcentaje_recaudacion" step="0.01" min="0" max="100" class="form-input" placeholder="10.00" oninput="calcularRecaudacion()">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Monto Recaudación</label>
-                                <input type="number" id="pagoTotalRecaudacion" name="total_recaudacion" step="0.01" min="0" class="form-input" placeholder="0.00" oninput="_recalcularAbonoAutodet(); recalcularPago();">
-                            </div>
-                            <div class="form-group" style="grid-column:1/-1;">
-                                <label class="form-label">Fecha de Depósito / Recaudación</label>
-                                <input type="date" id="pagoFechaRecaudacion" name="fecha_recaudacion" class="form-input" style="border-color:var(--gold-b);">
-                                <span style="font-size:11px;color:var(--text-muted);margin-top:3px;display:block;">Fecha en que se depositó la detracción o retención</span>
-                            </div>
+                {{-- ── Cola de nuevos abonos ── --}}
+                <div class="pago-section" style="border-color:#93c5fd;background:#f0f9ff;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                        <div class="pago-section-title" style="margin-bottom:0;color:#1e40af;">
+                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                            Nuevos Abonos
                         </div>
+                        <button type="button" onclick="agregarFilaPago()"
+                            style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;transition:background .15s;"
+                            onmouseover="this.style.background='#1e40af'" onmouseout="this.style.background='#1d4ed8'">
+                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                            Agregar abono
+                        </button>
+                    </div>
+                    <div id="colaAbonos"></div>
+                    <div id="colaVacia" style="text-align:center;padding:14px 0;color:#93c5fd;font-size:12px;font-weight:600;">
+                        Pulsa "Agregar abono" para registrar un pago
+                    </div>
+                </div>
+
+                {{-- ── Recaudación ── --}}
+                <div class="pago-section" id="seccionRecaudacion">
+                    <div class="pago-section-title">
+                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+                        Recaudación (Detracción / Autodetracción / Retención)
+                    </div>
+                    <div class="tipo-rec-grid">
+                        <div class="tipo-rec-card" id="btnTipoNinguna" onclick="seleccionarTipoRec('')">Sin recaudación</div>
+                        <div class="tipo-rec-card" id="btnTipoDet"     onclick="seleccionarTipoRec('DETRACCION')">Detracción</div>
+                        <div class="tipo-rec-card" id="btnTipoAuto"    onclick="seleccionarTipoRec('AUTODETRACCION')">Autodetracción</div>
+                        <div class="tipo-rec-card" id="btnTipoRet"     onclick="seleccionarTipoRec('RETENCION')">Retención</div>
+                    </div>
+                    <input type="hidden" id="pagoTipoRecaudacion" value="">
+
+                    <div id="validarDetraccionWrap" style="display:none;margin-bottom:12px;padding:10px 14px;background:#fef3c7;border-radius:8px;border:1px solid #fde68a;">
+                        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;font-weight:600;color:#92400e;">
+                            <input type="checkbox" id="chkValidarDetraccion" value="1" style="width:16px;height:16px;accent-color:#d97706;">
+                            Confirmo que esta factura SÍ aplica detracción
+                        </label>
+                        <p style="font-size:11px;color:#92400e;margin-top:6px;margin-left:26px;">Al marcar esta opción, se validará la detracción y cambiará el estado de la factura.</p>
                     </div>
 
-                    <div class="calc-display" id="calcDisplay">
-                        <div class="calc-row"><span>Importe Total:</span><strong id="calcImporte" style="font-family:'DM Mono',monospace;">S/ 0.00</strong></div>
-                        <div class="calc-row"><span>Monto Abonado:</span><span id="calcAbonado" style="font-family:'DM Mono',monospace;color:#059669;">S/ 0.00</span></div>
-                        <div class="calc-row"><span>Recaudación:</span><span id="calcRecaudacion" style="font-family:'DM Mono',monospace;color:#d97706;">S/ 0.00</span></div>
-                        <div class="calc-row total" id="calcPendienteRow"><span>Saldo Pendiente:</span><strong id="calcPendiente" class="monto-pendiente-cell">S/ 0.00</strong></div>
-                        <div id="estadoPreview" style="margin-top:10px;padding:8px 12px;border-radius:6px;background:var(--gold-l);font-size:12px;font-weight:700;text-align:center;color:var(--gold-xd);"></div>
-                    </div>
-
-                    <div class="pago-section" style="margin-top:16px;margin-bottom:0;">
-                        <div class="pago-section-title">
-                            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                            Imagen de Comprobante (Opcional)
+                    <div id="camposRecaudacion" style="display:none;grid-template-columns:1fr 1fr;gap:14px;">
+                        <div class="form-group">
+                            <label class="form-label">Porcentaje (%)</label>
+                            <input type="number" id="pagoPorcentaje" step="0.01" min="0" max="100" class="form-input" placeholder="10.00" oninput="calcularRecaudacion()">
                         </div>
-                        <div id="comprobanteActualWrap" style="display:none;margin-bottom:12px;padding:10px;border:1px dashed var(--gold-b);border-radius:8px;background:var(--gold-l);">
-                            <div style="font-size:11px;font-weight:700;color:var(--gold-xd);margin-bottom:8px;">Comprobante actual</div>
-                            <div id="comprobanteActualView"></div>
+                        <div class="form-group">
+                            <label class="form-label">Monto Recaudación</label>
+                            <input type="number" id="pagoTotalRecaudacion" step="0.01" min="0" class="form-input" placeholder="0.00">
                         </div>
-                        <div id="dropZonePago" onclick="document.getElementById('fileComprobantePago').click()" onmouseover="this.style.borderColor='#1d4ed8';this.style.background='#eff6ff'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#fff'">
-                            <svg width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 10px;color:#94a3b8;"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                            <p style="font-size:13px;font-weight:600;margin-bottom:4px;">Arrastra o haz clic para adjuntar</p>
-                            <p style="font-size:11px;color:#64748b;">JPG, PNG, GIF o PDF — máx. 5 MB</p>
-                        </div>
-                        <input type="file" id="fileComprobantePago" accept="image/*,application/pdf" style="display:none;" onchange="mostrarPreviewPago(event)">
-                        <div id="previewPagoWrap" style="display:none;margin-top:12px;">
-                            <img id="previewPagoImg" src="" style="max-width:100%;max-height:200px;border-radius:8px;border:1.5px solid var(--gold-b);">
-                            <p id="previewPagoPdf" style="display:none;padding:10px;background:var(--gold-l);border-radius:8px;font-size:13px;color:var(--gold-xd);">📄 PDF adjunto</p>
-                            <button type="button" onclick="limpiarPreviewPago()" style="margin-top:8px;padding:6px 14px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Quitar</button>
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label class="form-label">Fecha de Depósito / Recaudación</label>
+                            <input type="date" id="pagoFechaRecaudacion" class="form-input" style="border-color:var(--gold-b);">
+                            <span style="font-size:11px;color:var(--text-muted);margin-top:3px;display:block;">Fecha en que se depositó la detracción o retención</span>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" onclick="cerrarModalPago()" class="btn btn-ghost">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" id="btnGuardarPago">Guardar Pago</button>
-                </div>
-            </form>
+
+            </div>
+            <div class="modal-footer" style="gap:10px;">
+                <button type="button" onclick="cerrarModalPago()" class="btn btn-ghost">Cerrar</button>
+                <button type="button" id="btnGuardarPago" onclick="guardarPago()" class="btn btn-primary" style="min-width:160px;">
+                    <span id="btnGuardarPagoTxt">Guardar pagos</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1647,7 +1712,11 @@
                 }
             }
 
-            // ── Modal Pago ────────────────────────────────────────────────────
+            // ── Modal Pago (multi-abono) ──────────────────────────────────────
+            let pagoListaCargada = [];
+            let colaPagos        = [];   // [{idx, monto, fecha, cuenta, numeroOp, bancoOrigen, formaPago, observacion, file}]
+            let colaIdx          = 0;
+
             function abrirModalPagoDesdeBtn(btn) {
                 abrirModalPago(
                     parseInt(btn.dataset.facturaId || '0', 10),
@@ -1658,114 +1727,437 @@
                     parseFloat(btn.dataset.porcentaje || '0'),
                     btn.dataset.tipoRec || '',
                     btn.dataset.estado || '',
-                    btn.dataset.cuentaPago || '',
-                    btn.dataset.fechaRecaudacion || '',
-                    btn.dataset.comprobanteUrl || ''
+                    btn.dataset.fechaRecaudacion || ''
                 );
             }
 
-            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, cuentaPago, fechaRec, comprobanteUrl = null) {
+            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, fechaRec) {
                 facturaActualId = id;
                 facturaImporte  = parseFloat(importe);
                 facturaMoneda   = moneda;
-                document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} · ${moneda} ${parseFloat(importe).toFixed(2)}`;
-                renderComprobanteActual(comprobanteUrl);
-                document.getElementById('pagoFechaAbono').value       = '{{ now()->format("Y-m-d") }}';
-                setCuentaPagoDesdeValor(cuentaPago || '');
+                colaPagos       = [];
+                colaIdx         = 0;
+                document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} — ${moneda} ${parseFloat(importe).toFixed(2)}`;
+
+                // Recaudación
                 document.getElementById('pagoFechaRecaudacion').value = fechaRec || '';
                 document.getElementById('chkValidarDetraccion').checked = false;
-                if (tipoRec === 'AUTODETRACCION') {
-                    document.getElementById('pagoTotalRecaudacion').value = totalRec > 0 ? totalRec : '';
-                    document.getElementById('pagoPorcentaje').value       = pctRec  > 0 ? pctRec  : '';
-                    document.getElementById('pagoMontoAbonado').value     = '';
-                } else {
-                    document.getElementById('pagoMontoAbonado').value    = montoAbonado > 0 ? montoAbonado : '';
-                    document.getElementById('pagoTotalRecaudacion').value = totalRec > 0 ? totalRec : '';
-                    document.getElementById('pagoPorcentaje').value       = pctRec   > 0 ? pctRec   : '';
-                }
+                document.getElementById('pagoTotalRecaudacion').value  = totalRec > 0 ? totalRec : '';
+                document.getElementById('pagoPorcentaje').value        = pctRec   > 0 ? pctRec   : '';
                 seleccionarTipoRec(tipoRec || '');
                 document.getElementById('validarDetraccionWrap').style.display =
                     (tipoRec === 'DETRACCION' && (estado === 'POR VALIDAR DETRACCION' || estado === 'PENDIENTE')) ? 'block' : 'none';
-                recalcularPago();
+
+                renderCola();
+                actualizarResumenPago(montoAbonado, totalRec, 0);
                 document.getElementById('modalPagoOverlay').classList.add('open');
+                cargarListaPagos(id);
+            }
+
+            // ── Barra de progreso ──────────────────────────────────────────────
+            function actualizarResumenPago(montoAbonado, totalRec, totalCola) {
+                const sym    = (facturaMoneda || '').includes('USD') ? 'USD' : 'S/';
+                const pagado = Number(montoAbonado);
+                const rec    = Number(totalRec);
+                const cola   = Number(totalCola);
+                const pend   = Math.max(0, facturaImporte - pagado - rec);
+                const over   = Math.max(0, pagado + rec + cola - facturaImporte);
+                const pct    = facturaImporte > 0 ? Math.min(100, (pagado + rec) / facturaImporte * 100) : 0;
+                const pctCola= facturaImporte > 0 ? Math.min(100 - pct, cola / facturaImporte * 100) : 0;
+
+                document.getElementById('prImporte').textContent  = `${sym} ${facturaImporte.toFixed(2)}`;
+                document.getElementById('prPagado').textContent   = `${sym} ${pagado.toFixed(2)}`;
+                document.getElementById('prPendiente').textContent = `${sym} ${pend.toFixed(2)}`;
+                document.getElementById('prPctLabel').textContent  = Math.round(pct + pctCola) + '%';
+
+                // Barras
+                document.getElementById('prBarPagado').style.width = pct + '%';
+                if (over > 0) {
+                    document.getElementById('prBarCola').style.display = 'none';
+                    document.getElementById('prBarOver').style.left  = pct + '%';
+                    document.getElementById('prBarOver').style.width = Math.min(pctCola, 100 - pct) + '%';
+                    document.getElementById('prBarOver').style.display = 'block';
+                } else {
+                    document.getElementById('prBarOver').style.display = 'none';
+                    document.getElementById('prBarCola').style.left  = pct + '%';
+                    document.getElementById('prBarCola').style.width = pctCola + '%';
+                    document.getElementById('prBarCola').style.display = 'block';
+                }
+
+                // Recaudación mini
+                const recRow = document.getElementById('prRecaudacionRow');
+                if (rec > 0) {
+                    recRow.style.display = 'flex';
+                    document.getElementById('prRecaudacion').textContent = `${sym} ${rec.toFixed(2)}`;
+                } else {
+                    recRow.style.display = 'none';
+                }
+                // Cola mini
+                const colaRow = document.getElementById('prColaRow');
+                if (cola > 0) {
+                    colaRow.style.display = 'flex';
+                    document.getElementById('prCola').textContent = `${sym} ${cola.toFixed(2)}`;
+                } else {
+                    colaRow.style.display = 'none';
+                }
+
+                // Alerta overflow
+                const alertEl = document.getElementById('alertaOverflow');
+                if (over > 0) {
+                    alertEl.style.display = 'flex';
+                    document.getElementById('alertaOverflowMsg').textContent =
+                        `Los abonos en cola exceden el saldo en ${sym} ${over.toFixed(2)}. Ajusta los montos.`;
+                    document.getElementById('btnGuardarPago').disabled = true;
+                    document.getElementById('prPendienteLabel').textContent = '⚠ Excedido';
+                    document.getElementById('prPendiente').style.color = '#dc2626';
+                    document.getElementById('prPctLabel').style.color = '#dc2626';
+                } else {
+                    alertEl.style.display = 'none';
+                    document.getElementById('btnGuardarPago').disabled = colaPagos.length === 0;
+                    document.getElementById('prPendienteLabel').textContent = 'Saldo Pendiente';
+                    document.getElementById('prPendiente').style.color = pend === 0 ? '#059669' : '#dc2626';
+                    document.getElementById('prPctLabel').style.color = pct + pctCola >= 100 ? '#059669' : '#1d4ed8';
+                }
+
+                // Label botón guardar
+                const n = colaPagos.length;
+                document.getElementById('btnGuardarPagoTxt').textContent = n > 0
+                    ? `Guardar ${n} abono${n > 1 ? 's' : ''} (${sym} ${cola.toFixed(2)})`
+                    : 'Guardar pagos';
+            }
+
+            function calcularTotalCola() {
+                return colaPagos.reduce((s, p) => s + (parseFloat(p.monto) || 0), 0);
+            }
+
+            // ── Lista de pagos existentes ──────────────────────────────────────
+            async function cargarListaPagos(id) {
+                document.getElementById('listaPagosLoading').style.display = 'block';
+                document.getElementById('listaPagosLoading').textContent   = 'Cargando...';
+                document.getElementById('listaPagosVacio').style.display   = 'none';
+                document.getElementById('listaPagosTable').style.display   = 'none';
+                try {
+                    const res  = await fetch(`/facturas/${id}/pagos`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.message || 'Error al cargar pagos');
+                    pagoListaCargada = data.pagos || [];
+                    renderListaPagos();
+                    // Actualizar resumen con el total real del servidor
+                    const montoAbonado = data.monto_abonado ?? pagoListaCargada.reduce((s,p)=>s+Number(p.monto_pagado),0);
+                    const totalRec     = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                    actualizarResumenPago(montoAbonado, totalRec, calcularTotalCola());
+                } catch (e) {
+                    document.getElementById('listaPagosLoading').textContent = 'Error: ' + e.message;
+                }
+            }
+
+            function renderListaPagos() {
+                document.getElementById('listaPagosLoading').style.display = 'none';
+                if (!pagoListaCargada.length) {
+                    document.getElementById('listaPagosVacio').style.display = 'block';
+                    document.getElementById('listaPagosTable').style.display = 'none';
+                    return;
+                }
+                document.getElementById('listaPagosTable').style.display = 'table';
+                const tbody = document.getElementById('listaPagosTbody');
+                tbody.innerHTML = pagoListaCargada.map((p, i) => {
+                    const fechaStr = p.fecha_pago
+                        ? new Date(p.fecha_pago + 'T00:00:00').toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' })
+                        : '—';
+                    const comp = p.comprobante_url
+                        ? `<a href="${p.comprobante_url}" target="_blank" style="color:#1d4ed8;font-weight:600;font-size:11px;">Ver</a>`
+                        : '<span style="color:#9ca3af;">—</span>';
+                    return `<tr style="border-bottom:1px solid #f3e8c1;">
+                        <td style="padding:7px 8px;color:#9ca3af;">${i+1}</td>
+                        <td style="padding:7px 8px;white-space:nowrap;">${fechaStr}</td>
+                        <td style="padding:7px 8px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:#059669;">S/ ${Number(p.monto_pagado).toFixed(2)}</td>
+                        <td style="padding:7px 8px;">${p.cuenta_pago||'—'}</td>
+                        <td style="padding:7px 8px;font-family:'DM Mono',monospace;font-size:11px;">${p.numero_operacion||'—'}</td>
+                        <td style="padding:7px 8px;">${p.forma_pago||'—'}</td>
+                        <td style="padding:7px 8px;text-align:center;">${comp}</td>
+                        <td style="padding:7px 8px;text-align:center;">
+                            <button onclick="eliminarPagoItem(${p.id_pago})"
+                                style="background:#fee2e2;color:#dc2626;border:none;border-radius:5px;cursor:pointer;padding:3px 7px;font-size:11px;font-weight:700;" title="Eliminar">✕</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            }
+
+            async function eliminarPagoItem(idPago) {
+                if (!confirm('¿Eliminar este abono? Se recalcularán los totales.')) return;
+                try {
+                    const res  = await fetch(`/facturas/${facturaActualId}/pagos/${idPago}`, {
+                        method : 'DELETE',
+                        headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.message || 'No se pudo eliminar');
+                    const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                    actualizarResumenPago(data.monto_abonado, totalRec, calcularTotalCola());
+                    await cargarListaPagos(facturaActualId);
+                    showToastFactura('✓ Abono eliminado y totales recalculados.');
+                } catch (e) { alert('Error: ' + e.message); }
+            }
+
+            // ── Cola de nuevos abonos ──────────────────────────────────────────
+            function agregarFilaPago() {
+                const hoy = '{{ now()->format("Y-m-d") }}';
+                const idx = ++colaIdx;
+                colaPagos.push({ idx, monto:'', fecha:hoy, cuenta:'', cuentaPreset:'', cuentaOtro:'', numeroOp:'', bancoOrigen:'', formaPago:'', observacion:'', file:null });
+                renderCola();
+                // Enfocar el campo monto de la nueva fila
+                setTimeout(() => {
+                    const inp = document.getElementById(`col_monto_${idx}`);
+                    if (inp) inp.focus();
+                }, 50);
+            }
+
+            function eliminarFilaCola(idx) {
+                colaPagos = colaPagos.filter(p => p.idx !== idx);
+                renderCola();
+                const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                // read current monto_abonado from prPagado
+                const pagadoText = document.getElementById('prPagado').textContent.replace(/[^0-9.]/g,'');
+                actualizarResumenPago(parseFloat(pagadoText)||0, totalRec, calcularTotalCola());
+            }
+
+            function renderCola() {
+                const wrap = document.getElementById('colaAbonos');
+                const vacio = document.getElementById('colaVacia');
+                if (!colaPagos.length) { wrap.innerHTML = ''; vacio.style.display = 'block'; return; }
+                vacio.style.display = 'none';
+                wrap.innerHTML = colaPagos.map(p => `
+                <div id="cola_row_${p.idx}" style="background:#fff;border:1.5px solid #bfdbfe;border-radius:10px;padding:14px 16px;margin-bottom:10px;position:relative;">
+                    <button type="button" onclick="eliminarFilaCola(${p.idx})"
+                        style="position:absolute;top:10px;right:10px;background:#fee2e2;color:#dc2626;border:none;border-radius:5px;cursor:pointer;padding:3px 8px;font-size:12px;font-weight:700;line-height:1;" title="Quitar fila">✕</button>
+
+                    <div style="display:grid;grid-template-columns:140px 140px 1fr 1fr;gap:10px;align-items:end;">
+                        <div>
+                            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#1e40af;display:block;margin-bottom:4px;">Monto *</label>
+                            <div style="position:relative;">
+                                <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:700;color:#1d4ed8;">S/</span>
+                                <input type="number" id="col_monto_${p.idx}" step="0.01" min="0.01" value="${p.monto}"
+                                    class="form-input" style="padding-left:28px;font-weight:700;font-size:14px;color:#1d4ed8;border-color:#93c5fd;"
+                                    placeholder="0.00" oninput="onColaMonto(${p.idx},this.value)">
+                            </div>
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">Fecha *</label>
+                            <input type="date" id="col_fecha_${p.idx}" value="${p.fecha}" class="form-input"
+                                oninput="onColaField(${p.idx},'fecha',this.value)">
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">Cuenta destino</label>
+                            <select id="col_cuentaPreset_${p.idx}" class="form-input" onchange="onColaCuentaPreset(${p.idx},this.value)">
+                                <option value="">Seleccionar...</option>
+                                <option value="BBVA"${p.cuentaPreset==='BBVA'?' selected':''}>BBVA</option>
+                                <option value="BCP"${p.cuentaPreset==='BCP'?' selected':''}>BCP</option>
+                                <option value="INTERBANK SOLES"${p.cuentaPreset==='INTERBANK SOLES'?' selected':''}>Interbank Soles</option>
+                                <option value="INTERBANK DOLARES"${p.cuentaPreset==='INTERBANK DOLARES'?' selected':''}>Interbank Dólares</option>
+                                <option value="YAPE"${p.cuentaPreset==='YAPE'?' selected':''}>Yape</option>
+                                <option value="OTROS"${p.cuentaPreset==='OTROS'?' selected':''}>Otros</option>
+                            </select>
+                            ${p.cuentaPreset==='OTROS'?`<input type="text" id="col_cuentaOtro_${p.idx}" value="${p.cuentaOtro}" class="form-input" style="margin-top:6px;" placeholder="Especifica la cuenta" oninput="onColaField(${p.idx},'cuentaOtro',this.value);onColaField(${p.idx},'cuenta',this.value)">`:''}
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">N° Operación</label>
+                            <input type="text" id="col_numOp_${p.idx}" value="${p.numeroOp}" class="form-input" placeholder="Ej: 000123456"
+                                oninput="onColaField(${p.idx},'numeroOp',this.value)">
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px;align-items:end;">
+                        <div>
+                            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">Banco origen</label>
+                            <input type="text" id="col_banco_${p.idx}" value="${p.bancoOrigen}" class="form-input" placeholder="Ej: BCP"
+                                oninput="onColaField(${p.idx},'bancoOrigen',this.value)">
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">Forma de pago</label>
+                            <select id="col_forma_${p.idx}" class="form-input" onchange="onColaField(${p.idx},'formaPago',this.value)">
+                                <option value=""${!p.formaPago?' selected':''}>Seleccionar...</option>
+                                <option value="Transferencia"${p.formaPago==='Transferencia'?' selected':''}>Transferencia</option>
+                                <option value="Efectivo"${p.formaPago==='Efectivo'?' selected':''}>Efectivo</option>
+                                <option value="Cheque"${p.formaPago==='Cheque'?' selected':''}>Cheque</option>
+                                <option value="Yape"${p.formaPago==='Yape'?' selected':''}>Yape</option>
+                                <option value="Plin"${p.formaPago==='Plin'?' selected':''}>Plin</option>
+                                <option value="Detracción"${p.formaPago==='Detracción'?' selected':''}>Detracción</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">Comprobante</label>
+                            <label id="col_fileLabel_${p.idx}"
+                                style="display:flex;align-items:center;gap:6px;padding:7px 10px;border:1.5px dashed #93c5fd;border-radius:7px;cursor:pointer;background:#fff;font-size:11px;font-weight:600;color:#1d4ed8;transition:all .15s;"
+                                onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#fff'">
+                                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                                <span id="col_fileTxt_${p.idx}">${p.file?'📎 '+p.file.name:'Adjuntar archivo'}</span>
+                                <input type="file" accept="image/*,application/pdf" style="display:none;"
+                                    onchange="onColaFile(${p.idx},this)">
+                            </label>
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;">
+                        <input type="text" id="col_obs_${p.idx}" value="${p.observacion}" class="form-input" placeholder="Observación (opcional)"
+                            style="font-size:12px;" oninput="onColaField(${p.idx},'observacion',this.value)">
+                    </div>
+                </div>`).join('');
+            }
+
+            function onColaMonto(idx, val) {
+                const p = colaPagos.find(x => x.idx === idx);
+                if (p) p.monto = val;
+                const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                const pagadoText = document.getElementById('prPagado').textContent.replace(/[^0-9.]/g,'');
+                actualizarResumenPago(parseFloat(pagadoText)||0, totalRec, calcularTotalCola());
+            }
+
+            function onColaField(idx, field, val) {
+                const p = colaPagos.find(x => x.idx === idx);
+                if (p) p[field] = val;
+            }
+
+            function onColaCuentaPreset(idx, val) {
+                const p = colaPagos.find(x => x.idx === idx);
+                if (!p) return;
+                p.cuentaPreset = val;
+                p.cuenta       = val === 'OTROS' ? '' : val;
+                p.cuentaOtro   = '';
+                renderCola();
+                // Restore focus
+                if (val === 'OTROS') {
+                    setTimeout(() => { const el = document.getElementById(`col_cuentaOtro_${idx}`); if(el) el.focus(); }, 30);
+                }
+                const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                const pagadoText = document.getElementById('prPagado').textContent.replace(/[^0-9.]/g,'');
+                actualizarResumenPago(parseFloat(pagadoText)||0, totalRec, calcularTotalCola());
+            }
+
+            function onColaFile(idx, input) {
+                const p = colaPagos.find(x => x.idx === idx);
+                if (!p || !input.files[0]) return;
+                p.file = input.files[0];
+                const txt = document.getElementById(`col_fileTxt_${idx}`);
+                if (txt) txt.textContent = '📎 ' + p.file.name;
             }
 
             function cerrarModalPago() {
                 document.getElementById('modalPagoOverlay').classList.remove('open');
-                ['pagoMontoAbonado','pagoFechaAbono','pagoCuentaPago','pagoCuentaPagoPreset','pagoCuentaPagoOtro','pagoTotalRecaudacion','pagoPorcentaje','pagoTipoRecaudacion','pagoFechaRecaudacion']
-                    .forEach(id => { document.getElementById(id).value = ''; });
-                document.getElementById('pagoCuentaPagoOtro').style.display = 'none';
-                document.getElementById('comprobanteActualWrap').style.display = 'none';
-                document.getElementById('comprobanteActualView').innerHTML = '';
-                limpiarPreviewPago();
+                pagoListaCargada = [];
+                colaPagos        = [];
+                colaIdx          = 0;
+                document.getElementById('colaAbonos').innerHTML = '';
+                document.getElementById('colaVacia').style.display = 'block';
             }
 
-            const CUENTAS_PAGO_PRESET = ['BBVA', 'BCP', 'INTERBANK SOLES', 'INTERBANK DOLARES', 'YAPE'];
-
-            function setCuentaPagoDesdeValor(valor) {
-                const select = document.getElementById('pagoCuentaPagoPreset');
-                const otro   = document.getElementById('pagoCuentaPagoOtro');
-                const hidden = document.getElementById('pagoCuentaPago');
-                const v = (valor || '').trim();
-
-                hidden.value = v;
-                if (!v) {
-                    select.value = '';
-                    otro.value = '';
-                    otro.style.display = 'none';
-                    return;
+            // ── Modal Ver Pagos (solo lectura) ─────────────────────────────
+            async function abrirModalVerPagos(idFactura, moneda) {
+                const overlay = document.getElementById('modalVerPagosOverlay');
+                document.getElementById('modalVerPagosSubtitle').textContent = `Factura #${idFactura}`;
+                document.getElementById('verPagosLoading').style.display = 'block';
+                document.getElementById('verPagosLoading').textContent   = 'Cargando...';
+                document.getElementById('verPagosVacio').style.display   = 'none';
+                document.getElementById('verPagosTable').style.display   = 'none';
+                overlay.classList.add('open');
+                try {
+                    const res  = await fetch(`/facturas/${idFactura}/pagos`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.message || 'Error');
+                    const pagos = data.pagos || [];
+                    document.getElementById('verPagosLoading').style.display = 'none';
+                    if (!pagos.length) {
+                        document.getElementById('verPagosVacio').style.display = 'block';
+                        return;
+                    }
+                    const sym = (moneda || '').includes('USD') ? 'USD' : 'S/';
+                    let total = 0;
+                    document.getElementById('verPagosTbody').innerHTML = pagos.map((p, i) => {
+                        total += Number(p.monto_pagado);
+                        const fecha = p.fecha_pago
+                            ? new Date(p.fecha_pago + 'T00:00:00').toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' })
+                            : '—';
+                        const comp = p.comprobante_url
+                            ? `<a href="${p.comprobante_url}" target="_blank" style="color:#059669;font-weight:600;">Ver</a>`
+                            : '—';
+                        return `<tr style="border-bottom:1px solid #d1fae5;">
+                            <td style="padding:7px 10px;color:#9ca3af;">${i+1}</td>
+                            <td style="padding:7px 10px;white-space:nowrap;">${fecha}</td>
+                            <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:#059669;">${sym} ${Number(p.monto_pagado).toFixed(2)}</td>
+                            <td style="padding:7px 10px;">${p.cuenta_pago||'—'}</td>
+                            <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:11px;">${p.numero_operacion||'—'}</td>
+                            <td style="padding:7px 10px;">${p.forma_pago||'—'}</td>
+                            <td style="padding:7px 10px;text-align:center;">${comp}</td>
+                        </tr>`;
+                    }).join('');
+                    document.getElementById('verPagosTotal').textContent = `${sym} ${total.toFixed(2)}`;
+                    document.getElementById('verPagosTable').style.display = 'table';
+                } catch (e) {
+                    document.getElementById('verPagosLoading').textContent = 'Error: ' + e.message;
                 }
-
-                const upper = v.toUpperCase();
-                if (CUENTAS_PAGO_PRESET.includes(upper)) {
-                    select.value = upper;
-                    otro.value = '';
-                    otro.style.display = 'none';
-                    hidden.value = upper;
-                    return;
-                }
-
-                select.value = 'OTROS';
-                otro.style.display = 'block';
-                otro.value = v;
             }
 
-            function onCuentaPagoPresetChange() {
-                const select = document.getElementById('pagoCuentaPagoPreset');
-                const otro   = document.getElementById('pagoCuentaPagoOtro');
-                if (select.value === 'OTROS') {
-                    otro.style.display = 'block';
-                    if (!otro.value) otro.focus();
-                } else {
-                    otro.style.display = 'none';
-                    otro.value = '';
-                }
-                syncCuentaPagoFinal();
+            function cerrarModalVerPagos() {
+                document.getElementById('modalVerPagosOverlay').classList.remove('open');
             }
 
-            function syncCuentaPagoFinal() {
-                const select = document.getElementById('pagoCuentaPagoPreset').value;
-                const otro   = document.getElementById('pagoCuentaPagoOtro').value.trim();
-                document.getElementById('pagoCuentaPago').value =
-                    select === 'OTROS' ? (otro || '') : (select || '');
-            }
+            async function guardarPago() {
+                if (!colaPagos.length) { alert('Agrega al menos un abono antes de guardar.'); return; }
 
-            function renderComprobanteActual(url) {
-                const wrap = document.getElementById('comprobanteActualWrap');
-                const view = document.getElementById('comprobanteActualView');
-                if (!url) {
-                    wrap.style.display = 'none';
-                    view.innerHTML = '';
-                    return;
+                // Validar montos
+                const invalidas = colaPagos.filter(p => !(parseFloat(p.monto) > 0));
+                if (invalidas.length) { alert('Todos los abonos deben tener un monto mayor a 0.'); return; }
+
+                const btn = document.getElementById('btnGuardarPago');
+                btn.disabled = true;
+
+                const totalRec    = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                const tipoRec     = document.getElementById('pagoTipoRecaudacion').value;
+                const validarDet  = document.getElementById('chkValidarDetraccion').checked;
+                const fechaRec    = document.getElementById('pagoFechaRecaudacion').value || '';
+                const pctRec      = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
+
+                let ultimoData = null;
+                for (let i = 0; i < colaPagos.length; i++) {
+                    const p = colaPagos[i];
+                    document.getElementById('btnGuardarPagoTxt').textContent = `Guardando ${i+1}/${colaPagos.length}…`;
+
+                    const formData = new FormData();
+                    formData.append('_token',           CSRF);
+                    formData.append('monto_pagado',     parseFloat(p.monto).toFixed(2));
+                    formData.append('fecha_pago',       p.fecha || new Date().toISOString().split('T')[0]);
+                    formData.append('cuenta_pago',      p.cuentaPreset === 'OTROS' ? (p.cuentaOtro||'') : (p.cuentaPreset||''));
+                    formData.append('numero_operacion', p.numeroOp     || '');
+                    formData.append('banco_origen',     p.bancoOrigen  || '');
+                    formData.append('forma_pago_abono', p.formaPago    || '');
+                    formData.append('observacion',      p.observacion  || '');
+                    if (p.file) formData.append('comprobante', p.file);
+                    // Recaudación solo en el último abono si hay datos
+                    if (i === colaPagos.length - 1) {
+                        formData.append('total_recaudacion',      totalRec.toFixed(2));
+                        formData.append('porcentaje_recaudacion', pctRec.toString());
+                        formData.append('tipo_recaudacion',       tipoRec || '');
+                        formData.append('fecha_recaudacion',      (validarDet && !fechaRec) ? new Date().toISOString().split('T')[0] : fechaRec);
+                        formData.append('validar_detraccion',     validarDet ? '1' : '0');
+                    }
+
+                    try {
+                        const res  = await fetch(`/facturas/${facturaActualId}/pago`, {
+                            method : 'POST',
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                            body   : formData,
+                        });
+                        ultimoData = await res.json();
+                        if (!ultimoData.success) throw new Error(ultimoData.message || 'Error al guardar pago');
+                    } catch (e) {
+                        alert(`Error en abono ${i+1}: ${e.message}`);
+                        btn.disabled = false;
+                        document.getElementById('btnGuardarPagoTxt').textContent = 'Guardar pagos';
+                        return;
+                    }
                 }
 
-                const isPdf = /\.pdf(\?|$)/i.test(url);
-                if (isPdf) {
-                    view.innerHTML = `<a href="${url}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd;font-size:12px;font-weight:700;text-decoration:none;">📄 Ver PDF actual</a>`;
-                } else {
-                    view.innerHTML = `<a href="${url}" target="_blank" style="display:inline-block;"><img src="${url}" alt="Comprobante actual" style="max-width:220px;max-height:140px;border-radius:8px;border:1px solid var(--gold-b);"></a>`;
-                }
-                wrap.style.display = 'block';
+                showToastFactura(`✓ ${colaPagos.length} abono(s) guardados correctamente.`);
+                cerrarModalPago();
+                location.reload();
             }
 
             function showToastFactura(msg, ok = true) {
@@ -1808,97 +2200,13 @@
                     document.getElementById('pagoTotalRecaudacion').value = '';
                     document.getElementById('pagoPorcentaje').value = '';
                 }
-                recalcularPago();
             }
-
-            function _recalcularAbonoAutodet() { return; }
 
             function calcularRecaudacion() {
                 const pct = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
                 if (pct > 0 && facturaImporte > 0) {
                     document.getElementById('pagoTotalRecaudacion').value = (facturaImporte * pct / 100).toFixed(2);
                 }
-                recalcularPago();
-            }
-
-            function recalcularPago() {
-                const tipoRec    = document.getElementById('pagoTipoRecaudacion').value;
-                const validarDet = document.getElementById('chkValidarDetraccion').checked;
-                const recaudacion = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
-                const moneda     = facturaMoneda;
-                const abonado    = parseFloat(document.getElementById('pagoMontoAbonado').value) || 0;
-                const pendiente  = Math.max(0, facturaImporte - abonado - recaudacion);
-                document.getElementById('calcImporte').textContent     = `${moneda} ${facturaImporte.toFixed(2)}`;
-                document.getElementById('calcAbonado').textContent     = `${moneda} ${abonado.toFixed(2)}`;
-                document.getElementById('calcRecaudacion').textContent = `${moneda} ${recaudacion.toFixed(2)}`;
-                document.getElementById('calcPendiente').textContent   = `${moneda} ${pendiente.toFixed(2)}`;
-                let estadoPreview = '', estadoColor = '';
-                if (tipoRec === 'DETRACCION' && !validarDet && abonado === 0) {
-                    estadoPreview = 'Estado: POR VALIDAR DETRACCIÓN'; estadoColor = '#fdf4ff';
-                } else if (tipoRec === 'AUTODETRACCION') {
-                    estadoPreview = recaudacion > 0 ? 'Estado: DIFERENCIA PENDIENTE' : 'Estado: PENDIENTE';
-                    estadoColor   = recaudacion > 0 ? '#fce7f3' : '#fef3c7';
-                } else if (abonado === 0 && recaudacion === 0) {
-                    estadoPreview = 'Estado: PENDIENTE'; estadoColor = '#fef3c7';
-                } else if (pendiente <= 0) {
-                    estadoPreview = 'Estado: PAGADA — Factura completamente cancelada'; estadoColor = '#d1fae5';
-                } else {
-                    estadoPreview = `Estado: PAGO PARCIAL — Queda ${moneda} ${pendiente.toFixed(2)} pendiente`; estadoColor = '#e0e7ff';
-                }
-                const preview = document.getElementById('estadoPreview');
-                preview.textContent = estadoPreview; preview.style.background = estadoColor;
-            }
-
-            async function guardarPago(event) {
-                event.preventDefault();
-                const btn = document.getElementById('btnGuardarPago');
-                btn.disabled = true; btn.textContent = 'Guardando…';
-                const montoAbonado      = parseFloat(document.getElementById('pagoMontoAbonado').value) || 0;
-                const totalRecaudacion  = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
-                const porcentaje        = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
-                const tipoRec           = document.getElementById('pagoTipoRecaudacion').value;
-                const validarDet        = document.getElementById('chkValidarDetraccion').checked;
-                const fechaAbono        = document.getElementById('pagoFechaAbono').value || null;
-                const cuentaPagoRaw     = document.getElementById('pagoCuentaPago').value || '';
-                const cuentaPago        = cuentaPagoRaw.trim() || null;
-                let fechaRecaudacion    = document.getElementById('pagoFechaRecaudacion').value || null;
-                if (validarDet && !fechaRecaudacion) fechaRecaudacion = new Date().toISOString().split('T')[0];
-                try {
-                    const res = await fetch(`/facturas/${facturaActualId}/pago`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-                        body: JSON.stringify({ monto_abonado: montoAbonado, total_recaudacion: totalRecaudacion, porcentaje_recaudacion: porcentaje, tipo_recaudacion: tipoRec || null, fecha_abono: fechaAbono, cuenta_pago: cuentaPago, fecha_recaudacion: fechaRecaudacion, validar_detraccion: validarDet }),
-                    });
-                    const data = await res.json();
-                    if (!data.success) throw new Error(data.message || 'Error al guardar pago');
-                } catch(e) { alert('Error: ' + e.message); btn.disabled = false; btn.textContent = 'Guardar Pago'; return; }
-                const file = document.getElementById('fileComprobantePago').files[0];
-                if (file) {
-                    const formData = new FormData();
-                    formData.append('comprobante', file); formData.append('_token', CSRF);
-                    try { await fetch(`/facturas/${facturaActualId}/upload-comprobante`, { method: 'POST', body: formData, headers: { 'X-Requested-With': 'XMLHttpRequest' } }); } catch(e) {}
-                }
-                cerrarModalPago();
-                location.reload();
-            }
-
-            function mostrarPreviewPago(event) {
-                const file = event.target.files[0]; if (!file) return;
-                document.getElementById('previewPagoWrap').style.display = 'block';
-                document.getElementById('dropZonePago').style.display    = 'none';
-                if (file.type === 'application/pdf') {
-                    document.getElementById('previewPagoImg').style.display = 'none';
-                    document.getElementById('previewPagoPdf').style.display = 'block';
-                } else {
-                    const r = new FileReader();
-                    r.onload = e => { document.getElementById('previewPagoImg').src = e.target.result; document.getElementById('previewPagoImg').style.display = 'block'; document.getElementById('previewPagoPdf').style.display = 'none'; };
-                    r.readAsDataURL(file);
-                }
-            }
-            function limpiarPreviewPago() {
-                document.getElementById('fileComprobantePago').value = '';
-                document.getElementById('previewPagoWrap').style.display = 'none';
-                document.getElementById('dropZonePago').style.display    = 'block';
             }
 
             // ── Modal Editar Factura ──────────────────────────────────────────
@@ -1986,7 +2294,7 @@
                     .catch(err=>alert('Error: '+err.message));
             }
 
-            ['modalPagoMasivoOverlay','modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay'].forEach(id => {
+            ['modalPagoMasivoOverlay','modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay','modalVerPagosOverlay'].forEach(id => {
                 document.getElementById(id)?.addEventListener('click', e => { if(e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
             });
 

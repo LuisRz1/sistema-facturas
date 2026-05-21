@@ -547,7 +547,10 @@ class CotizacionDocumentController extends Controller
             abort(404, 'No hay imágenes de Parte Diario para esta cotización.');
         }
 
-        $title = "Partes Diarios — Valorización {$cotizacion->numero_valorizacion} — {$cotizacion->obra}";
+        $nombreItem = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
+            ? ($cotizacion->maquinaria_nombre ?? 'MAQUINARIA')
+            : ($cotizacion->agregado_nombre   ?? 'AGREGADO');
+        $title = "{$nombreItem} - {$cotizacion->numero_valorizacion} - {$cotizacion->obra}";
         $html = $this->buildPartesDiariosPdfHtml($cotizacion, $filas, $disk, $title);
 
         if (!$html) {
@@ -743,7 +746,10 @@ class CotizacionDocumentController extends Controller
             return response()->json(['success' => false, 'error' => 'No hay Partes Diarios con imagen en esta cotización.'], 422);
         }
 
-        $title = "Partes Diarios · Val. {$cotizacion->numero_valorizacion} · {$cotizacion->obra}";
+        $nombreItemWa = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
+            ? ($cotizacion->maquinaria_nombre ?? 'MAQUINARIA')
+            : ($cotizacion->agregado_nombre   ?? 'AGREGADO');
+        $title = "{$nombreItemWa} - {$cotizacion->numero_valorizacion} - {$cotizacion->obra}";
         $html = $this->buildPartesDiariosPdfHtml($cotizacion, $filas, $disk, $title);
 
         if (!$html) {
@@ -763,7 +769,7 @@ class CotizacionDocumentController extends Controller
         }
 
         $gateway  = app(\App\Services\WhatsAppGatewayService::class);
-        $caption  = "*Partes Diarios*\nVal. {$cotizacion->numero_valorizacion} — {$cotizacion->obra}";
+        $caption  = "*{$nombreItemWa}*\nVal. {$cotizacion->numero_valorizacion} — {$cotizacion->obra}";
         $filename = $this->buildPartesDiariosFilename($cotizacion, 'pdf');
         $resultado = $gateway->enviarDocumento($cotizacion->celular, $cloudUrl, $filename, $caption);
 

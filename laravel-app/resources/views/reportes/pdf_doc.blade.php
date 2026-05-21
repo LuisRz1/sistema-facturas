@@ -163,7 +163,7 @@
                     <th>#</th><th>Emisión</th><th>Factura</th><th>Glosa</th>
                     <th class="r">Importe</th><th class="r">%</th>
                     <th class="r">Recaudación</th><th>Tipo</th>
-                    <th>F.Abono</th><th>Estado</th>
+                    <th>Pagos (fecha/monto)</th><th>Estado</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -173,6 +173,7 @@
                         $porcentaje  = $f->porcentaje_recaudacion ?? 0;
                         $tipoRec     = $f->tipo_recaudacion_actual ?? '—';
                         $bc          = 'b-' . $f->estado;
+                        $pagosFila   = isset($pagosMap) ? $pagosMap->get($f->id_factura, collect()) : collect();
                     @endphp
                     <tr class="{{ $index % 2 === 1 ? 'alt' : '' }}">
                         <td style="text-align:center;color:#64748b;">{{ $index + 1 }}</td>
@@ -183,7 +184,15 @@
                         <td class="r">{{ $porcentaje > 0 ? $porcentaje.'%' : '—' }}</td>
                         <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda.' '.number_format($recaudacion, 2) : '—' }}</td>
                         <td style="font-size:8px;font-weight:700;color:#7c3aed;">{{ $tipoRec }}</td>
-                        <td class="mono">{{ $f->fecha_abono ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—' }}</td>
+                        <td class="mono" style="font-size:8px;color:#059669;line-height:1.6;">
+                            @if($pagosFila->isEmpty())
+                                <span style="color:#9ca3af;">—</span>
+                            @else
+                                @foreach($pagosFila as $pago)
+                                    <div>{{ $pago->fecha_pago ? \Carbon\Carbon::parse($pago->fecha_pago)->format('d/m/Y') : '—' }}&nbsp;{{ number_format((float)$pago->monto_pagado,2) }}</div>
+                                @endforeach
+                            @endif
+                        </td>
                         <td><span class="badge {{ $bc }}">{{ str_replace('_',' ',$f->estado) }}</span></td>
                     </tr>
                 @endforeach
@@ -199,7 +208,7 @@
                 <th>#</th><th>Emisión</th><th>Factura</th><th>Glosa</th>
                 <th class="r">Importe</th><th class="r">%</th>
                 <th class="r">Recaudación</th><th>Tipo</th>
-                <th>F.Abono</th><th>Estado</th>
+                <th>Pagos (fecha/monto)</th><th>Estado</th>
             </tr>
             </thead>
             <tbody>
@@ -209,6 +218,7 @@
                     $porcentaje  = $f->porcentaje_recaudacion ?? 0;
                     $tipoRec     = $f->tipo_recaudacion_actual ?? '—';
                     $bc          = 'b-' . $f->estado;
+                    $pagosFila   = isset($pagosMap) ? $pagosMap->get($f->id_factura, collect()) : collect();
                 @endphp
                 <tr class="{{ $index % 2 === 1 ? 'alt' : '' }}">
                     <td style="text-align:center;color:#64748b;">{{ $index + 1 }}</td>
@@ -219,7 +229,15 @@
                     <td class="r">{{ $porcentaje > 0 ? $porcentaje.'%' : '—' }}</td>
                     <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda.' '.number_format($recaudacion, 2) : '—' }}</td>
                     <td style="font-size:8px;font-weight:700;color:#7c3aed;">{{ $tipoRec }}</td>
-                    <td class="mono">{{ $f->fecha_abono ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—' }}</td>
+                    <td class="mono" style="font-size:8px;color:#059669;line-height:1.6;">
+                        @if($pagosFila->isEmpty())
+                            <span style="color:#9ca3af;">—</span>
+                        @else
+                            @foreach($pagosFila as $pago)
+                                <div>{{ $pago->fecha_pago ? \Carbon\Carbon::parse($pago->fecha_pago)->format('d/m/Y') : '—' }}&nbsp;{{ number_format((float)$pago->monto_pagado,2) }}</div>
+                            @endforeach
+                        @endif
+                    </td>
                     <td><span class="badge {{ $bc }}">{{ str_replace('_',' ',$f->estado) }}</span></td>
                 </tr>
             @endforeach

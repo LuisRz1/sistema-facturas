@@ -43,6 +43,7 @@ class SincronizacionController extends Controller
                 DB::table('factura')->whereIn('id_factura', $facturaIds)->update(['activo' => 0]);
                 DB::table('recaudacion')->whereIn('id_factura', $facturaIds)->update(['activo' => 0]);
                 DB::table('credito')->whereIn('id_factura', $facturaIds)->update(['activo' => 0]);
+                DB::table('pago_factura')->whereIn('id_factura', $facturaIds)->update(['activo' => 0]);
             }
 
             DB::commit();
@@ -112,6 +113,7 @@ class SincronizacionController extends Controller
             DB::table('factura')->whereIn('id_factura', $facturaIds)->update(['activo' => 1]);
             DB::table('recaudacion')->whereIn('id_factura', $facturaIds)->update(['activo' => 1]);
             DB::table('credito')->whereIn('id_factura', $facturaIds)->update(['activo' => 1]);
+            DB::table('pago_factura')->whereIn('id_factura', $facturaIds)->update(['activo' => 1]);
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();

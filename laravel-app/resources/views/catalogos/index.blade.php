@@ -423,12 +423,19 @@
                 };
             }
 
-            const data = await apiPost(url, { ...payload, _method: 'PUT' });
+            const btn = document.getElementById('btnGuardarEdit');
+            btn.disabled = true;
+            btn.textContent = 'Guardando...';
+            const data = await apiPost(url, payload);
             if (data.success) {
-                showToast(data.message);
                 document.getElementById('modalEdit').classList.remove('open');
-                location.reload();
-            } else showToast(data.message || 'Error', false);
+                showToast(data.message || '✓ Actualizado correctamente.');
+                setTimeout(() => location.reload(), 1400);
+            } else {
+                btn.disabled = false;
+                btn.textContent = 'Guardar';
+                showToast(data.message || 'Error al guardar.', false);
+            }
         }
 
         // ─────────────── DELETE ───────────────────────────────────────────────────

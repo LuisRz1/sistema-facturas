@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Factura;
+use App\Models\PagoFactura;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -34,24 +35,19 @@ class FacturaController extends Controller
 
         $selects = [
             'f.id_factura', 'f.serie', 'f.numero',
-            'f.fecha_emision', 'f.fecha_vencimiento', 'f.fecha_abono',
+            'f.fecha_emision', 'f.fecha_vencimiento',
             'f.moneda', 'f.importe_total', 'f.monto_igv',
             'f.monto_abonado', 'f.monto_pendiente', 'f.estado',
             'f.tipo_recaudacion', 'f.glosa', 'f.forma_pago',
-            'f.usuario_creacion', 'f.cuenta_pago',
+            'f.usuario_creacion',
             'c.id_cliente', 'c.razon_social', 'c.ruc',
             'c.correo as cliente_correo', 'c.celular as cliente_celular',
             'u.nombre as usuario_nombre', 'u.apellido as usuario_apellido',
             'rec.total_recaudacion as monto_recaudacion',
             'rec.porcentaje as porcentaje_recaudacion',
             'rec.fecha_recaudacion',
+            DB::raw('NULL as ruta_comprobante_pago'),
         ];
-
-        if (Schema::hasColumn('factura', 'ruta_comprobante_pago')) {
-            $selects[] = 'f.ruta_comprobante_pago';
-        } else {
-            $selects[] = DB::raw('NULL as ruta_comprobante_pago');
-        }
 
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
@@ -93,6 +89,7 @@ class FacturaController extends Controller
         $facturaIds    = $facturasCollection->pluck('id_factura')->toArray();
         $creditosPorId = DB::table('credito')
             ->whereIn('id_factura', $facturaIds)
+            ->where('activo', 1)
             ->get()
             ->keyBy('id_factura');
 
@@ -101,6 +98,7 @@ class FacturaController extends Controller
             $existe = DB::table('factura')
                 ->where('serie',  $credito->serie_doc_modificado)
                 ->where('numero', $credito->numero_doc_modificado)
+                ->where('activo', 1)
                 ->exists();
             if (!$existe) {
                 $orphanFacturaIds[] = (int) $idFactura;
@@ -112,7 +110,7 @@ class FacturaController extends Controller
                 return true;
             }
             if ($f->estado === 'ANULADO') {
-                return !DB::table('credito')->where('id_factura', $f->id_factura)->exists();
+                return !DB::table('credito')->where('id_factura', $f->id_factura)->where('activo', 1)->exists();
             }
             return false;
         });
@@ -207,80 +205,233 @@ class FacturaController extends Controller
     }
 
     /**
-     * Procesar pago / abono.
+     * Procesar pago / abono — inserta en pago_factura y recalcula totales.
      */
     public function procesarPago(Request $request, $id): JsonResponse
     {
         $factura = Factura::findOrFail($id);
 
         $validated = $request->validate([
-            'monto_abonado'         => 'nullable|numeric|min:0',
-            'total_recaudacion'     => 'nullable|numeric|min:0',
-            'porcentaje_recaudacion'=> 'nullable|numeric|min:0|max:100',
-            'tipo_recaudacion'      => 'nullable|string|in:DETRACCION,AUTODETRACCION,RETENCION',
-            'validar_detraccion'    => 'nullable|boolean',
-            'fecha_abono'           => 'nullable|date',
-            'fecha_recaudacion'     => 'nullable|date',
-            'cuenta_pago'           => 'nullable|string|max:255',
+            'monto_pagado'           => 'nullable|numeric|min:0',
+            'fecha_pago'             => 'nullable|date',
+            'cuenta_pago'            => 'nullable|string|max:50',
+            'numero_operacion'       => 'nullable|string|max:100',
+            'banco_origen'           => 'nullable|string|max:100',
+            'forma_pago_abono'       => 'nullable|string|max:50',
+            'observacion'            => 'nullable|string',
+            'comprobante'            => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:20480',
+            // Recaudación (nivel factura)
+            'total_recaudacion'      => 'nullable|numeric|min:0',
+            'porcentaje_recaudacion' => 'nullable|numeric|min:0|max:100',
+            'tipo_recaudacion'       => 'nullable|string|in:DETRACCION,AUTODETRACCION,RETENCION',
+            'validar_detraccion'     => 'nullable|boolean',
+            'fecha_recaudacion'      => 'nullable|date',
         ]);
 
-        $montoAbonado     = round((float) ($validated['monto_abonado'] ?? 0), 2);
-        $totalRecaudacion = round((float) ($validated['total_recaudacion'] ?? 0), 2);
-        $tipoRecaudacion  = $validated['tipo_recaudacion'] ?? $factura->tipo_recaudacion;
-        $porcentaje       = $validated['porcentaje_recaudacion'] ?? null;
-        $fechaAbono       = $validated['fecha_abono'] ?? null;
-        $fechaRecaudacion = $validated['fecha_recaudacion'] ?? null;
-        $cuentaPago       = $validated['cuenta_pago'] ?? null;
-        $importeTotal     = round((float) $factura->importe_total, 2);
+        DB::beginTransaction();
+        try {
+            $montoPagado = round((float) ($validated['monto_pagado'] ?? 0), 2);
 
-        if ($tipoRecaudacion && $totalRecaudacion > 0) {
-            DB::table('recaudacion')->updateOrInsert(
-                ['id_factura' => $id],
-                [
-                    'porcentaje'        => $porcentaje ?? 0,
-                    'total_recaudacion' => $totalRecaudacion,
-                    'fecha_recaudacion' => $fechaRecaudacion,
-                ]
+            // Insertar nuevo abono si el monto es mayor que cero
+            if ($montoPagado > 0) {
+                $rutaComprobante = null;
+                if ($request->hasFile('comprobante')) {
+                    $rutaComprobante = $request->file('comprobante')
+                        ->store("facturas/comprobantes/{$id}", 's3');
+                    if (!$rutaComprobante) {
+                        throw new \RuntimeException('No se pudo subir el comprobante.');
+                    }
+                }
+
+                DB::table('pago_factura')->insert([
+                    'id_factura'            => $id,
+                    'monto_pagado'          => $montoPagado,
+                    'fecha_pago'            => $validated['fecha_pago'] ?? now()->toDateString(),
+                    'cuenta_pago'           => $validated['cuenta_pago'] ?? null,
+                    'ruta_comprobante_pago' => $rutaComprobante,
+                    'numero_operacion'      => $validated['numero_operacion'] ?? null,
+                    'banco_origen'          => $validated['banco_origen'] ?? null,
+                    'forma_pago'            => $validated['forma_pago_abono'] ?? null,
+                    'observacion'           => $validated['observacion'] ?? null,
+                    'activo'                => 1,
+                    'fecha_creacion'        => now(),
+                ]);
+            }
+
+            // Recaudación (nivel factura)
+            $totalRecaudacion = round((float) ($validated['total_recaudacion'] ?? 0), 2);
+            $tipoRecaudacion  = $validated['tipo_recaudacion'] ?? $factura->tipo_recaudacion;
+            $porcentaje       = $validated['porcentaje_recaudacion'] ?? null;
+            $fechaRecaudacion = $validated['fecha_recaudacion'] ?? null;
+
+            if ($tipoRecaudacion && $totalRecaudacion > 0) {
+                DB::table('recaudacion')->updateOrInsert(
+                    ['id_factura' => $id],
+                    [
+                        'porcentaje'        => $porcentaje ?? 0,
+                        'total_recaudacion' => $totalRecaudacion,
+                        'fecha_recaudacion' => $fechaRecaudacion,
+                    ]
+                );
+            } elseif (!$tipoRecaudacion && $totalRecaudacion == 0) {
+                DB::table('recaudacion')->where('id_factura', $id)->delete();
+                $totalRecaudacion = 0;
+            }
+
+            // Recalcular monto_abonado sumando todos los pagos activos
+            $montoAbonadoTotal = round(
+                (float) DB::table('pago_factura')
+                    ->where('id_factura', $id)
+                    ->where('activo', 1)
+                    ->sum('monto_pagado'),
+                2
             );
-        } elseif (!$tipoRecaudacion && $totalRecaudacion == 0) {
-            DB::table('recaudacion')->where('id_factura', $id)->delete();
-            $totalRecaudacion = 0;
+
+            $importeTotal   = round((float) $factura->importe_total, 2);
+            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $totalRecaudacion), 2);
+
+            $estado = $this->calcularEstado(
+                $factura, $montoAbonadoTotal, $montoPendiente,
+                $totalRecaudacion, $tipoRecaudacion,
+                (bool) ($validated['validar_detraccion'] ?? false),
+                $fechaRecaudacion
+            );
+
+            if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
+                $montoPendiente = $importeTotal;
+            }
+
+            $factura->update([
+                'monto_abonado'      => $montoAbonadoTotal,
+                'monto_pendiente'    => $montoPendiente,
+                'tipo_recaudacion'   => $tipoRecaudacion,
+                'estado'             => $estado,
+                'fecha_actualizacion'=> now(),
+            ]);
+
+            DB::commit();
+
+            session()->flash('last_edited_factura_id', $id);
+
+            return response()->json([
+                'success'         => true,
+                'estado'          => $estado,
+                'monto_abonado'   => $montoAbonadoTotal,
+                'monto_pendiente' => $montoPendiente,
+                'message'         => "Pago registrado. Estado: {$estado}",
+                'last_edited_id'  => $id,
+            ]);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
+    }
 
-        $montoPendiente = round(max(0, $importeTotal - $montoAbonado - $totalRecaudacion), 2);
+    /**
+     * Listar pagos de una factura.
+     */
+    public function listarPagos($id): JsonResponse
+    {
+        Factura::findOrFail($id);
 
-        $estado = $this->calcularEstado(
-            $factura, $montoAbonado, $montoPendiente,
-            $totalRecaudacion, $tipoRecaudacion,
-            (bool) ($validated['validar_detraccion'] ?? false),
-            $fechaRecaudacion
-        );
+        $pagos = DB::table('pago_factura')
+            ->where('id_factura', $id)
+            ->where('activo', 1)
+            ->orderBy('fecha_pago')
+            ->orderBy('id_pago')
+            ->get();
 
-        if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
-            $montoPendiente = $importeTotal;
-        }
-
-        $factura->update([
-            'monto_abonado'      => $montoAbonado,
-            'monto_pendiente'    => $montoPendiente,
-            'tipo_recaudacion'   => $tipoRecaudacion,
-            'estado'             => $estado,
-            'fecha_abono'        => $fechaAbono,
-            'cuenta_pago'        => $cuentaPago,
-            'fecha_actualizacion'=> now(),
-        ]);
-
-        // Flash para resaltar la última factura editada al recargar
-        session()->flash('last_edited_factura_id', $id);
+        $pagosArray = $pagos->map(function ($p) {
+            return [
+                'id_pago'          => $p->id_pago,
+                'monto_pagado'     => $p->monto_pagado,
+                'fecha_pago'       => $p->fecha_pago,
+                'cuenta_pago'      => $p->cuenta_pago,
+                'numero_operacion' => $p->numero_operacion,
+                'banco_origen'     => $p->banco_origen,
+                'forma_pago'       => $p->forma_pago,
+                'observacion'      => $p->observacion,
+                'comprobante_url'  => $this->resolveComprobanteUrl($p->ruta_comprobante_pago ?? null),
+            ];
+        });
 
         return response()->json([
-            'success'         => true,
-            'estado'          => $estado,
-            'monto_abonado'   => $montoAbonado,
-            'monto_pendiente' => $montoPendiente,
-            'message'         => "Pago procesado. Estado: {$estado}",
-            'last_edited_id'  => $id,
+            'success'       => true,
+            'pagos'         => $pagosArray,
+            'monto_abonado' => (float) DB::table('pago_factura')->where('id_factura', $id)->where('activo', 1)->sum('monto_pagado'),
         ]);
+    }
+
+    /**
+     * Eliminar (soft-delete) un pago y recalcular totales.
+     */
+    public function eliminarPago(Request $request, $id, $idPago): JsonResponse
+    {
+        $factura = Factura::findOrFail($id);
+
+        $pago = DB::table('pago_factura')
+            ->where('id_pago', $idPago)
+            ->where('id_factura', $id)
+            ->where('activo', 1)
+            ->first();
+
+        if (!$pago) {
+            return response()->json(['success' => false, 'message' => 'Pago no encontrado.'], 404);
+        }
+
+        DB::beginTransaction();
+        try {
+            DB::table('pago_factura')->where('id_pago', $idPago)->update([
+                'activo'               => 0,
+                'fecha_actualizacion'  => now(),
+            ]);
+
+            $recaudacion      = DB::table('recaudacion')->where('id_factura', $id)->first();
+            $totalRecaudacion = round((float) ($recaudacion->total_recaudacion ?? 0), 2);
+            $fechaRecaudacion = $recaudacion->fecha_recaudacion ?? null;
+
+            $montoAbonadoTotal = round(
+                (float) DB::table('pago_factura')
+                    ->where('id_factura', $id)
+                    ->where('activo', 1)
+                    ->sum('monto_pagado'),
+                2
+            );
+
+            $importeTotal   = round((float) $factura->importe_total, 2);
+            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $totalRecaudacion), 2);
+
+            $estado = $this->calcularEstado(
+                $factura, $montoAbonadoTotal, $montoPendiente,
+                $totalRecaudacion, $factura->tipo_recaudacion,
+                false, $fechaRecaudacion
+            );
+
+            if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
+                $montoPendiente = $importeTotal;
+            }
+
+            $factura->update([
+                'monto_abonado'      => $montoAbonadoTotal,
+                'monto_pendiente'    => $montoPendiente,
+                'estado'             => $estado,
+                'fecha_actualizacion'=> now(),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success'         => true,
+                'monto_abonado'   => $montoAbonadoTotal,
+                'monto_pendiente' => $montoPendiente,
+                'estado'          => $estado,
+            ]);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
     }
 
     public function facturasPendientesCliente(Request $request): JsonResponse
@@ -406,8 +557,6 @@ class FacturaController extends Controller
                 $rutaComprobanteMasivo = $tmpPath;
             }
 
-            $guardarRutaComprobante = $rutaComprobanteMasivo && Schema::hasColumn('factura', 'ruta_comprobante_pago');
-
             foreach ($detallesNorm as $d) {
                 /** @var Factura $factura */
                 $factura = $facturas->get($d['id_factura']);
@@ -428,11 +577,29 @@ class FacturaController extends Controller
                     throw new \RuntimeException("El monto asignado supera el pendiente de la factura {$factura->serie}-{$factura->numero}.");
                 }
 
-                $estadoAntes = (string) $factura->estado;
+                $estadoAntes  = (string) $factura->estado;
                 $abonadoAntes = round((float) $factura->monto_abonado, 2);
 
-                $montoAbonadoNuevo = round((float) $factura->monto_abonado + (float) $d['monto'], 2);
-                $recaudacion = (float) ($recaudMap[$factura->id_factura]->total_recaudacion ?? 0);
+                // Insertar el abono en pago_factura
+                DB::table('pago_factura')->insert([
+                    'id_factura'            => $factura->id_factura,
+                    'monto_pagado'          => round((float) $d['monto'], 2),
+                    'fecha_pago'            => $validated['fecha_abono'],
+                    'cuenta_pago'           => $validated['cuenta_pago'] ?? null,
+                    'ruta_comprobante_pago' => $rutaComprobanteMasivo,
+                    'activo'                => 1,
+                    'fecha_creacion'        => now(),
+                ]);
+
+                // Recalcular desde la suma real de pagos activos
+                $montoAbonadoNuevo = round(
+                    (float) DB::table('pago_factura')
+                        ->where('id_factura', $factura->id_factura)
+                        ->where('activo', 1)
+                        ->sum('monto_pagado'),
+                    2
+                );
+                $recaudacion      = (float) ($recaudMap[$factura->id_factura]->total_recaudacion ?? 0);
                 $fechaRecaudacion = $recaudMap[$factura->id_factura]->fecha_recaudacion ?? null;
                 $montoPendienteNuevo = round(max(0, (float) $factura->importe_total - $montoAbonadoNuevo - $recaudacion), 2);
 
@@ -450,14 +617,8 @@ class FacturaController extends Controller
                     'monto_abonado'       => $montoAbonadoNuevo,
                     'monto_pendiente'     => $montoPendienteNuevo,
                     'estado'              => $estadoNuevo,
-                    'fecha_abono'         => $validated['fecha_abono'],
-                    'cuenta_pago'         => $validated['cuenta_pago'] ?? null,
                     'fecha_actualizacion' => now(),
                 ];
-
-                if ($guardarRutaComprobante) {
-                    $updateData['ruta_comprobante_pago'] = $rutaComprobanteMasivo;
-                }
 
                 $factura->update($updateData);
 

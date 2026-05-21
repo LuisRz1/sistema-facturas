@@ -28,6 +28,22 @@
             display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
         }
         .btn-excel:hover { background:#15803d; }
+        /* Panel de opciones Excel */
+        .excel-panel {
+            display:none; position:absolute; top:100%; left:0; margin-top:4px;
+            background:#fff; border:1px solid #d1d5db; border-radius:8px;
+            box-shadow:0 8px 24px rgba(0,0,0,.15); z-index:999; min-width:280px; padding:8px 0;
+        }
+        .excel-panel.open { display:block; }
+        .excel-panel-item {
+            display:flex; align-items:flex-start; gap:10px; padding:10px 16px;
+            cursor:pointer; border-bottom:1px solid #f3f4f6; transition:background .1s;
+        }
+        .excel-panel-item:last-child { border-bottom:none; }
+        .excel-panel-item:hover { background:#f0fdf4; }
+        .excel-panel-item .ico { font-size:18px; flex-shrink:0; margin-top:1px; }
+        .excel-panel-item .desc strong { display:block; font-size:12px; font-weight:700; color:#1f2937; }
+        .excel-panel-item .desc span  { display:block; font-size:10px; color:#6b7280; margin-top:1px; }
         .btn-close {
             background:transparent; color:#64748b; border:1px solid #334155;
             padding:8px 14px; border-radius:6px; font-size:12px; cursor:pointer; white-space:nowrap;
@@ -111,7 +127,7 @@
 
         .empresa-table thead tr { background:#0f172a; color:#fff; }
         .empresa-table thead th {
-            padding:7px 6px; text-align:left; font-size:8.5px; font-weight:700;
+            padding:6px 4px; text-align:left; font-size:8.5px; font-weight:700;
             text-transform:uppercase; letter-spacing:.5px; overflow:hidden;
             white-space:nowrap; text-overflow:ellipsis;
         }
@@ -119,7 +135,7 @@
         .empresa-table tbody tr { border-bottom:1px solid #f1f5f9; }
         .empresa-table tbody tr:nth-child(even) { background:#f8fafc; }
         .empresa-table tbody td {
-            padding:7px 6px; font-size:10px; vertical-align:middle;
+            padding:6px 4px; font-size:9.5px; vertical-align:middle;
             overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
         }
         .empresa-table tbody td.r { text-align:right; }
@@ -189,27 +205,67 @@
 
         .footer { margin-top:24px; text-align:center; font-size:9px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px; }
 
+        /* Orientación horizontal para imprimir y previsualizar */
+        @page { size:A4 landscape; margin:5mm 6mm; }
+
+        /* Vista previa en pantalla: ancho mínimo para apreciar todas las columnas */
+        body { min-width:1100px; }
+
         @media print {
-            body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+            body { -webkit-print-color-adjust:exact; print-color-adjust:exact; min-width:unset; }
             .no-print { display:none !important; }
-            @page { size:A4 landscape; margin:8mm; }
+            .body { padding:6px 10px; }
+            .header { padding:12px 20px 10px; }
+            .header h1 { font-size:15px; }
+
+            /* Quitar clipping — los números DEBEN verse completos */
+            .empresa-table thead th {
+                font-size:7px !important;
+                padding:5px 3px !important;
+                white-space:normal !important;
+                overflow:visible !important;
+                text-overflow:clip !important;
+                line-height:1.15;
+            }
+            .empresa-table tbody td {
+                font-size:8px !important;
+                padding:4px 3px !important;
+                overflow:visible !important;
+                text-overflow:clip !important;
+                white-space:normal !important;
+            }
+            .empresa-table tbody td.mono {
+                font-size:7.5px !important;
+                white-space:nowrap !important;   /* números: nunca partir */
+            }
+            .empresa-table tbody tr.total-empresa td {
+                font-size:8px !important;
+                padding:5px 3px !important;
+            }
+            .badge { font-size:6.5px !important; padding:2px 4px !important; }
+            .igv-note { font-size:6.5px !important; }
+            .doc-relacion { font-size:7px !important; }
+            .group-title { font-size:10px; padding:6px 0 4px; margin-top:12px; }
+            .stat-value { font-size:13px; }
+            .stat-label { font-size:7.5px; }
+            .stats-grid { border-spacing:8px 6px; margin:10px 0 12px; }
         }
 
-        /* Anchos fijos y coherentes con 14 columnas (suma 100%) */
-        col.col-rank   { width:3%; }
+        /* Anchos fijos — 14 columnas (suma 100%) */
+        col.col-rank   { width:1%; }
         col.col-emi    { width:6%; }
-        col.col-vcto   { width:6%; }
-        col.col-fact   { width:10%; }
-        col.col-glosa  { width:12%; }
-        col.col-sub    { width:7%; }
-        col.col-pen    { width:7%; }
+        col.col-vcto   { width:5%; }
+        col.col-fact   { width:8%; }
+        col.col-glosa  { width:8%; }
+        col.col-sub    { width:8%; }
+        col.col-pen    { width:6%; }
         col.col-rec    { width:7%; }
-        col.col-total  { width:7%; }
+        col.col-total  { width:9%; }
         col.col-tipo   { width:5%; }
         col.col-abo    { width:7%; }
-        col.col-fabo   { width:6%; }
-        col.col-pend   { width:7%; }
-        col.col-est    { width:10%; }
+        col.col-fabo   { width:12%; }
+        col.col-pend   { width:10%; }
+        col.col-est    { width:8%; }
     </style>
 
 </head>
@@ -219,7 +275,33 @@
 <div class="no-print">
     <span class="hint">Reporte por empresa</span>
     <button class="btn-print" onclick="window.print()">🖨 Imprimir / PDF</button>
-    <button class="btn-excel" onclick="exportarExcel()">Exportar Excel</button>
+
+    <div style="position:relative;display:inline-block;">
+        <button class="btn-excel" onclick="toggleExcelPanel(event)">📊 Exportar Excel ▾</button>
+        <div class="excel-panel" id="excelPanel">
+            <div class="excel-panel-item" onclick="exportarExcel('por_cliente')">
+                <span class="ico">🗂️</span>
+                <div class="desc">
+                    <strong>Por cliente</strong>
+                    <span>Hoja resumen + una hoja por empresa</span>
+                </div>
+            </div>
+            <div class="excel-panel-item" onclick="exportarExcel('una_hoja')">
+                <span class="ico">📋</span>
+                <div class="desc">
+                    <strong>Todo en una hoja</strong>
+                    <span>Todas las facturas en una sola hoja, agrupadas por cliente</span>
+                </div>
+            </div>
+            <div class="excel-panel-item" onclick="exportarExcel('resumen')">
+                <span class="ico">📊</span>
+                <div class="desc">
+                    <strong>Resumen de clientes</strong>
+                    <span>Una fila por cliente con totales y estados</span>
+                </div>
+            </div>
+        </div>
+    </div>
     <button class="btn-close" onclick="window.close()">Cerrar</button>
 
     <div class="send-inline">
@@ -353,7 +435,7 @@
                     <th class="r">Total</th>
                     <th>Tipo</th>
                     <th class="r">Abonado</th>
-                    <th>F.Abono</th>
+                    <th>Pagos (fecha / monto)</th>
                     <th class="r">Pendiente</th>
                     <th>Estado</th>
                 </tr>
@@ -370,15 +452,14 @@
                             ($f->estado === 'DIFERENCIA PENDIENTE'
                                 ? max(0, ($f->importe_total ?? 0) - ($recaudacion))
                                 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
-                        // F.Abono solo cuando hay un abono real del cliente
-                        $mostrarFAbono = ($f->monto_abonado ?? 0) > 0 && !empty($f->fecha_abono);
+                        $pagosFila = $pagosMap->get($f->id_factura, collect());
                     @endphp
                     <tr class="{{ $esNcHuerfana ? 'nc-huerfana' : '' }}">
                         <td style="text-align:center;color:#64748b;font-size:9px;">{{ $idx + 1 }}</td>
                         <td class="mono">{{ $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—' }}</td>
                         <td class="mono">{{ $f->fecha_vencimiento ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—' }}</td>
                         <td class="factura-num">
-                            {{ $f->serie }}-{{ str_pad($f->numero, 8, '0', STR_PAD_LEFT) }}
+                            {{ $f->serie }}-{{ str_pad($f->numero, 6, '0', STR_PAD_LEFT) }}
                             @if(!empty($f->doc_relacion))
                                 <span class="doc-relacion">{{ $f->doc_relacion }}</span>
                             @endif
@@ -407,9 +488,15 @@
                         <td class="r abonado">
                             {{ ($f->monto_abonado ?? 0) > 0 ? $f->moneda.' '.number_format($f->monto_abonado, 2) : '—' }}
                         </td>
-                        {{-- F.Abono: solo cuando monto_abonado > 0, NUNCA se muestra la fecha de recaudación aquí --}}
-                        <td class="mono" style="font-size:8.5px;color:#059669;">
-                            {{ $mostrarFAbono ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—' }}
+                        {{-- Pagos apilados: fecha / monto por línea --}}
+                        <td class="mono" style="font-size:8px;color:#059669;line-height:1.6;word-break:keep-all;overflow-wrap:break-word;">
+                            @if($pagosFila->isEmpty())
+                                <span style="color:#9ca3af;">—</span>
+                            @else
+                                @foreach($pagosFila as $pago)
+                                    <div>{{ $pago->fecha_pago ? \Carbon\Carbon::parse($pago->fecha_pago)->format('d/m/Y') : '—' }}&nbsp;&nbsp;{{ number_format((float)$pago->monto_pagado, 2) }}</div>
+                                @endforeach
+                            @endif
                         </td>
                         <td class="r {{ $esNcHuerfana ? '' : 'pendiente-cell' }}">
                             @if($esNcHuerfana)
@@ -505,12 +592,20 @@
         } finally { onUsuarioChange(); }
     }
 
-    function exportarExcel() {
+    function toggleExcelPanel(e) {
+        e.stopPropagation();
+        document.getElementById('excelPanel').classList.toggle('open');
+    }
+    document.addEventListener('click', () => document.getElementById('excelPanel')?.classList.remove('open'));
+
+    function exportarExcel(modo) {
+        document.getElementById('excelPanel').classList.remove('open');
         const params = new URLSearchParams();
-        if (ID_CLIENTE) params.append('id_cliente', ID_CLIENTE);
+        if (ID_CLIENTE)  params.append('id_cliente',  ID_CLIENTE);
         if (FECHA_DESDE) params.append('fecha_desde', FECHA_DESDE);
         if (FECHA_HASTA) params.append('fecha_hasta', FECHA_HASTA);
         ESTADOS_FILTRO.forEach(e => params.append('estados[]', e));
+        params.append('modo', modo || 'por_cliente');
         window.location.href = `${RUTA_EXCEL}?${params.toString()}`;
     }
 

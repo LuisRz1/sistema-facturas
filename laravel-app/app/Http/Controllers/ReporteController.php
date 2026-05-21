@@ -9,6 +9,10 @@ use Illuminate\Support\Collection;
 use App\Services\WhatsAppGatewayService;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Font;
 
 class ReporteController extends Controller
 {
@@ -37,6 +41,7 @@ class ReporteController extends Controller
 
         $creditos = DB::table('credito')
             ->whereIn('id_factura', $facturaIds)
+            ->where('activo', 1)
             ->get();
 
         $orphanIds = [];
@@ -44,6 +49,7 @@ class ReporteController extends Controller
             $existe = DB::table('factura')
                 ->where('serie',  $credito->serie_doc_modificado)
                 ->where('numero', $credito->numero_doc_modificado)
+                ->where('activo', 1)
                 ->exists();
             if (!$existe) {
                 $orphanIds[] = (int) $credito->id_factura;
@@ -67,6 +73,7 @@ class ReporteController extends Controller
             ? []
             : DB::table('credito')
                 ->whereIn('id_factura', $facturaIds)
+                ->where('activo', 1)
                 ->pluck('id_factura')
                 ->map(fn($id) => (int) $id)
                 ->toArray();
@@ -139,9 +146,11 @@ class ReporteController extends Controller
 
         $creditosDirectos = DB::table('credito')
             ->whereIn('id_factura', $facturaIds)
+            ->where('activo', 1)
             ->get(['id_factura', 'serie_doc_modificado', 'numero_doc_modificado']);
 
         $creditosInversosQuery = DB::table('credito')
+            ->where('activo', 1)
             ->select(['id_factura', 'serie_doc_modificado', 'numero_doc_modificado']);
 
         $facturas->each(function ($f) use ($creditosInversosQuery) {
@@ -161,6 +170,7 @@ class ReporteController extends Controller
 
         $facturasNc = DB::table('factura')
             ->whereIn('id_factura', $creditos->pluck('id_factura')->map(fn($id) => (int) $id)->unique()->values()->all())
+            ->where('activo', 1)
             ->get(['id_factura', 'serie', 'numero'])
             ->keyBy(fn($f) => (int) $f->id_factura);
 
@@ -291,6 +301,16 @@ class ReporteController extends Controller
         });
         $facturas = $this->enriquecerRelacionCredito($facturas);
 
+        // ── Pagos por factura (pago_factura) ───────────────────────────────
+        $facturaIds = $facturas->pluck('id_factura')->toArray();
+        $pagosMap   = DB::table('pago_factura')
+            ->whereIn('id_factura', $facturaIds)
+            ->where('activo', 1)
+            ->orderBy('fecha_pago')
+            ->orderBy('id_pago')
+            ->get(['id_factura', 'fecha_pago', 'monto_pagado'])
+            ->groupBy('id_factura');
+
         // ── Lógica unificada de huérfanas ──────────────────────────────────
         $orphanFacturaIds    = $this->getOrphanFacturaIds($facturas);
         $facturasParaTotales = $this->filtrarParaTotales($facturas, $orphanFacturaIds);
@@ -343,7 +363,8 @@ class ReporteController extends Controller
             'clienteNombre', 'estadoLabel', 'idCliente', 'periodoLabel',
             'fechaDesde', 'fechaHasta', 'clienteCelular', 'clienteCorreo',
             'usuariosDestino', 'todosUsuarios', 'estadosFiltroJson',
-            'orphanFacturaIds'   // ← nuevo: para la vista blade
+            'orphanFacturaIds',
+            'pagosMap'
         ));
     }
 
@@ -634,9 +655,10 @@ class ReporteController extends Controller
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
+            ->where('f.activo', 1)
             ->select([
                 'f.id_factura', 'f.serie', 'f.numero',
-                'f.fecha_emision', 'f.fecha_vencimiento', 'f.fecha_abono',
+                'f.fecha_emision', 'f.fecha_vencimiento',
                 'f.glosa', 'f.moneda', 'f.importe_total',
                 'f.subtotal_gravado', 'f.monto_igv',
                 'f.monto_abonado', 'f.monto_pendiente',
@@ -684,6 +706,7 @@ class ReporteController extends Controller
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
             ->whereIn('f.estado', $estadosFiltro)
+            ->where('f.activo', 1)
             ->select([
                 'f.id_factura', 'c.id_cliente', 'c.razon_social', 'c.ruc',
                 'f.moneda', 'f.estado', 'f.importe_total', 'f.monto_pendiente', 'f.subtotal_gravado', 'f.monto_igv',
@@ -788,6 +811,7 @@ class ReporteController extends Controller
         $fechaHasta   = $request->input('fecha_hasta');
         $estadosParam = $request->input('estados', []);
         $estadoSimple = $request->input('estado');
+        $modo         = $request->input('modo', 'por_cliente'); // por_cliente | una_hoja | resumen
 
         if ($estadoSimple) {
             $estadosFiltro = [$estadoSimple];
@@ -812,166 +836,415 @@ class ReporteController extends Controller
 
         $facturas = $this->enriquecerRelacionCredito($facturas);
 
-        // ── Lógica unificada de huérfanas ──────────────────────────────────
+        $facturaIdsExcel = $facturas->pluck('id_factura')->toArray();
+        $pagosMap        = DB::table('pago_factura')
+            ->whereIn('id_factura', $facturaIdsExcel)
+            ->where('activo', 1)
+            ->orderBy('fecha_pago')->orderBy('id_pago')
+            ->get(['id_factura', 'fecha_pago', 'monto_pagado'])
+            ->groupBy('id_factura');
+
         $orphanFacturaIds    = $this->getOrphanFacturaIds($facturas);
         $facturasParaTotales = $this->filtrarParaTotales($facturas, $orphanFacturaIds);
-
-        // Agrupaciones
-        $facturasAgrupadas = $facturas->groupBy('razon_social')->sortKeys();
+        $facturasAgrupadas   = $facturas->groupBy('razon_social')->sortKeys();
         $facturasAgrupParaTotales = $facturasParaTotales->groupBy('razon_social')->sortKeys();
-
-        $spreadsheet = new Spreadsheet();
-        $sheet       = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Resumen');
 
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
         $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
 
-        // ── Hoja resumen general ───────────────────────────────────────────
-        $sheet->setCellValue('A1', 'CONSORCIO RODRIGUEZ CABALLERO S.A.C.');
-        $sheet->setCellValue('A2', 'Reporte Financiero de Gestión — Por Empresa');
-        $sheet->setCellValue('A3', 'PERÍODO: ' . $periodoLabel . '  |  ESTADO: ' . $estadoLabel);
-        $sheet->setCellValue('A4', 'Generado: ' . now()->format('d/m/Y H:i'));
+        // ── Colores ARGB ──────────────────────────────────────────────────
+        $C_COMPANY = 'FF0F172A'; // dark navy
+        $C_PERIOD  = 'FF1E3A5F'; // dark blue
+        $C_HEADER  = 'FF1E40AF'; // blue-800
+        $C_ALT     = 'FFEFF6FF'; // blue-50
+        $C_TOTAL   = 'FFFEF9C3'; // yellow-100
+        $C_GROUP   = 'FFE0E7FF'; // indigo-100
+        $C_WHITE   = 'FFFFFFFF';
+        $stateColors = [
+            'PENDIENTE'              => 'FFD97706',
+            'VENCIDO'                => 'FFDC2626',
+            'PAGO PARCIAL'           => 'FF1D4ED8',
+            'PAGADO'                 => 'FF059669',
+            'DIFERENCIA PENDIENTE'   => 'FF7C3AED',
+            'POR VALIDAR DETRACCION' => 'FFB45309',
+            'ANULADO'                => 'FF6B7280',
+        ];
 
-        $headersResumen = ['#', 'EMPRESA', 'RUC', 'SUB TOTAL', 'IGV', 'RECAUDACIÓN', 'TOTAL', 'ABONADO', 'PENDIENTE', 'FACTURAS', 'ESTADOS'];
-        $row = 6;
-        foreach ($headersResumen as $col => $header) {
-            $sheet->setCellValue($this->getColumn($col + 1) . $row, $header);
-        }
+        // ── Helper: cabeceraEmpresa(sheet, row, cols, periodoLabel, estadoLabel) ──
+        $cabeceraEmpresa = function ($sheet, string $empresa, string $ruc, string $periodo, string $estado, int $lastCol) use ($C_COMPANY, $C_PERIOD) {
+            $LC = $this->getColumn($lastCol);
+            // Fila 1 — nombre empresa
+            $sheet->mergeCells("A1:{$LC}1");
+            $sheet->setCellValue('A1', 'CONSORCIO RODRIGUEZ CABALLERO S.A.C.');
+            $sheet->getStyle("A1:{$LC}1")->applyFromArray([
+                'font'      => ['bold' => true, 'size' => 13, 'color' => ['argb' => 'FFFFFFFF']],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $C_COMPANY]],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            ]);
+            $sheet->getRowDimension(1)->setRowHeight(22);
+            // Fila 2 — subtítulo
+            $sheet->mergeCells("A2:{$LC}2");
+            $sheet->setCellValue('A2', 'Reporte Financiero de Gestión — ' . $empresa . ($ruc ? '  ·  RUC: ' . $ruc : ''));
+            $sheet->getStyle("A2:{$LC}2")->applyFromArray([
+                'font'      => ['bold' => true, 'size' => 11, 'color' => ['argb' => 'FFFFFFFF']],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $C_COMPANY]],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
+            ]);
+            $sheet->getRowDimension(2)->setRowHeight(18);
+            // Fila 3 — período
+            $sheet->mergeCells("A3:{$LC}3");
+            $sheet->setCellValue('A3', 'PERÍODO: ' . $periodo . '   |   ESTADO: ' . $estado . '   |   Generado: ' . now()->format('d/m/Y H:i'));
+            $sheet->getStyle("A3:{$LC}3")->applyFromArray([
+                'font'      => ['italic' => true, 'size' => 9, 'color' => ['argb' => 'FFDBEAFE']],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $C_PERIOD]],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            ]);
+            $sheet->getRowDimension(3)->setRowHeight(14);
+        };
 
-        $row++;
-        $idxEmpresa = 1;
-        foreach ($facturasAgrupadas as $empresa => $facturasPorEmpresa) {
-            $facturasTot = $facturasAgrupParaTotales[$empresa] ?? collect();
+        // ── Helper: estilo cabecera columnas ─────────────────────────────
+        $estiloHeader = [
+            'font'      => ['bold' => true, 'size' => 9, 'color' => ['argb' => 'FFFFFFFF']],
+            'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $C_HEADER]],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
+            'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FF93C5FD']]],
+        ];
 
-            $totSub = (float) $facturasTot->sum('subtotal_gravado');
-            $totIgv = (float) $facturasTot->sum('monto_igv');
-            $totRec = (float) $facturasTot->sum('monto_recaudacion');
-            $totAll = (float) $facturasTot->sum('importe_total');
-            $totAbo = (float) $facturasTot->sum('monto_abonado');
-            $totPen = (float) $facturasTot->sum(function ($f) {
-                return $f->estado === 'DIFERENCIA PENDIENTE'
+        $estiloTotal = [
+            'font' => ['bold' => true, 'size' => 9],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $C_TOTAL]],
+            'borders' => ['top' => ['borderStyle' => Border::BORDER_MEDIUM, 'color' => ['argb' => 'FFD97706']]],
+        ];
+
+        $spreadsheet = new Spreadsheet();
+
+        // ═════════════════════════════════════════════════════════════════
+        // MODO: POR CLIENTE (multi-hoja)
+        // ═════════════════════════════════════════════════════════════════
+        if ($modo === 'por_cliente') {
+            // ── Hoja 0: Resumen de clientes ────────────────────────────
+            $sRes = $spreadsheet->getActiveSheet();
+            $sRes->setTitle('Resumen Clientes');
+            $cabeceraEmpresa($sRes, 'TODOS LOS CLIENTES', '', $periodoLabel, $estadoLabel, 11);
+
+            $hdrs = ['#', 'CLIENTE', 'RUC', 'SUBTOTAL', 'IGV', 'RECAUDACIÓN', 'TOTAL', 'ABONADO', 'PENDIENTE', 'FAC.', 'ESTADOS'];
+            $hRow = 5;
+            foreach ($hdrs as $ci => $h) {
+                $sRes->setCellValue($this->getColumn($ci + 1) . $hRow, $h);
+            }
+            $sRes->getStyle("A{$hRow}:K{$hRow}")->applyFromArray($estiloHeader);
+            $sRes->getRowDimension($hRow)->setRowHeight(16);
+            $sRes->freezePane("A" . ($hRow + 1));
+
+            $dRow = $hRow + 1;
+            $idxE = 1;
+            foreach ($facturasAgrupadas as $empresa => $grp) {
+                $tot = $facturasAgrupParaTotales[$empresa] ?? collect();
+                $pendCalc = $tot->sum(fn($f) => $f->estado === 'DIFERENCIA PENDIENTE'
                     ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
-            });
+                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                $estados  = $grp->pluck('estado')->unique()->values()->implode(', ');
+                $altFill  = $idxE % 2 === 0
+                    ? ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $C_ALT]]
+                    : ['fillType' => Fill::FILL_NONE];
 
-            $ruc = (string) ($facturasPorEmpresa->first()->ruc ?? '');
-            $estados = $facturasPorEmpresa->pluck('estado')->unique()->values()->implode(', ');
-
-            $sheet->setCellValue('A' . $row, $idxEmpresa++);
-            $sheet->setCellValue('B' . $row, $empresa);
-            $sheet->setCellValue('C' . $row, $ruc);
-            $sheet->setCellValue('D' . $row, number_format($totSub, 2, '.', ''));
-            $sheet->setCellValue('E' . $row, number_format($totIgv, 2, '.', ''));
-            $sheet->setCellValue('F' . $row, number_format($totRec, 2, '.', ''));
-            $sheet->setCellValue('G' . $row, number_format($totAll, 2, '.', ''));
-            $sheet->setCellValue('H' . $row, number_format($totAbo, 2, '.', ''));
-            $sheet->setCellValue('I' . $row, number_format($totPen, 2, '.', ''));
-            $sheet->setCellValue('J' . $row, $facturasTot->count());
-            $sheet->setCellValue('K' . $row, $estados);
-            $row++;
-        }
-
-        $sheet->setCellValue('B' . $row, 'TOTALES GENERALES');
-        $sheet->setCellValue('D' . $row, number_format((float) $facturasParaTotales->sum('subtotal_gravado'), 2, '.', ''));
-        $sheet->setCellValue('E' . $row, number_format((float) $facturasParaTotales->sum('monto_igv'), 2, '.', ''));
-        $sheet->setCellValue('F' . $row, number_format((float) $facturasParaTotales->sum('monto_recaudacion'), 2, '.', ''));
-        $sheet->setCellValue('G' . $row, number_format((float) $facturasParaTotales->sum('importe_total'), 2, '.', ''));
-        $sheet->setCellValue('H' . $row, number_format((float) $facturasParaTotales->sum('monto_abonado'), 2, '.', ''));
-        $sheet->setCellValue('I' . $row, number_format((float) $facturasParaTotales->sum(function ($f) {
-            return $f->estado === 'DIFERENCIA PENDIENTE'
-                ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
-        }), 2, '.', ''));
-        $sheet->setCellValue('J' . $row, $facturasParaTotales->count());
-        $sheet->getStyle('B' . $row . ':K' . $row)->getFont()->setBold(true);
-
-        foreach (range('A', 'K') as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
-
-        // ── Hojas por cliente/empresa con detalle de facturas ─────────────
-        $empresaSheetIndex = 1;
-        foreach ($facturasAgrupadas as $empresa => $facturasPorEmpresa) {
-            $detalleSheet = $spreadsheet->createSheet($empresaSheetIndex++);
-            $sheetName = preg_replace('~[\\\\/*?:\[\]]~', '-', (string) $empresa);
-            $sheetName = trim((string) $sheetName);
-            if ($sheetName === '') {
-                $sheetName = 'Cliente_' . $empresaSheetIndex;
+                $sRes->setCellValue("A{$dRow}", $idxE++);
+                $sRes->setCellValue("B{$dRow}", $empresa);
+                $sRes->setCellValue("C{$dRow}", (string) ($grp->first()->ruc ?? ''));
+                $sRes->setCellValue("D{$dRow}", (float) $tot->sum('subtotal_gravado'));
+                $sRes->setCellValue("E{$dRow}", (float) $tot->sum('monto_igv'));
+                $sRes->setCellValue("F{$dRow}", (float) $tot->sum('monto_recaudacion'));
+                $sRes->setCellValue("G{$dRow}", (float) $tot->sum('importe_total'));
+                $sRes->setCellValue("H{$dRow}", (float) $tot->sum('monto_abonado'));
+                $sRes->setCellValue("I{$dRow}", (float) $pendCalc);
+                $sRes->setCellValue("J{$dRow}", $tot->count());
+                $sRes->setCellValue("K{$dRow}", $estados);
+                foreach (['D','E','F','G','H','I'] as $nc) {
+                    $sRes->getStyle("{$nc}{$dRow}")->getNumberFormat()->setFormatCode('#,##0.00');
+                }
+                if ($altFill['fillType'] !== Fill::FILL_NONE) {
+                    $sRes->getStyle("A{$dRow}:K{$dRow}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB($C_ALT);
+                }
+                $dRow++;
             }
-            $detalleSheet->setTitle(substr($sheetName, 0, 31));
-
-            $detalleSheet->setCellValue('A1', 'CONSORCIO RODRIGUEZ CABALLERO S.A.C.');
-            $detalleSheet->setCellValue('A2', 'Reporte Financiero de Gestión — Por Empresa');
-            $detalleSheet->setCellValue('A3', 'PERÍODO: ' . $periodoLabel . '  |  ESTADO: ' . $estadoLabel);
-            $detalleSheet->setCellValue('A4', 'EMPRESA: ' . $empresa);
-            $detalleSheet->setCellValue('A5', 'Generado: ' . now()->format('d/m/Y H:i'));
-
-            $headersDetalle = [
-                '#', 'EMISIÓN', 'FVENCIMIENTO', 'FACTURA', 'GLOSA', 'SUBTOTAL', 'IGV',
-                'RECAUDACIÓN', 'F.RECAUDACIÓN', 'TOTAL', 'TIPO RECAUDACIÓN',
-                'MONTO ABONADO', 'F.ABONO', 'MONTO PENDIENTE', 'ESTADO'
-            ];
-            $rowDetalle = 7;
-            foreach ($headersDetalle as $col => $header) {
-                $detalleSheet->setCellValue($this->getColumn($col + 1) . $rowDetalle, $header);
+            // Fila totales
+            $sRes->setCellValue("B{$dRow}", 'TOTALES GENERALES');
+            $sRes->setCellValue("D{$dRow}", (float) $facturasParaTotales->sum('subtotal_gravado'));
+            $sRes->setCellValue("E{$dRow}", (float) $facturasParaTotales->sum('monto_igv'));
+            $sRes->setCellValue("F{$dRow}", (float) $facturasParaTotales->sum('monto_recaudacion'));
+            $sRes->setCellValue("G{$dRow}", (float) $facturasParaTotales->sum('importe_total'));
+            $sRes->setCellValue("H{$dRow}", (float) $facturasParaTotales->sum('monto_abonado'));
+            $sRes->setCellValue("I{$dRow}", (float) $facturasParaTotales->sum(fn($f) =>
+                $f->estado === 'DIFERENCIA PENDIENTE'
+                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
+                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+            $sRes->setCellValue("J{$dRow}", $facturasParaTotales->count());
+            $sRes->getStyle("A{$dRow}:K{$dRow}")->applyFromArray($estiloTotal);
+            foreach (['D','E','F','G','H','I'] as $nc) {
+                $sRes->getStyle("{$nc}{$dRow}")->getNumberFormat()->setFormatCode('#,##0.00');
             }
-            $rowDetalle++;
+            foreach (range('A', 'K') as $col) { $sRes->getColumnDimension($col)->setAutoSize(true); }
 
-            foreach ($facturasPorEmpresa as $idx => $f) {
-                $esHuerfana = in_array((int) $f->id_factura, $orphanFacturaIds);
-                $recaudacion = (float) ($f->monto_recaudacion ?? 0);
-                $pendiente = $esHuerfana
-                    ? 0
-                    : ($f->estado === 'DIFERENCIA PENDIENTE'
-                        ? max(0, ($f->importe_total ?? 0) - $recaudacion)
+            // ── Hojas por cliente ──────────────────────────────────────
+            $shIdx = 1;
+            foreach ($facturasAgrupadas as $empresa => $grpFact) {
+                $ds = $spreadsheet->createSheet($shIdx++);
+                $shName = preg_replace('~[\\\\/*?:\[\]]~', '-', (string) $empresa);
+                $ds->setTitle(substr(trim($shName) ?: 'Cliente_' . $shIdx, 0, 31));
+
+                $ruc1 = (string) ($grpFact->first()->ruc ?? '');
+                $cabeceraEmpresa($ds, $empresa, $ruc1, $periodoLabel, $estadoLabel, 15);
+
+                $detHdrs = ['#','EMISIÓN','VENCIMIENTO','FACTURA','GLOSA','SUBTOTAL','IGV','RECAUDACIÓN','F.RECAUD.','TOTAL','TIPO REC.','ABONADO','PAGOS (FECHA / MONTO)','PENDIENTE','ESTADO'];
+                $hRow2 = 5;
+                foreach ($detHdrs as $ci => $h) { $ds->setCellValue($this->getColumn($ci + 1) . $hRow2, $h); }
+                $ds->getStyle("A{$hRow2}:O{$hRow2}")->applyFromArray($estiloHeader);
+                $ds->getRowDimension($hRow2)->setRowHeight(18);
+                $ds->freezePane("A" . ($hRow2 + 1));
+
+                $dRow2 = $hRow2 + 1;
+                $idxF  = 1;
+                $totGrp = $facturasAgrupParaTotales[$empresa] ?? collect();
+
+                foreach ($grpFact as $f) {
+                    $esH = in_array((int) $f->id_factura, $orphanFacturaIds);
+                    $rec = (float) ($f->monto_recaudacion ?? 0);
+                    $pen = $esH ? 0 : ($f->estado === 'DIFERENCIA PENDIENTE'
+                        ? max(0, ($f->importe_total ?? 0) - $rec)
                         : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
-                $estadoExcel = $f->estado . ($esHuerfana ? ' [NC SIN FACTURA - NO SUMA]' : '');
+                    $pagosStr = (function () use ($f, $pagosMap) {
+                        $pp = $pagosMap->get($f->id_factura, collect());
+                        if ($pp->isEmpty()) return '—';
+                        return $pp->map(fn($p) => ($p->fecha_pago ? \Carbon\Carbon::parse($p->fecha_pago)->format('d/m/Y') : '—') . '  ' . number_format((float)$p->monto_pagado, 2))->implode("\n");
+                    })();
 
-                $detalleSheet->setCellValue('A' . $rowDetalle, $idx + 1);
-                $detalleSheet->setCellValue('B' . $rowDetalle, $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—');
-                $detalleSheet->setCellValue('C' . $rowDetalle, $f->fecha_vencimiento ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—');
-                $detalleSheet->setCellValue('D' . $rowDetalle, $f->serie . '-' . str_pad((string) $f->numero, 8, '0', STR_PAD_LEFT));
-                $detalleSheet->setCellValue('E' . $rowDetalle, $f->glosa ?? '—');
-                $detalleSheet->setCellValue('F' . $rowDetalle, !$esHuerfana && ($f->subtotal_gravado ?? 0) > 0 ? number_format((float) $f->subtotal_gravado, 2, '.', '') : '—');
-                $detalleSheet->setCellValue('G' . $rowDetalle, !$esHuerfana && ($f->monto_igv ?? 0) > 0 ? number_format((float) $f->monto_igv, 2, '.', '') : '—');
-                $detalleSheet->setCellValue('H' . $rowDetalle, $recaudacion > 0 ? number_format($recaudacion, 2, '.', '') : '—');
-                $detalleSheet->setCellValue('I' . $rowDetalle, $f->fecha_recaudacion ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—');
-                $detalleSheet->setCellValue('J' . $rowDetalle, number_format((float) ($f->importe_total ?? 0), 2, '.', ''));
-                $detalleSheet->setCellValue('K' . $rowDetalle, $f->tipo_recaudacion ?? '—');
-                $detalleSheet->setCellValue('L' . $rowDetalle, ($f->monto_abonado ?? 0) > 0 ? number_format((float) $f->monto_abonado, 2, '.', '') : '—');
-                $detalleSheet->setCellValue('M' . $rowDetalle, !empty($f->fecha_abono) ? \Carbon\Carbon::parse($f->fecha_abono)->format('d/m/Y') : '—');
-                $detalleSheet->setCellValue('N' . $rowDetalle, $esHuerfana ? '—' : number_format((float) $pendiente, 2, '.', ''));
-                $detalleSheet->setCellValue('O' . $rowDetalle, $estadoExcel);
+                    $ds->setCellValue("A{$dRow2}", $idxF++);
+                    $ds->setCellValue("B{$dRow2}", $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—');
+                    $ds->setCellValue("C{$dRow2}", $f->fecha_vencimiento ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—');
+                    $ds->setCellValue("D{$dRow2}", $f->serie . '-' . str_pad((string) $f->numero, 8, '0', STR_PAD_LEFT));
+                    $ds->setCellValue("E{$dRow2}", $f->glosa ?? '—');
+                    $ds->setCellValue("F{$dRow2}", !$esH && ($f->subtotal_gravado ?? 0) > 0 ? (float) $f->subtotal_gravado : null);
+                    $ds->setCellValue("G{$dRow2}", !$esH && ($f->monto_igv ?? 0) > 0 ? (float) $f->monto_igv : null);
+                    $ds->setCellValue("H{$dRow2}", $rec > 0 ? $rec : null);
+                    $ds->setCellValue("I{$dRow2}", $f->fecha_recaudacion ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—');
+                    $ds->setCellValue("J{$dRow2}", (float) ($f->importe_total ?? 0));
+                    $ds->setCellValue("K{$dRow2}", $f->tipo_recaudacion ?? '—');
+                    $ds->setCellValue("L{$dRow2}", ($f->monto_abonado ?? 0) > 0 ? (float) $f->monto_abonado : null);
+                    $ds->setCellValue("M{$dRow2}", $pagosStr);
+                    $ds->setCellValue("N{$dRow2}", $esH ? null : (float) $pen);
+                    $ds->setCellValue("O{$dRow2}", $f->estado . ($esH ? ' [NC SIN FACTURA]' : ''));
 
-                if ($esHuerfana) {
-                    $detalleSheet->getStyle('A' . $rowDetalle . ':O' . $rowDetalle)
-                        ->getFont()
-                        ->setStrikethrough(true)
-                        ->getColor()
-                        ->setRGB('999999');
+                    // Formato numérico
+                    foreach (['F','G','H','J','L','N'] as $nc) {
+                        $ds->getStyle("{$nc}{$dRow2}")->getNumberFormat()->setFormatCode('#,##0.00');
+                    }
+                    $ds->getStyle("M{$dRow2}")->getAlignment()->setWrapText(true);
+                    $ds->getStyle("O{$dRow2}")->getFont()->getColor()->setARGB($stateColors[$f->estado] ?? 'FF374151');
+
+                    // Alternado
+                    if ($idxF % 2 === 0) {
+                        $ds->getStyle("A{$dRow2}:O{$dRow2}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB($C_ALT);
+                    }
+                    if ($esH) {
+                        $ds->getStyle("A{$dRow2}:O{$dRow2}")->getFont()->setStrikethrough(true)->getColor()->setARGB('FF9CA3AF');
+                    }
+                    $ds->getRowDimension($dRow2)->setRowHeight(-1); // auto
+                    $dRow2++;
                 }
 
-                $rowDetalle++;
+                // Totales por cliente
+                $ds->setCellValue("D{$dRow2}", 'TOTALES');
+                $ds->setCellValue("F{$dRow2}", (float) $totGrp->sum('subtotal_gravado'));
+                $ds->setCellValue("G{$dRow2}", (float) $totGrp->sum('monto_igv'));
+                $ds->setCellValue("H{$dRow2}", (float) $totGrp->sum('monto_recaudacion'));
+                $ds->setCellValue("J{$dRow2}", (float) $totGrp->sum('importe_total'));
+                $ds->setCellValue("L{$dRow2}", (float) $totGrp->sum('monto_abonado'));
+                $ds->setCellValue("N{$dRow2}", (float) $totGrp->sum(fn($f) =>
+                    $f->estado === 'DIFERENCIA PENDIENTE'
+                        ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
+                        : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+                $ds->getStyle("A{$dRow2}:O{$dRow2}")->applyFromArray($estiloTotal);
+                foreach (['F','G','H','J','L','N'] as $nc) {
+                    $ds->getStyle("{$nc}{$dRow2}")->getNumberFormat()->setFormatCode('#,##0.00');
+                }
+
+                // Anchos de columna
+                $ds->getColumnDimension('A')->setWidth(4);
+                $ds->getColumnDimension('B')->setWidth(10);
+                $ds->getColumnDimension('C')->setWidth(10);
+                $ds->getColumnDimension('D')->setWidth(16);
+                $ds->getColumnDimension('E')->setWidth(28);
+                $ds->getColumnDimension('F')->setWidth(12);
+                $ds->getColumnDimension('G')->setWidth(11);
+                $ds->getColumnDimension('H')->setWidth(12);
+                $ds->getColumnDimension('I')->setWidth(10);
+                $ds->getColumnDimension('J')->setWidth(12);
+                $ds->getColumnDimension('K')->setWidth(14);
+                $ds->getColumnDimension('L')->setWidth(12);
+                $ds->getColumnDimension('M')->setWidth(28);
+                $ds->getColumnDimension('N')->setWidth(13);
+                $ds->getColumnDimension('O')->setWidth(22);
             }
 
-            $detalleTot = $facturasAgrupParaTotales[$empresa] ?? collect();
-            $detalleSheet->setCellValue('B' . $rowDetalle, 'TOTALES');
-            $detalleSheet->setCellValue('F' . $rowDetalle, number_format((float) $detalleTot->sum('subtotal_gravado'), 2, '.', ''));
-            $detalleSheet->setCellValue('G' . $rowDetalle, number_format((float) $detalleTot->sum('monto_igv'), 2, '.', ''));
-            $detalleSheet->setCellValue('H' . $rowDetalle, number_format((float) $detalleTot->sum('monto_recaudacion'), 2, '.', ''));
-            $detalleSheet->setCellValue('J' . $rowDetalle, number_format((float) $detalleTot->sum('importe_total'), 2, '.', ''));
-            $detalleSheet->setCellValue('L' . $rowDetalle, number_format((float) $detalleTot->sum('monto_abonado'), 2, '.', ''));
-            $detalleSheet->setCellValue('N' . $rowDetalle, number_format((float) $detalleTot->sum(function ($f) {
-                return $f->estado === 'DIFERENCIA PENDIENTE'
+        // ═════════════════════════════════════════════════════════════════
+        // MODO: TODO EN UNA HOJA
+        // ═════════════════════════════════════════════════════════════════
+        } elseif ($modo === 'una_hoja') {
+            $su = $spreadsheet->getActiveSheet();
+            $su->setTitle('Facturas');
+            $cabeceraEmpresa($su, 'TODOS LOS CLIENTES', '', $periodoLabel, $estadoLabel, 17);
+
+            $uHdrs = ['#','CLIENTE','RUC','EMISIÓN','VENCIMIENTO','FACTURA','GLOSA','SUBTOTAL','IGV','RECAUDACIÓN','F.RECAUD.','TOTAL','TIPO REC.','ABONADO','PAGOS (FECHA / MONTO)','PENDIENTE','ESTADO'];
+            $hRow3 = 5;
+            foreach ($uHdrs as $ci => $h) { $su->setCellValue($this->getColumn($ci + 1) . $hRow3, $h); }
+            $su->getStyle("A{$hRow3}:Q{$hRow3}")->applyFromArray($estiloHeader);
+            $su->getRowDimension($hRow3)->setRowHeight(18);
+            $su->freezePane("A" . ($hRow3 + 1));
+
+            $dRow3 = $hRow3 + 1;
+            $idxG  = 1;
+            foreach ($facturasAgrupadas as $empresa => $grpFact) {
+                // Fila separadora de cliente
+                $su->mergeCells("A{$dRow3}:Q{$dRow3}");
+                $su->setCellValue("A{$dRow3}", '  ▶  ' . strtoupper($empresa) . '  —  ' . ($grpFact->first()->ruc ?? ''));
+                $su->getStyle("A{$dRow3}:Q{$dRow3}")->applyFromArray([
+                    'font'  => ['bold' => true, 'size' => 10, 'color' => ['argb' => 'FF1E3A5F']],
+                    'fill'  => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $C_GROUP]],
+                    'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+                ]);
+                $su->getRowDimension($dRow3)->setRowHeight(15);
+                $dRow3++;
+
+                foreach ($grpFact as $f) {
+                    $esH = in_array((int) $f->id_factura, $orphanFacturaIds);
+                    $rec = (float) ($f->monto_recaudacion ?? 0);
+                    $pen = $esH ? 0 : ($f->estado === 'DIFERENCIA PENDIENTE'
+                        ? max(0, ($f->importe_total ?? 0) - $rec)
+                        : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                    $pagosStr = (function () use ($f, $pagosMap) {
+                        $pp = $pagosMap->get($f->id_factura, collect());
+                        if ($pp->isEmpty()) return '—';
+                        return $pp->map(fn($p) => ($p->fecha_pago ? \Carbon\Carbon::parse($p->fecha_pago)->format('d/m/Y') : '—') . '  ' . number_format((float)$p->monto_pagado, 2))->implode("\n");
+                    })();
+
+                    $su->setCellValue("A{$dRow3}", $idxG++);
+                    $su->setCellValue("B{$dRow3}", $empresa);
+                    $su->setCellValue("C{$dRow3}", (string) ($f->ruc ?? ''));
+                    $su->setCellValue("D{$dRow3}", $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—');
+                    $su->setCellValue("E{$dRow3}", $f->fecha_vencimiento ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—');
+                    $su->setCellValue("F{$dRow3}", $f->serie . '-' . str_pad((string) $f->numero, 8, '0', STR_PAD_LEFT));
+                    $su->setCellValue("G{$dRow3}", $f->glosa ?? '—');
+                    $su->setCellValue("H{$dRow3}", !$esH && ($f->subtotal_gravado ?? 0) > 0 ? (float) $f->subtotal_gravado : null);
+                    $su->setCellValue("I{$dRow3}", !$esH && ($f->monto_igv ?? 0) > 0 ? (float) $f->monto_igv : null);
+                    $su->setCellValue("J{$dRow3}", $rec > 0 ? $rec : null);
+                    $su->setCellValue("K{$dRow3}", $f->fecha_recaudacion ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—');
+                    $su->setCellValue("L{$dRow3}", (float) ($f->importe_total ?? 0));
+                    $su->setCellValue("M{$dRow3}", $f->tipo_recaudacion ?? '—');
+                    $su->setCellValue("N{$dRow3}", ($f->monto_abonado ?? 0) > 0 ? (float) $f->monto_abonado : null);
+                    $su->setCellValue("O{$dRow3}", $pagosStr);
+                    $su->setCellValue("P{$dRow3}", $esH ? null : (float) $pen);
+                    $su->setCellValue("Q{$dRow3}", $f->estado . ($esH ? ' [NC SIN FACTURA]' : ''));
+
+                    foreach (['H','I','J','L','N','P'] as $nc) {
+                        $su->getStyle("{$nc}{$dRow3}")->getNumberFormat()->setFormatCode('#,##0.00');
+                    }
+                    $su->getStyle("O{$dRow3}")->getAlignment()->setWrapText(true);
+                    $su->getStyle("Q{$dRow3}")->getFont()->getColor()->setARGB($stateColors[$f->estado] ?? 'FF374151');
+                    if ($idxG % 2 === 0) {
+                        $su->getStyle("A{$dRow3}:Q{$dRow3}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB($C_ALT);
+                    }
+                    if ($esH) {
+                        $su->getStyle("A{$dRow3}:Q{$dRow3}")->getFont()->setStrikethrough(true)->getColor()->setARGB('FF9CA3AF');
+                    }
+                    $dRow3++;
+                }
+            }
+            // Totales globales
+            $su->setCellValue("F{$dRow3}", 'TOTALES GENERALES');
+            $su->setCellValue("H{$dRow3}", (float) $facturasParaTotales->sum('subtotal_gravado'));
+            $su->setCellValue("I{$dRow3}", (float) $facturasParaTotales->sum('monto_igv'));
+            $su->setCellValue("J{$dRow3}", (float) $facturasParaTotales->sum('monto_recaudacion'));
+            $su->setCellValue("L{$dRow3}", (float) $facturasParaTotales->sum('importe_total'));
+            $su->setCellValue("N{$dRow3}", (float) $facturasParaTotales->sum('monto_abonado'));
+            $su->setCellValue("P{$dRow3}", (float) $facturasParaTotales->sum(fn($f) =>
+                $f->estado === 'DIFERENCIA PENDIENTE'
                     ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
-            }), 2, '.', ''));
-            $detalleSheet->getStyle('B' . $rowDetalle . ':O' . $rowDetalle)->getFont()->setBold(true);
-
-            foreach (range('A', 'O') as $col) {
-                $detalleSheet->getColumnDimension($col)->setAutoSize(true);
+                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+            $su->getStyle("A{$dRow3}:Q{$dRow3}")->applyFromArray($estiloTotal);
+            foreach (['H','I','J','L','N','P'] as $nc) {
+                $su->getStyle("{$nc}{$dRow3}")->getNumberFormat()->setFormatCode('#,##0.00');
             }
+
+            // Anchos
+            $uWidths = [4, 28, 12, 10, 10, 16, 28, 12, 11, 12, 10, 13, 14, 12, 28, 13, 22];
+            foreach ($uWidths as $ci => $w) { $su->getColumnDimension($this->getColumn($ci + 1))->setWidth($w); }
+
+        // ═════════════════════════════════════════════════════════════════
+        // MODO: RESUMEN CLIENTES
+        // ═════════════════════════════════════════════════════════════════
+        } else {
+            $sr = $spreadsheet->getActiveSheet();
+            $sr->setTitle('Resumen Clientes');
+            $cabeceraEmpresa($sr, 'RESUMEN POR CLIENTE', '', $periodoLabel, $estadoLabel, 11);
+
+            $rHdrs = ['#', 'CLIENTE', 'RUC', 'N° FACTURAS', 'SUBTOTAL', 'IGV', 'RECAUDACIÓN', 'TOTAL', 'ABONADO', 'PENDIENTE', 'ESTADOS'];
+            $hRow4 = 5;
+            foreach ($rHdrs as $ci => $h) { $sr->setCellValue($this->getColumn($ci + 1) . $hRow4, $h); }
+            $sr->getStyle("A{$hRow4}:K{$hRow4}")->applyFromArray($estiloHeader);
+            $sr->getRowDimension($hRow4)->setRowHeight(18);
+            $sr->freezePane("A" . ($hRow4 + 1));
+
+            $dRow4 = $hRow4 + 1;
+            $idxR  = 1;
+            foreach ($facturasAgrupadas as $empresa => $grp) {
+                $tot     = $facturasAgrupParaTotales[$empresa] ?? collect();
+                $pendR   = (float) $tot->sum(fn($f) => $f->estado === 'DIFERENCIA PENDIENTE'
+                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
+                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                $estados = $grp->pluck('estado')->unique()->values()->implode(', ');
+
+                $sr->setCellValue("A{$dRow4}", $idxR++);
+                $sr->setCellValue("B{$dRow4}", $empresa);
+                $sr->setCellValue("C{$dRow4}", (string) ($grp->first()->ruc ?? ''));
+                $sr->setCellValue("D{$dRow4}", $tot->count());
+                $sr->setCellValue("E{$dRow4}", (float) $tot->sum('subtotal_gravado'));
+                $sr->setCellValue("F{$dRow4}", (float) $tot->sum('monto_igv'));
+                $sr->setCellValue("G{$dRow4}", (float) $tot->sum('monto_recaudacion'));
+                $sr->setCellValue("H{$dRow4}", (float) $tot->sum('importe_total'));
+                $sr->setCellValue("I{$dRow4}", (float) $tot->sum('monto_abonado'));
+                $sr->setCellValue("J{$dRow4}", $pendR);
+                $sr->setCellValue("K{$dRow4}", $estados);
+
+                foreach (['E','F','G','H','I','J'] as $nc) {
+                    $sr->getStyle("{$nc}{$dRow4}")->getNumberFormat()->setFormatCode('#,##0.00');
+                }
+                if ($idxR % 2 === 0) {
+                    $sr->getStyle("A{$dRow4}:K{$dRow4}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB($C_ALT);
+                }
+                // Color estado en K
+                $estadosPrimero = $grp->pluck('estado')->unique()->first() ?? '';
+                $sr->getStyle("K{$dRow4}")->getFont()->getColor()->setARGB($stateColors[$estadosPrimero] ?? 'FF374151');
+                $dRow4++;
+            }
+            // Totales
+            $sr->setCellValue("B{$dRow4}", 'TOTALES');
+            $sr->setCellValue("D{$dRow4}", $facturasParaTotales->count());
+            $sr->setCellValue("E{$dRow4}", (float) $facturasParaTotales->sum('subtotal_gravado'));
+            $sr->setCellValue("F{$dRow4}", (float) $facturasParaTotales->sum('monto_igv'));
+            $sr->setCellValue("G{$dRow4}", (float) $facturasParaTotales->sum('monto_recaudacion'));
+            $sr->setCellValue("H{$dRow4}", (float) $facturasParaTotales->sum('importe_total'));
+            $sr->setCellValue("I{$dRow4}", (float) $facturasParaTotales->sum('monto_abonado'));
+            $sr->setCellValue("J{$dRow4}", (float) $facturasParaTotales->sum(fn($f) =>
+                $f->estado === 'DIFERENCIA PENDIENTE'
+                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
+                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+            $sr->getStyle("A{$dRow4}:K{$dRow4}")->applyFromArray($estiloTotal);
+            foreach (['E','F','G','H','I','J'] as $nc) {
+                $sr->getStyle("{$nc}{$dRow4}")->getNumberFormat()->setFormatCode('#,##0.00');
+            }
+            // Anchos
+            $rWidths = [4, 35, 14, 10, 14, 12, 14, 14, 14, 14, 35];
+            foreach ($rWidths as $ci => $w) { $sr->getColumnDimension($this->getColumn($ci + 1))->setWidth($w); }
         }
 
         $spreadsheet->setActiveSheetIndex(0);
@@ -981,9 +1254,10 @@ class ReporteController extends Controller
             $empresaArchivo = (string) (DB::table('cliente')->where('id_cliente', $idCliente)->value('razon_social') ?? 'TODOS');
         }
 
-        $filename = $this->buildVariacionesFilename($empresaArchivo, $fechaDesde, $fechaHasta, 'xlsx');
-        $writer   = new Xlsx($spreadsheet);
-        $tempFile = tempnam(sys_get_temp_dir(), 'xlsx');
+        $modoSufijo = ['por_cliente' => 'POR-CLIENTE', 'una_hoja' => 'UNA-HOJA', 'resumen' => 'RESUMEN'][$modo] ?? 'REPORTE';
+        $filename   = $this->buildVariacionesFilename($empresaArchivo . '-' . $modoSufijo, $fechaDesde, $fechaHasta, 'xlsx');
+        $writer     = new Xlsx($spreadsheet);
+        $tempFile   = tempnam(sys_get_temp_dir(), 'xlsx');
         $writer->save($tempFile);
 
         return response()->download($tempFile, $filename)->deleteFileAfterSend(true);
