@@ -275,7 +275,7 @@ class NotificacionController extends Controller
                         <!-- HEADER -->
                         <tr>
                         <td style='background:#2c3e50; color:#ffffff; padding:20px; text-align:center; font-size:20px; font-weight:bold;'>
-                             Recordatorio de Pago
+                            h Recordatorio de Pago
                         </td>
                         </tr>
 
