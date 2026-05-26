@@ -394,6 +394,9 @@
         // Recaudación depositada = la que ya tiene fecha_recaudacion confirmada
         $recaudacionPagada  = $facturasParaTotales->filter(fn($f) => !empty($f->fecha_recaudacion))->sum('monto_recaudacion') ?? 0;
         $totalPendienteReal = $pendiente;
+        // Separados por moneda
+        $pendientePEN = $facturasParaTotales->where('moneda','PEN')->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
+        $pendienteUSD = $facturasParaTotales->where('moneda','USD')->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
     @endphp
     <div class="stats-grid">
         <div class="stat-card blue">
@@ -402,7 +405,13 @@
         </div>
         <div class="stat-card amber">
             <div class="stat-icon"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
-            <div><div class="stat-label">Saldo Pendiente</div><div class="stat-value">S/ {{ number_format($totalPendienteReal,2) }}</div></div>
+            <div>
+                <div class="stat-label">Saldo Pendiente</div>
+                <div class="stat-value">S/ {{ number_format($pendientePEN,2) }}</div>
+                @if($pendienteUSD > 0)
+                    <div class="stat-sub">USD {{ number_format($pendienteUSD,2) }}</div>
+                @endif
+            </div>
         </div>
         <div class="stat-card green">
             <div class="stat-icon"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
@@ -467,7 +476,6 @@
                     <option value="PENDIENTE">Pendiente</option>
                     <option value="VENCIDO">Vencido</option>
                     <option value="PAGADA">Pagada</option>
-                    <option value="PAGO PARCIAL">Pago Parcial</option>
                     <option value="DIFERENCIA PENDIENTE">Diferencia Pendiente</option>
                 </select>
                 <select class="form-select" id="filterMoneda" onchange="filtrarTabla()">
@@ -528,7 +536,7 @@
                         $tipoRecaudacion  = $factura->tipo_recaudacion;
                         $montoAbonado     = $factura->monto_abonado ?? 0;
                         $montoPendiente   = $factura->monto_pendiente ?? $factura->importe_total;
-                        $puedeNotificarDeuda = in_array($estado, ['PENDIENTE','VENCIDO','PAGO PARCIAL','POR VALIDAR DETRACCION','DIFERENCIA PENDIENTE']);
+                        $puedeNotificarDeuda = in_array($estado, ['PENDIENTE','VENCIDO','POR VALIDAR DETRACCION','DIFERENCIA PENDIENTE']);
                         $ultimaNotifWa     = $factura->ultima_notif_wa ?? null;
                         $ultimaNotifCorreo = $factura->ultima_notif_correo ?? null;
 
@@ -972,9 +980,11 @@
                             <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">#</th>
                             <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">Fecha</th>
                             <th style="padding:8px 10px;text-align:right;font-weight:700;color:#065f46;">Monto</th>
-                            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">Cuenta</th>
+                            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">Banco Origen</th>
+                            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">Cuenta Destino</th>
                             <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">N° Operación</th>
                             <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">Forma</th>
+                            <th style="padding:8px 10px;text-align:left;font-weight:700;color:#065f46;">Observación</th>
                             <th style="padding:8px 10px;text-align:center;font-weight:700;color:#065f46;">Comprobante</th>
                         </tr>
                     </thead>
@@ -983,13 +993,61 @@
                         <tr style="background:#f0fdf4;border-top:2px solid #bbf7d0;font-weight:700;">
                             <td colspan="2" style="padding:8px 10px;color:#065f46;">TOTAL ABONADO</td>
                             <td id="verPagosTotal" style="padding:8px 10px;text-align:right;font-family:'DM Mono',monospace;color:#059669;"></td>
-                            <td colspan="4"></td>
+                            <td colspan="6"></td>
                         </tr>
                     </tfoot>
                 </table>
             </div>
             <div class="modal-footer">
                 <button type="button" onclick="cerrarModalVerPagos()" class="btn btn-ghost">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    {{-- ═══════════ MODAL EDITAR ABONO ═══════════ --}}
+    <div class="modal-overlay" id="modalEditarPagoOverlay">
+        <div class="modal" style="max-width:520px;width:min(520px,96vw);">
+            <div class="modal-header" style="background:linear-gradient(135deg,#1d4ed8,#1e40af);">
+                <h2>Editar Abono</h2>
+                <p style="font-size:13px;opacity:.85;">Actualiza los datos del abono registrado</p>
+                <button onclick="cerrarModalEditarPago()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;line-height:1;">×</button>
+            </div>
+            <div class="modal-body" style="padding:24px;">
+                <input type="hidden" id="editPagoId">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                    <div class="form-group">
+                        <label class="form-label">Monto *</label>
+                        <input type="number" id="editPagoMonto" step="0.01" min="0.01" class="form-input" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha *</label>
+                        <input type="date" id="editPagoFecha" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Banco de Origen</label>
+                        <input type="text" id="editPagoBanco" class="form-input" placeholder="Ej: BCP, Interbank...">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Cuenta Destino</label>
+                        <input type="text" id="editPagoCuenta" class="form-input" placeholder="N° cuenta">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">N° Operación</label>
+                        <input type="text" id="editPagoNumOp" class="form-input" placeholder="Número de operación">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Forma de Pago</label>
+                        <input type="text" id="editPagoForma" class="form-input" placeholder="Transferencia, depósito...">
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Observación</label>
+                        <input type="text" id="editPagoObs" class="form-input" placeholder="Observación o referencia">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="gap:10px;">
+                <button type="button" onclick="cerrarModalEditarPago()" class="btn btn-ghost">Cancelar</button>
+                <button type="button" id="btnGuardarEditarPago" onclick="guardarEditarPago()" class="btn btn-primary">Guardar cambios</button>
             </div>
         </div>
     </div>
@@ -1063,11 +1121,13 @@
                                 <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">#</th>
                                 <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">Fecha</th>
                                 <th style="padding:7px 8px;text-align:right;font-weight:700;color:var(--gold-xd);">Monto</th>
-                                <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">Cuenta / Banco</th>
+                                <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">Banco Origen</th>
+                                <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">Cuenta Destino</th>
                                 <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">N° Operación</th>
                                 <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">Forma</th>
+                                <th style="padding:7px 8px;text-align:left;font-weight:700;color:var(--gold-xd);">Observación</th>
                                 <th style="padding:7px 8px;text-align:center;font-weight:700;color:var(--gold-xd);">Comp.</th>
-                                <th style="padding:7px 8px;width:32px;"></th>
+                                <th style="padding:7px 8px;width:64px;"></th>
                             </tr>
                             </thead>
                             <tbody id="listaPagosTbody"></tbody>
@@ -1125,6 +1185,9 @@
                         <div class="form-group">
                             <label class="form-label">Monto Recaudación</label>
                             <input type="number" id="pagoTotalRecaudacion" step="0.01" min="0" class="form-input" placeholder="0.00">
+                            <span id="recaudUsdNote" style="display:none;font-size:11px;color:#1d4ed8;margin-top:3px;display:block;">
+                                Factura en dólares — ingresa el monto directamente en USD.
+                            </span>
                         </div>
                         <div class="form-group" style="grid-column:1/-1;">
                             <label class="form-label">Fecha de Depósito / Recaudación</label>
@@ -1162,7 +1225,6 @@
                                 <option value="PENDIENTE">Pendiente</option>
                                 <option value="VENCIDO">Vencido</option>
                                 <option value="PAGADA">Pagada</option>
-                                <option value="PAGO PARCIAL">Pago Parcial</option>
                                 <option value="POR VALIDAR DETRACCION">Por Validar Detracción</option>
                                 <option value="DIFERENCIA PENDIENTE">Diferencia Pendiente</option>
                                 <option value="ANULADA">Anulada</option>
@@ -1245,7 +1307,6 @@
                         <span class="estado-chip chip-todos active"   id="rChipTodos"    onclick="toggleEstado('',this)">✦ Todos Pendientes</span>
                         <span class="estado-chip chip-pendiente"      id="rChipPendiente" onclick="toggleEstado('PENDIENTE',this)">Pendiente</span>
                         <span class="estado-chip chip-vencido"        id="rChipVencido"   onclick="toggleEstado('VENCIDO',this)">Vencido</span>
-                        <span class="estado-chip chip-parcial"        id="rChipParcial"   onclick="toggleEstado('PAGO PARCIAL',this)">Pago Parcial</span>
                         <span class="estado-chip chip-pagada"         id="rChipPagada"    onclick="toggleEstado('PAGADA',this)">Pagada</span>
                         <span class="estado-chip chip-det"         id="rChipDet"         onclick="toggleEstado('DIFERENCIA PENDIENTE',this)">Diferencia Pendiente</span>
                     </div>
@@ -1860,6 +1921,7 @@
                 }
                 document.getElementById('listaPagosTable').style.display = 'table';
                 const tbody = document.getElementById('listaPagosTbody');
+                const sym = (facturaMoneda || '').includes('USD') ? 'USD' : 'S/';
                 tbody.innerHTML = pagoListaCargada.map((p, i) => {
                     const fechaStr = p.fecha_pago
                         ? new Date(p.fecha_pago + 'T00:00:00').toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' })
@@ -1870,12 +1932,16 @@
                     return `<tr style="border-bottom:1px solid #f3e8c1;">
                         <td style="padding:7px 8px;color:#9ca3af;">${i+1}</td>
                         <td style="padding:7px 8px;white-space:nowrap;">${fechaStr}</td>
-                        <td style="padding:7px 8px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:#059669;">S/ ${Number(p.monto_pagado).toFixed(2)}</td>
+                        <td style="padding:7px 8px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:#059669;">${sym} ${Number(p.monto_pagado).toFixed(2)}</td>
+                        <td style="padding:7px 8px;font-size:11px;">${p.banco_origen||'—'}</td>
                         <td style="padding:7px 8px;">${p.cuenta_pago||'—'}</td>
                         <td style="padding:7px 8px;font-family:'DM Mono',monospace;font-size:11px;">${p.numero_operacion||'—'}</td>
                         <td style="padding:7px 8px;">${p.forma_pago||'—'}</td>
+                        <td style="padding:7px 8px;font-size:11px;color:#64748b;">${p.observacion||'—'}</td>
                         <td style="padding:7px 8px;text-align:center;">${comp}</td>
-                        <td style="padding:7px 8px;text-align:center;">
+                        <td style="padding:7px 8px;text-align:center;white-space:nowrap;">
+                            <button onclick="abrirEditarPago(${p.id_pago})"
+                                style="background:#dbeafe;color:#1d4ed8;border:none;border-radius:5px;cursor:pointer;padding:3px 7px;font-size:11px;font-weight:700;margin-right:4px;" title="Editar">✎</button>
                             <button onclick="eliminarPagoItem(${p.id_pago})"
                                 style="background:#fee2e2;color:#dc2626;border:none;border-radius:5px;cursor:pointer;padding:3px 7px;font-size:11px;font-weight:700;" title="Eliminar">✕</button>
                         </td>
@@ -1897,6 +1963,56 @@
                     await cargarListaPagos(facturaActualId);
                     showToastFactura('✓ Abono eliminado y totales recalculados.');
                 } catch (e) { alert('Error: ' + e.message); }
+            }
+
+            function abrirEditarPago(idPago) {
+                const p = pagoListaCargada.find(x => x.id_pago == idPago);
+                if (!p) return;
+                document.getElementById('editPagoId').value          = idPago;
+                document.getElementById('editPagoMonto').value       = Number(p.monto_pagado).toFixed(2);
+                document.getElementById('editPagoFecha').value       = p.fecha_pago || '';
+                document.getElementById('editPagoBanco').value       = p.banco_origen || '';
+                document.getElementById('editPagoCuenta').value      = p.cuenta_pago || '';
+                document.getElementById('editPagoNumOp').value       = p.numero_operacion || '';
+                document.getElementById('editPagoForma').value       = p.forma_pago || '';
+                document.getElementById('editPagoObs').value         = p.observacion || '';
+                document.getElementById('modalEditarPagoOverlay').classList.add('open');
+            }
+
+            function cerrarModalEditarPago() {
+                document.getElementById('modalEditarPagoOverlay').classList.remove('open');
+            }
+
+            async function guardarEditarPago() {
+                const idPago = document.getElementById('editPagoId').value;
+                const btn    = document.getElementById('btnGuardarEditarPago');
+                btn.disabled = true;
+                try {
+                    const body = new URLSearchParams({
+                        _token:           CSRF,
+                        _method:          'PUT',
+                        monto_pagado:     document.getElementById('editPagoMonto').value,
+                        fecha_pago:       document.getElementById('editPagoFecha').value,
+                        banco_origen:     document.getElementById('editPagoBanco').value,
+                        cuenta_pago:      document.getElementById('editPagoCuenta').value,
+                        numero_operacion: document.getElementById('editPagoNumOp').value,
+                        forma_pago:       document.getElementById('editPagoForma').value,
+                        observacion:      document.getElementById('editPagoObs').value,
+                    });
+                    const res  = await fetch(`/facturas/${facturaActualId}/pagos/${idPago}`, {
+                        method : 'POST',
+                        headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body,
+                    });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.message || 'No se pudo editar');
+                    cerrarModalEditarPago();
+                    const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                    actualizarResumenPago(data.monto_abonado, totalRec, calcularTotalCola());
+                    await cargarListaPagos(facturaActualId);
+                    showToastFactura('✓ Abono actualizado correctamente.');
+                } catch (e) { alert('Error: ' + e.message); }
+                finally { btn.disabled = false; }
             }
 
             // ── Cola de nuevos abonos ──────────────────────────────────────────
@@ -2082,9 +2198,11 @@
                             <td style="padding:7px 10px;color:#9ca3af;">${i+1}</td>
                             <td style="padding:7px 10px;white-space:nowrap;">${fecha}</td>
                             <td style="padding:7px 10px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:#059669;">${sym} ${Number(p.monto_pagado).toFixed(2)}</td>
+                            <td style="padding:7px 10px;font-size:11px;">${p.banco_origen||'—'}</td>
                             <td style="padding:7px 10px;">${p.cuenta_pago||'—'}</td>
                             <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:11px;">${p.numero_operacion||'—'}</td>
                             <td style="padding:7px 10px;">${p.forma_pago||'—'}</td>
+                            <td style="padding:7px 10px;font-size:11px;color:#64748b;">${p.observacion||'—'}</td>
                             <td style="padding:7px 10px;text-align:center;">${comp}</td>
                         </tr>`;
                     }).join('');
@@ -2181,6 +2299,8 @@
                 });
                 const camposRec   = document.getElementById('camposRecaudacion');
                 const validarWrap = document.getElementById('validarDetraccionWrap');
+                const usdNote     = document.getElementById('recaudUsdNote');
+                const isUSD       = (facturaMoneda || '').includes('USD');
                 if (tipo === 'DETRACCION') {
                     document.getElementById('btnTipoDet').classList.add('active-det');
                     camposRec.style.display = 'grid';
@@ -2200,9 +2320,12 @@
                     document.getElementById('pagoTotalRecaudacion').value = '';
                     document.getElementById('pagoPorcentaje').value = '';
                 }
+                if (usdNote) usdNote.style.display = (isUSD && tipo !== 'NINGUNA') ? 'block' : 'none';
             }
 
             function calcularRecaudacion() {
+                const isUSD = (facturaMoneda || '').includes('USD');
+                if (isUSD) return; // USD: user enters amount manually
                 const pct = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
                 if (pct > 0 && facturaImporte > 0) {
                     document.getElementById('pagoTotalRecaudacion').value = (facturaImporte * pct / 100).toFixed(2);
@@ -2440,19 +2563,11 @@
                         </div>
                     </div>
 
-                    <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:#e0e7ff;border-radius:10px;border:1px solid #c7d2fe;">
-                        <span class="badge badge-pago_parcial" style="flex-shrink:0;margin-top:1px;">PAGO PARCIAL</span>
-                        <div>
-                            <div style="font-size:13px;font-weight:700;color:#3730a3;">Monto abonado es menor al total</div>
-                            <div style="font-size:12px;color:#3730a3;margin-top:2px;">Se registró un abono directo pero queda un saldo pendiente por cobrar. El campo "Pendiente" muestra cuánto falta.</div>
-                        </div>
-                    </div>
-
                     <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:#fce7f3;border-radius:10px;border:1.5px solid #fbcfe8;">
                         <span class="badge badge-diferencia_pend" style="flex-shrink:0;margin-top:1px;">DIFERENCIA PENDIENTE</span>
                         <div>
-                            <div style="font-size:13px;font-weight:700;color:#9d174d;">Detracción/retención validada, falta diferencia</div>
-                            <div style="font-size:12px;color:#9d174d;margin-top:2px;">La recaudación (detracción o retención) fue registrada y validada, pero no cubre el 100% del importe. El cliente debe pagar la diferencia.</div>
+                            <div style="font-size:13px;font-weight:700;color:#9d174d;">Detracción/retención validada o pago parcial registrado</div>
+                            <div style="font-size:12px;color:#9d174d;margin-top:2px;">Se registró un abono pero queda saldo pendiente, o la detracción/retención ya fue depositada y se espera cobrar la diferencia.</div>
                         </div>
                     </div>
 

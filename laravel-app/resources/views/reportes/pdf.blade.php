@@ -180,9 +180,9 @@
         .empresa-table tbody tr.total-empresa td.r { text-align:right; }
 
         .factura-num { font-weight:800; font-family:'Courier New',monospace; }
-        .detrac  { color:#d97706; font-weight:700; font-family:'Courier New',monospace; }
-        .abonado { color:#059669; font-weight:700; font-family:'Courier New',monospace; }
-        .pendiente-cell { color:#dc2626; font-weight:700; font-family:'Courier New',monospace; }
+        .detrac  { color:#f59e0b; font-weight:700; font-family:'Courier New',monospace; }
+        .abonado { color:#10b981; font-weight:700; font-family:'Courier New',monospace; }
+        .pendiente-cell { color:#f87171; font-weight:700; font-family:'Courier New',monospace; }
         .igv-note { display:block; font-size:7.5px; color:#64748b; margin-top:1px; font-family:Arial, Helvetica, sans-serif; }
 
         .badge {
@@ -488,13 +488,16 @@
                         <td class="r abonado">
                             {{ ($f->monto_abonado ?? 0) > 0 ? $f->moneda.' '.number_format($f->monto_abonado, 2) : '—' }}
                         </td>
-                        {{-- Pagos apilados: fecha / monto por línea --}}
+                        {{-- Pagos apilados: fecha / monto / banco por línea --}}
                         <td class="mono" style="font-size:8px;color:#059669;line-height:1.6;word-break:keep-all;overflow-wrap:break-word;">
                             @if($pagosFila->isEmpty())
                                 <span style="color:#9ca3af;">—</span>
                             @else
                                 @foreach($pagosFila as $pago)
-                                    <div>{{ $pago->fecha_pago ? \Carbon\Carbon::parse($pago->fecha_pago)->format('d/m/Y') : '—' }}&nbsp;&nbsp;{{ number_format((float)$pago->monto_pagado, 2) }}</div>
+                                    <div>{{ $pago->fecha_pago ? \Carbon\Carbon::parse($pago->fecha_pago)->format('d/m/Y') : '—' }}&nbsp;&nbsp;{{ $f->moneda }}&nbsp;{{ number_format((float)$pago->monto_pagado, 2) }}
+                                    @if(!empty($pago->banco_origen))<span style="color:#7c3aed;font-size:7.5px;"> · {{ $pago->banco_origen }}</span>@endif
+                                    @if(!empty($pago->cuenta_pago))<span style="color:#64748b;font-size:7.5px;"> → {{ $pago->cuenta_pago }}</span>@endif
+                                    </div>
                                 @endforeach
                             @endif
                         </td>
@@ -522,14 +525,14 @@
                     <td colspan="5" style="font-size:10px;letter-spacing:.3px;">
                         SUBTOTAL — {{ $facturasPorEmpresaParaTotales->count() }} factura(s)
                     </td>
-                    <td class="r" style="color:#fcd34d;">{{ $totSubEmpresa > 0 ? number_format($totSubEmpresa, 2) : '—' }}</td>
-                    <td class="r" style="color:#fcd34d;">{{ $totRecEmpresa > 0 ? number_format($totRecEmpresa, 2) : '—' }}</td>
+                    <td class="r" style="color:#fde68a;">{{ $totSubEmpresa > 0 ? 'S/ '.number_format($totSubEmpresa, 2) : '—' }}</td>
+                    <td class="r" style="color:#fde68a;">{{ $totRecEmpresa > 0 ? 'S/ '.number_format($totRecEmpresa, 2) : '—' }}</td>
                     <td></td>
-                    <td class="r" style="color:#fca5a5;">{{ number_format($totEmpresa, 2) }}</td>
+                    <td class="r" style="color:#fed7aa;">S/ {{ number_format($totEmpresa, 2) }}</td>
                     <td></td>
-                    <td class="r" style="color:#6ee7b7;">{{ $totAbono > 0 ? number_format($totAbono, 2) : '—' }}</td>
+                    <td class="r" style="color:#a7f3d0;">{{ $totAbono > 0 ? 'S/ '.number_format($totAbono, 2) : '—' }}</td>
                     <td></td>
-                    <td class="r" style="color:#fca5a5;font-size:11px;">{{ number_format($totPendEmpresa, 2) }}</td>
+                    <td class="r" style="color:#fca5a5;font-size:11px;">S/ {{ number_format($totPendEmpresa, 2) }}</td>
                     <td></td>
                 </tr>
                 </tbody>

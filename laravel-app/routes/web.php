@@ -80,6 +80,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/facturas/{id}/pago', [FacturaController::class, 'procesarPago'])->name('facturas.pago');
     Route::get('/facturas/{id}/pagos', [FacturaController::class, 'listarPagos'])->name('facturas.pagos.listar');
     Route::delete('/facturas/{id}/pagos/{id_pago}', [FacturaController::class, 'eliminarPago'])->name('facturas.pagos.eliminar');
+    Route::put('/facturas/{id}/pagos/{id_pago}', [FacturaController::class, 'editarPago'])->name('facturas.pagos.editar');
     Route::get('/facturas/pago-masivo/facturas-cliente', [FacturaController::class, 'facturasPendientesCliente'])->name('facturas.pago-masivo.facturas-cliente');
     Route::post('/facturas/pago-masivo/procesar', [FacturaController::class, 'procesarPagoMasivo'])->name('facturas.pago-masivo.procesar');
     Route::get('/facturas/{id}/cliente', [FacturaController::class, 'obtenerCliente'])->name('facturas.obtener-cliente');

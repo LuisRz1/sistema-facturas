@@ -213,7 +213,7 @@ class ReporteController extends Controller
         if ($estado) {
             $estadosFiltro = [$estado];
         } else {
-            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE', 'PAGADA'];
+            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE', 'PAGADA'];
         }
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
@@ -280,7 +280,7 @@ class ReporteController extends Controller
         } elseif (!empty($estadosParam)) {
             $estadosFiltro = (array) $estadosParam;
         } else {
-            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE'];
+            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE'];
         }
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
@@ -308,7 +308,7 @@ class ReporteController extends Controller
             ->where('activo', 1)
             ->orderBy('fecha_pago')
             ->orderBy('id_pago')
-            ->get(['id_factura', 'fecha_pago', 'monto_pagado'])
+            ->get(['id_factura', 'fecha_pago', 'monto_pagado', 'banco_origen', 'cuenta_pago'])
             ->groupBy('id_factura');
 
         // ── Lógica unificada de huérfanas ──────────────────────────────────
@@ -400,7 +400,7 @@ class ReporteController extends Controller
         $estadosParam  = $request->input('estados', []);
         $estadosFiltro = !empty($estadosParam)
             ? (array) $estadosParam
-            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE']);
+            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE']);
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
@@ -570,7 +570,7 @@ class ReporteController extends Controller
         $estadosParam  = $request->input('estados', []);
         $estadosFiltro = !empty($estadosParam)
             ? (array) $estadosParam
-            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE']);
+            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE']);
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
         if ($tipoReporte === 'general') {
@@ -699,7 +699,7 @@ class ReporteController extends Controller
 
         if ($estadoSimple)          $estadosFiltro = [$estadoSimple];
         elseif (!empty($estadosParam)) $estadosFiltro = (array) $estadosParam;
-        else                           $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE'];
+        else                           $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE'];
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
         $query = DB::table('factura as f')
@@ -818,7 +818,7 @@ class ReporteController extends Controller
         } elseif (!empty($estadosParam)) {
             $estadosFiltro = (array) $estadosParam;
         } else {
-            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE'];
+            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE'];
         }
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
@@ -841,7 +841,7 @@ class ReporteController extends Controller
             ->whereIn('id_factura', $facturaIdsExcel)
             ->where('activo', 1)
             ->orderBy('fecha_pago')->orderBy('id_pago')
-            ->get(['id_factura', 'fecha_pago', 'monto_pagado'])
+            ->get(['id_factura', 'fecha_pago', 'monto_pagado', 'banco_origen', 'cuenta_pago'])
             ->groupBy('id_factura');
 
         $orphanFacturaIds    = $this->getOrphanFacturaIds($facturas);
@@ -1104,8 +1104,7 @@ class ReporteController extends Controller
             $dRow3 = $hRow3 + 1;
             $idxG  = 1;
             foreach ($facturasAgrupadas as $empresa => $grpFact) {
-                // Fila separadora de cliente
-                $su->mergeCells("A{$dRow3}:Q{$dRow3}");
+                // Fila separadora de cliente (sin combinar celdas)
                 $su->setCellValue("A{$dRow3}", '  ▶  ' . strtoupper($empresa) . '  —  ' . ($grpFact->first()->ruc ?? ''));
                 $su->getStyle("A{$dRow3}:Q{$dRow3}")->applyFromArray([
                     'font'  => ['bold' => true, 'size' => 10, 'color' => ['argb' => 'FF1E3A5F']],
