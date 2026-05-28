@@ -149,8 +149,26 @@ class DashboardController extends Controller
             ->get()
             ->keyBy('estado');
 
+        // ── KPIs split por moneda (PEN / USD) ────────────────────────────────
+        $kpisMonedaQuery = DB::table('factura as f')
+            ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
+            ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
+            ->where('f.activo', 1)
+            ->where('c.tipo_cliente', $tipoCliente);
+
+        $kpisPorMoneda = $applyTotalesScope($kpisMonedaQuery, $orphanPeriodo)
+            ->select([
+                'f.moneda',
+                DB::raw('SUM(CASE WHEN f.estado = "ANULADO" THEN 0 ELSE COALESCE(f.importe_total, 0) END) as total_facturado'),
+                DB::raw('SUM(CASE WHEN f.estado IN ("PENDIENTE","VENCIDO","PAGO PARCIAL","POR VALIDAR DETRACCION","DIFERENCIA PENDIENTE") THEN COALESCE(f.monto_pendiente, 0) ELSE 0 END) as total_por_cobrar'),
+                DB::raw('SUM(CASE WHEN f.estado = "ANULADO" THEN 0 ELSE GREATEST(COALESCE(f.importe_total, 0) - COALESCE(f.monto_pendiente, 0), 0) END) as total_cobrado'),
+            ])
+            ->groupBy('f.moneda')
+            ->get()
+            ->keyBy('moneda');
+
         return view('dashboard', compact(
-            'kpis', 'tendencia', 'topClientes', 'ultimasFacturas', 'porEstado',
+            'kpis', 'kpisPorMoneda', 'tendencia', 'topClientes', 'ultimasFacturas', 'porEstado',
             'fechaDesde', 'fechaHasta', 'tipoCliente'
         ));
     }

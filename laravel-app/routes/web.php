@@ -73,6 +73,7 @@ Route::middleware('auth')->group(function () {
 
     // ── FACTURAS ───────────────────────────────────────────────────────
     Route::get('/facturas', [FacturaController::class, 'index'])->name('facturas.index');
+    Route::post('/facturas', [FacturaController::class, 'store'])->name('facturas.store');
     Route::get('/facturas/persona-juridica', [FacturaController::class, 'index'])->name('facturas.pj');
     Route::get('/facturas/persona-natural', [FacturaController::class, 'index'])->name('facturas.pn');
     Route::get('/facturas/{id}/edit',  [FacturaController::class, 'edit']  )->name('facturas.edit');

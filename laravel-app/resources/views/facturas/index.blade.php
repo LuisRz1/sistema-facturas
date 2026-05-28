@@ -325,6 +325,10 @@
                 <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
                 Pago Masivo
             </button>
+            <button type="button" onclick="abrirModalNuevaFactura()" style="padding:9px 16px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:#16a34a;color:#fff;border:none;">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Nueva Factura
+            </button>
         </div>
     </div>
 
@@ -397,11 +401,21 @@
         // Separados por moneda
         $pendientePEN = $facturasParaTotales->where('moneda','PEN')->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
         $pendienteUSD = $facturasParaTotales->where('moneda','USD')->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
+        $totalPEN     = $facturasParaTotales->where('moneda','PEN')->sum('importe_total');
+        $totalUSD     = $facturasParaTotales->where('moneda','USD')->sum('importe_total');
+        $pagadaPEN    = $facturasParaTotales->where('moneda','PEN')->where('estado','PAGADA')->sum('importe_total');
+        $pagadaUSD    = $facturasParaTotales->where('moneda','USD')->where('estado','PAGADA')->sum('importe_total');
     @endphp
     <div class="stats-grid">
         <div class="stat-card blue">
             <div class="stat-icon"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg></div>
-            <div><div class="stat-label">Total Facturado</div><div class="stat-value">S/ {{ number_format($total,2) }}</div></div>
+            <div>
+                <div class="stat-label">Total Facturado</div>
+                <div class="stat-value">PEN {{ number_format($totalPEN,2) }}</div>
+                @if($totalUSD > 0)
+                    <div class="stat-sub" style="font-weight:700;color:#1d4ed8;font-size:11px;">USD {{ number_format($totalUSD,2) }}</div>
+                @endif
+            </div>
         </div>
         <div class="stat-card amber">
             <div class="stat-icon"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
@@ -415,7 +429,13 @@
         </div>
         <div class="stat-card green">
             <div class="stat-icon"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
-            <div><div class="stat-label">Cobrado</div><div class="stat-value">S/ {{ number_format($pagada,2) }}</div></div>
+            <div>
+                <div class="stat-label">Cobrado</div>
+                <div class="stat-value">PEN {{ number_format($pagadaPEN,2) }}</div>
+                @if($pagadaUSD > 0)
+                    <div class="stat-sub" style="font-weight:700;color:#059669;font-size:11px;">USD {{ number_format($pagadaUSD,2) }}</div>
+                @endif
+            </div>
         </div>
         <div class="stat-card red">
             <div class="stat-icon"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg></div>
@@ -1005,7 +1025,7 @@
     </div>
 
     {{-- ═══════════ MODAL EDITAR ABONO ═══════════ --}}
-    <div class="modal-overlay" id="modalEditarPagoOverlay">
+    <div class="modal-overlay" id="modalEditarPagoOverlay" style="z-index:600;">
         <div class="modal" style="max-width:520px;width:min(520px,96vw);">
             <div class="modal-header" style="background:linear-gradient(135deg,#1d4ed8,#1e40af);">
                 <h2>Editar Abono</h2>
@@ -1025,11 +1045,24 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Banco de Origen</label>
-                        <input type="text" id="editPagoBanco" class="form-input" placeholder="Ej: BCP, Interbank...">
+                        <input type="text" id="editPagoBanco" class="form-input" placeholder="Ej: BCP, BBVA, Interbank...">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Cuenta Destino</label>
-                        <input type="text" id="editPagoCuenta" class="form-input" placeholder="N° cuenta">
+                        <select id="editPagoCuenta" class="form-input" onchange="onEditCuentaChange()">
+                            <option value="">Seleccionar...</option>
+                            <option value="BBVA SOLES">BBVA Soles</option>
+                            <option value="BBVA DOLARES">BBVA Dólares</option>
+                            <option value="BCP SOLES">BCP Soles</option>
+                            <option value="BCP DOLARES">BCP Dólares</option>
+                            <option value="INTERBANK SOLES">Interbank Soles</option>
+                            <option value="INTERBANK DOLARES">Interbank Dólares</option>
+                            <option value="EFECTIVO">Efectivo</option>
+                            <option value="YAPE">Yape</option>
+                            <option value="PLIN">Plin</option>
+                            <option value="OTROS">Otros</option>
+                        </select>
+                        <input type="text" id="editPagoCuentaOtro" class="form-input" placeholder="Especificar cuenta" style="display:none;margin-top:6px;">
                     </div>
                     <div class="form-group">
                         <label class="form-label">N° Operación</label>
@@ -1037,7 +1070,15 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Forma de Pago</label>
-                        <input type="text" id="editPagoForma" class="form-input" placeholder="Transferencia, depósito...">
+                        <select id="editPagoForma" class="form-input">
+                            <option value="">Seleccionar...</option>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Yape">Yape</option>
+                            <option value="Plin">Plin</option>
+                            <option value="Detracción">Detracción</option>
+                        </select>
                     </div>
                     <div class="form-group" style="grid-column:1/-1;">
                         <label class="form-label">Observación</label>
@@ -1183,10 +1224,11 @@
                             <input type="number" id="pagoPorcentaje" step="0.01" min="0" max="100" class="form-input" placeholder="10.00" oninput="calcularRecaudacion()">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Monto Recaudación</label>
+                            <label class="form-label" id="recaudMontoLabel">Monto Recaudación</label>
                             <input type="number" id="pagoTotalRecaudacion" step="0.01" min="0" class="form-input" placeholder="0.00">
-                            <span id="recaudUsdNote" style="display:none;font-size:11px;color:#1d4ed8;margin-top:3px;display:block;">
-                                Factura en dólares — ingresa el monto directamente en USD.
+                            <span id="recaudUsdNote" style="display:none;font-size:11px;color:#1d4ed8;margin-top:3px;">
+                                Factura en USD — ingresa el monto directamente en dólares. Este valor reducirá el saldo pendiente.
+                            </span>
                             </span>
                         </div>
                         <div class="form-group" style="grid-column:1/-1;">
@@ -1271,6 +1313,93 @@
                     <button type="submit" class="btn btn-primary">Guardar Cliente</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    {{-- ═══════════ MODAL NUEVA FACTURA ═══════════ --}}
+    <div class="modal-overlay" id="modalNuevaFacturaOverlay" style="z-index:300;">
+        <div class="modal" style="max-width:660px;width:min(660px,96vw);">
+            <div class="modal-header" style="background:linear-gradient(135deg,#16a34a,#15803d);">
+                <h2>Nueva Factura</h2><p>Registra una factura de forma individual</p>
+                <button onclick="cerrarModalNuevaFactura()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <div class="modal-body" style="max-height:calc(90vh - 160px);overflow-y:auto;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Cliente *</label>
+                        <select id="nfCliente" class="form-input" required>
+                            <option value="">Seleccionar cliente...</option>
+                            @foreach($clientes as $cliente)
+                                <option value="{{ $cliente->id_cliente }}">{{ $cliente->razon_social }} — {{ $cliente->ruc }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Serie *</label>
+                        <input type="text" id="nfSerie" class="form-input" placeholder="Ej: F001" maxlength="10" style="text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Número *</label>
+                        <input type="number" id="nfNumero" class="form-input" placeholder="Ej: 123" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Moneda *</label>
+                        <select id="nfMoneda" class="form-input">
+                            <option value="PEN">PEN — Soles</option>
+                            <option value="USD">USD — Dólares</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tipo Operación</label>
+                        <input type="text" id="nfTipoOp" class="form-input" placeholder="Ej: Venta de servicios">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha Emisión *</label>
+                        <input type="date" id="nfFechaEmision" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha Vencimiento</label>
+                        <input type="date" id="nfFechaVencimiento" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Subtotal Gravado *</label>
+                        <input type="number" id="nfSubtotal" class="form-input" step="0.01" min="0" placeholder="0.00" oninput="nfAutoIgv();nfCalcTotal()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">IGV (18%) *</label>
+                        <input type="number" id="nfIgv" class="form-input" step="0.01" min="0" placeholder="0.00" oninput="nfCalcTotal()">
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Importe Total *</label>
+                        <input type="number" id="nfTotal" class="form-input" step="0.01" min="0" placeholder="0.00" readonly style="background:#f1f5f9;font-weight:700;font-size:15px;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Forma de Pago</label>
+                        <input type="text" id="nfFormaPago" class="form-input" placeholder="Contado, 30 días, etc.">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Estado</label>
+                        <select id="nfEstado" class="form-input">
+                            <option value="PENDIENTE">Pendiente</option>
+                            <option value="VENCIDO">Vencido</option>
+                            <option value="PAGADA">Pagada</option>
+                            <option value="DIFERENCIA PENDIENTE">Diferencia Pendiente</option>
+                            <option value="POR VALIDAR DETRACCION">Por Validar Detracción</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Glosa / Descripción</label>
+                        <textarea id="nfGlosa" class="form-input" rows="2" placeholder="Descripción del servicio o producto facturado" style="resize:vertical;"></textarea>
+                    </div>
+                </div>
+                <div id="nfError" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;color:#991b1b;font-size:13px;margin-top:12px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="cerrarModalNuevaFactura()" class="btn btn-ghost">Cancelar</button>
+                <button type="button" id="btnGuardarNuevaFactura" onclick="guardarNuevaFactura()" class="btn btn-primary" style="background:#16a34a;min-width:160px;">
+                    Crear Factura
+                </button>
+            </div>
         </div>
     </div>
 
@@ -1972,11 +2101,36 @@
                 document.getElementById('editPagoMonto').value       = Number(p.monto_pagado).toFixed(2);
                 document.getElementById('editPagoFecha').value       = p.fecha_pago || '';
                 document.getElementById('editPagoBanco').value       = p.banco_origen || '';
-                document.getElementById('editPagoCuenta').value      = p.cuenta_pago || '';
                 document.getElementById('editPagoNumOp').value       = p.numero_operacion || '';
-                document.getElementById('editPagoForma').value       = p.forma_pago || '';
                 document.getElementById('editPagoObs').value         = p.observacion || '';
+                // Handle cuenta_pago as select
+                const sel = document.getElementById('editPagoCuenta');
+                const cuentaVal = (p.cuenta_pago || '').toUpperCase();
+                const predefined = ['BBVA SOLES','BBVA DOLARES','BCP SOLES','BCP DOLARES','INTERBANK SOLES','INTERBANK DOLARES','EFECTIVO','YAPE','PLIN'];
+                if (predefined.includes(cuentaVal)) {
+                    sel.value = cuentaVal;
+                    document.getElementById('editPagoCuentaOtro').style.display = 'none';
+                } else if (p.cuenta_pago) {
+                    sel.value = 'OTROS';
+                    document.getElementById('editPagoCuentaOtro').style.display = 'block';
+                    document.getElementById('editPagoCuentaOtro').value = p.cuenta_pago;
+                } else {
+                    sel.value = '';
+                    document.getElementById('editPagoCuentaOtro').style.display = 'none';
+                }
+                // Handle forma_pago select
+                const formaEl = document.getElementById('editPagoForma');
+                const formaVal = p.forma_pago || '';
+                const opcion = Array.from(formaEl.options).find(o => o.value === formaVal);
+                formaEl.value = opcion ? formaVal : '';
                 document.getElementById('modalEditarPagoOverlay').classList.add('open');
+            }
+
+            function onEditCuentaChange() {
+                const sel = document.getElementById('editPagoCuenta');
+                const otro = document.getElementById('editPagoCuentaOtro');
+                otro.style.display = sel.value === 'OTROS' ? 'block' : 'none';
+                if (sel.value !== 'OTROS') otro.value = '';
             }
 
             function cerrarModalEditarPago() {
@@ -1987,6 +2141,10 @@
                 const idPago = document.getElementById('editPagoId').value;
                 const btn    = document.getElementById('btnGuardarEditarPago');
                 btn.disabled = true;
+                const selCuenta = document.getElementById('editPagoCuenta').value;
+                const cuentaFinal = selCuenta === 'OTROS'
+                    ? document.getElementById('editPagoCuentaOtro').value
+                    : selCuenta;
                 try {
                     const body = new URLSearchParams({
                         _token:           CSRF,
@@ -1994,7 +2152,7 @@
                         monto_pagado:     document.getElementById('editPagoMonto').value,
                         fecha_pago:       document.getElementById('editPagoFecha').value,
                         banco_origen:     document.getElementById('editPagoBanco').value,
-                        cuenta_pago:      document.getElementById('editPagoCuenta').value,
+                        cuenta_pago:      cuentaFinal,
                         numero_operacion: document.getElementById('editPagoNumOp').value,
                         forma_pago:       document.getElementById('editPagoForma').value,
                         observacion:      document.getElementById('editPagoObs').value,
@@ -2066,11 +2224,15 @@
                             <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">Cuenta destino</label>
                             <select id="col_cuentaPreset_${p.idx}" class="form-input" onchange="onColaCuentaPreset(${p.idx},this.value)">
                                 <option value="">Seleccionar...</option>
-                                <option value="BBVA"${p.cuentaPreset==='BBVA'?' selected':''}>BBVA</option>
-                                <option value="BCP"${p.cuentaPreset==='BCP'?' selected':''}>BCP</option>
+                                <option value="BBVA SOLES"${p.cuentaPreset==='BBVA SOLES'?' selected':''}>BBVA Soles</option>
+                                <option value="BBVA DOLARES"${p.cuentaPreset==='BBVA DOLARES'?' selected':''}>BBVA Dólares</option>
+                                <option value="BCP SOLES"${p.cuentaPreset==='BCP SOLES'?' selected':''}>BCP Soles</option>
+                                <option value="BCP DOLARES"${p.cuentaPreset==='BCP DOLARES'?' selected':''}>BCP Dólares</option>
                                 <option value="INTERBANK SOLES"${p.cuentaPreset==='INTERBANK SOLES'?' selected':''}>Interbank Soles</option>
                                 <option value="INTERBANK DOLARES"${p.cuentaPreset==='INTERBANK DOLARES'?' selected':''}>Interbank Dólares</option>
+                                <option value="EFECTIVO"${p.cuentaPreset==='EFECTIVO'?' selected':''}>Efectivo</option>
                                 <option value="YAPE"${p.cuentaPreset==='YAPE'?' selected':''}>Yape</option>
+                                <option value="PLIN"${p.cuentaPreset==='PLIN'?' selected':''}>Plin</option>
                                 <option value="OTROS"${p.cuentaPreset==='OTROS'?' selected':''}>Otros</option>
                             </select>
                             ${p.cuentaPreset==='OTROS'?`<input type="text" id="col_cuentaOtro_${p.idx}" value="${p.cuentaOtro}" class="form-input" style="margin-top:6px;" placeholder="Especifica la cuenta" oninput="onColaField(${p.idx},'cuentaOtro',this.value);onColaField(${p.idx},'cuenta',this.value)">`:''}
@@ -2300,6 +2462,7 @@
                 const camposRec   = document.getElementById('camposRecaudacion');
                 const validarWrap = document.getElementById('validarDetraccionWrap');
                 const usdNote     = document.getElementById('recaudUsdNote');
+                const pctGroup    = document.getElementById('pagoPorcentaje')?.closest('.form-group');
                 const isUSD       = (facturaMoneda || '').includes('USD');
                 if (tipo === 'DETRACCION') {
                     document.getElementById('btnTipoDet').classList.add('active-det');
@@ -2320,7 +2483,13 @@
                     document.getElementById('pagoTotalRecaudacion').value = '';
                     document.getElementById('pagoPorcentaje').value = '';
                 }
-                if (usdNote) usdNote.style.display = (isUSD && tipo !== 'NINGUNA') ? 'block' : 'none';
+                // USD: hide percentage field, show manual note
+                if (pctGroup) pctGroup.style.display = isUSD ? 'none' : '';
+                if (usdNote) usdNote.style.display = (isUSD && tipo !== '') ? 'block' : 'none';
+                if (isUSD) {
+                    const label = document.getElementById('recaudMontoLabel');
+                    if (label) label.textContent = 'Monto (USD)';
+                }
             }
 
             function calcularRecaudacion() {
@@ -2398,6 +2567,89 @@
                 }).catch(err=>alert('Error: '+err.message));
             }
             function cerrarModalEditarCliente() { document.getElementById('modalEditarClienteOverlay').classList.remove('open'); }
+
+            // ── Nueva Factura ──────────────────────────────────────────────
+            function abrirModalNuevaFactura() {
+                document.getElementById('nfSerie').value           = '';
+                document.getElementById('nfNumero').value          = '';
+                document.getElementById('nfMoneda').value          = 'PEN';
+                document.getElementById('nfTipoOp').value          = '';
+                document.getElementById('nfFechaEmision').value    = new Date().toISOString().split('T')[0];
+                document.getElementById('nfFechaVencimiento').value = '';
+                document.getElementById('nfSubtotal').value        = '';
+                document.getElementById('nfIgv').value             = '';
+                document.getElementById('nfTotal').value           = '';
+                document.getElementById('nfFormaPago').value       = '';
+                document.getElementById('nfEstado').value          = 'PENDIENTE';
+                document.getElementById('nfGlosa').value           = '';
+                document.getElementById('nfCliente').value         = '';
+                document.getElementById('nfError').style.display   = 'none';
+                document.getElementById('btnGuardarNuevaFactura').disabled = false;
+                document.getElementById('modalNuevaFacturaOverlay').classList.add('open');
+            }
+            function cerrarModalNuevaFactura() { document.getElementById('modalNuevaFacturaOverlay').classList.remove('open'); }
+            function nfAutoIgv() {
+                const sub = parseFloat(document.getElementById('nfSubtotal').value) || 0;
+                document.getElementById('nfIgv').value = (sub * 0.18).toFixed(2);
+            }
+            function nfCalcTotal() {
+                const sub = parseFloat(document.getElementById('nfSubtotal').value) || 0;
+                const igv = parseFloat(document.getElementById('nfIgv').value) || 0;
+                document.getElementById('nfTotal').value = (sub + igv).toFixed(2);
+            }
+            async function guardarNuevaFactura() {
+                const btn = document.getElementById('btnGuardarNuevaFactura');
+                const errEl = document.getElementById('nfError');
+                errEl.style.display = 'none';
+                const idCliente = document.getElementById('nfCliente').value;
+                const serie     = document.getElementById('nfSerie').value.trim().toUpperCase();
+                const numero    = document.getElementById('nfNumero').value;
+                const subtotal  = document.getElementById('nfSubtotal').value;
+                const igv       = document.getElementById('nfIgv').value;
+                const total     = document.getElementById('nfTotal').value;
+                if (!idCliente || !serie || !numero || !subtotal || !total || !document.getElementById('nfFechaEmision').value) {
+                    errEl.textContent = 'Por favor completa todos los campos obligatorios (*).';
+                    errEl.style.display = 'block';
+                    return;
+                }
+                btn.disabled = true;
+                btn.textContent = 'Guardando...';
+                try {
+                    const body = new URLSearchParams({
+                        _token:           CSRF,
+                        id_cliente:       idCliente,
+                        serie:            serie,
+                        numero:           numero,
+                        moneda:           document.getElementById('nfMoneda').value,
+                        tipo_operacion:   document.getElementById('nfTipoOp').value,
+                        fecha_emision:    document.getElementById('nfFechaEmision').value,
+                        fecha_vencimiento:document.getElementById('nfFechaVencimiento').value,
+                        subtotal_gravado: subtotal,
+                        monto_igv:        igv,
+                        importe_total:    total,
+                        forma_pago:       document.getElementById('nfFormaPago').value,
+                        estado:           document.getElementById('nfEstado').value,
+                        glosa:            document.getElementById('nfGlosa').value,
+                    });
+                    const res = await fetch('/facturas', { method:'POST', headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded'}, body });
+                    const data = await res.json();
+                    if (data.success) {
+                        cerrarModalNuevaFactura();
+                        showToastFactura(data.message || 'Factura creada correctamente.', 'success');
+                        setTimeout(() => location.reload(), 900);
+                    } else {
+                        errEl.textContent = data.message || 'Error al crear la factura.';
+                        errEl.style.display = 'block';
+                        btn.disabled = false;
+                        btn.textContent = 'Crear Factura';
+                    }
+                } catch(e) {
+                    errEl.textContent = 'Error de red. Intenta nuevamente.';
+                    errEl.style.display = 'block';
+                    btn.disabled = false;
+                    btn.textContent = 'Crear Factura';
+                }
+            }
             function guardarCliente(event) {
                 event.preventDefault();
                 const datos = {
@@ -2417,7 +2669,7 @@
                     .catch(err=>alert('Error: '+err.message));
             }
 
-            ['modalPagoMasivoOverlay','modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay','modalVerPagosOverlay'].forEach(id => {
+            ['modalPagoMasivoOverlay','modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay','modalVerPagosOverlay','modalNuevaFacturaOverlay'].forEach(id => {
                 document.getElementById(id)?.addEventListener('click', e => { if(e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
             });
 

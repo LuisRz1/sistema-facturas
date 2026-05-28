@@ -137,9 +137,10 @@
         .empresa-table tbody td {
             padding:6px 4px; font-size:9.5px; vertical-align:middle;
             overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+            font-weight:700;
         }
         .empresa-table tbody td.r { text-align:right; }
-        .empresa-table tbody td.mono { font-family:'Courier New',monospace; font-size:9.5px; }
+        .empresa-table tbody td.mono { font-family:'Courier New',monospace; font-size:9.5px; font-weight:700; }
         .td-estado { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; line-height:1.15; }
         .td-glosa { white-space:normal !important; overflow:visible !important; text-overflow:clip !important; line-height:1.2; }
         .doc-relacion {
@@ -180,22 +181,22 @@
         .empresa-table tbody tr.total-empresa td.r { text-align:right; }
 
         .factura-num { font-weight:800; font-family:'Courier New',monospace; }
-        .detrac  { color:#f59e0b; font-weight:700; font-family:'Courier New',monospace; }
-        .abonado { color:#10b981; font-weight:700; font-family:'Courier New',monospace; }
-        .pendiente-cell { color:#f87171; font-weight:700; font-family:'Courier New',monospace; }
-        .igv-note { display:block; font-size:7.5px; color:#64748b; margin-top:1px; font-family:Arial, Helvetica, sans-serif; }
+        .detrac  { color:#d97706; font-weight:800; font-family:'Courier New',monospace; }
+        .abonado { color:#059669; font-weight:800; font-family:'Courier New',monospace; }
+        .pendiente-cell { color:#dc2626; font-weight:800; font-family:'Courier New',monospace; }
+        .igv-note { display:block; font-size:7.5px; color:#475569; font-weight:600; margin-top:1px; font-family:Arial, Helvetica, sans-serif; }
 
         .badge {
             display:inline-block; padding:2px 6px; border-radius:20px; font-size:8px;
             font-weight:800; text-transform:uppercase; letter-spacing:.35px;
             max-width:100%; white-space:normal; word-break:break-word; line-height:1.1;
         }
-        .b-PENDIENTE             { background:#fef3c7; color:#92400e; }
-        .b-VENCIDO               { background:#fee2e2; color:#991b1b; }
-        .b-PAGADA                { background:#d1fae5; color:#065f46; }
-        .b-PAGO_PARCIAL, .b-PAGO\ PARCIAL { background:#e0e7ff; color:#3730a3; }
-        .b-DIFERENCIA_PENDIENTE, .b-DIFERENCIA\ PENDIENTE { background:#fce7f3; color:#9d174d; border:1px solid #fbcfe8; }
-        .b-ANULADO               { background:#f1f5f9; color:#475569; }
+        .b-PENDIENTE             { background:#fef3c7; color:#78350f; font-weight:800; }
+        .b-VENCIDO               { background:#fee2e2; color:#7f1d1d; font-weight:800; }
+        .b-PAGADA                { background:#d1fae5; color:#064e3b; font-weight:800; }
+        .b-PAGO_PARCIAL, .b-PAGO\ PARCIAL { background:#e0e7ff; color:#1e1b4b; font-weight:800; }
+        .b-DIFERENCIA_PENDIENTE, .b-DIFERENCIA\ PENDIENTE { background:#fce7f3; color:#831843; border:1px solid #fbcfe8; font-weight:800; }
+        .b-ANULADO               { background:#e2e8f0; color:#1e293b; font-weight:800; }
 
         .group-title {
             font-size:12px; font-weight:900; color:#0f172a; text-transform:uppercase; letter-spacing:.4px;
@@ -233,10 +234,12 @@
                 overflow:visible !important;
                 text-overflow:clip !important;
                 white-space:normal !important;
+                font-weight:700 !important;
             }
             .empresa-table tbody td.mono {
                 font-size:7.5px !important;
                 white-space:nowrap !important;   /* números: nunca partir */
+                font-weight:700 !important;
             }
             .empresa-table tbody tr.total-empresa td {
                 font-size:8px !important;
@@ -251,21 +254,22 @@
             .stats-grid { border-spacing:8px 6px; margin:10px 0 12px; }
         }
 
-        /* Anchos fijos — 14 columnas (suma 100%) */
+        /* Anchos fijos — 15 columnas (suma 100%) */
         col.col-rank   { width:1%; }
         col.col-emi    { width:6%; }
         col.col-vcto   { width:5%; }
         col.col-fact   { width:8%; }
         col.col-glosa  { width:8%; }
-        col.col-sub    { width:8%; }
+        col.col-sub    { width:7%; }
         col.col-pen    { width:6%; }
         col.col-rec    { width:7%; }
-        col.col-total  { width:9%; }
+        col.col-total  { width:8%; }
         col.col-tipo   { width:5%; }
-        col.col-abo    { width:7%; }
-        col.col-fabo   { width:12%; }
-        col.col-pend   { width:10%; }
-        col.col-est    { width:8%; }
+        col.col-abo    { width:6%; }
+        col.col-fabo   { width:10%; }
+        col.col-cuenta { width:8%; }
+        col.col-pend   { width:8%; }
+        col.col-est    { width:7%; }
     </style>
 
 </head>
@@ -332,27 +336,37 @@
 </div>
 
 @php
-    $totalFacturado     = (float) ($dashboard['total_facturado'] ?? 0);
-    $saldoPendiente     = (float) ($dashboard['saldo_pendiente'] ?? 0);
-    $cobrado            = (float) ($dashboard['cobrado'] ?? 0);
     $montoRecaudacion   = (float) ($dashboard['monto_recaudacion'] ?? 0);
     $recaudDepositada   = (float) ($dashboard['recaud_depositada'] ?? 0);
     $recaudSinConfirmar = (float) ($dashboard['recaud_sin_confirmar'] ?? 0);
+    // Split PEN / USD desde las facturas que cuentan en totales
+    $allFacTot      = $facturasAgrupParaTotales->flatten(1);
+    $allFacPEN      = $allFacTot->where('moneda', 'PEN');
+    $allFacUSD      = $allFacTot->where('moneda', 'USD');
+    $totalFacPEN    = (float) $allFacPEN->sum('importe_total');
+    $totalFacUSD    = (float) $allFacUSD->sum('importe_total');
+    $saldoPendPEN   = (float) $allFacPEN->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
+    $saldoPendUSD   = (float) $allFacUSD->whereIn('estado',['PENDIENTE','VENCIDO','DIFERENCIA PENDIENTE'])->sum('monto_pendiente');
+    $cobradoPEN     = (float) $allFacPEN->where('estado','PAGADA')->sum('importe_total');
+    $cobradoUSD     = (float) $allFacUSD->where('estado','PAGADA')->sum('importe_total');
 @endphp
 
 <table class="stats-grid three">
     <tr>
         <td class="sc-blue">
             <div class="stat-label">Total Facturado</div>
-            <div class="stat-value">S/ {{ number_format($totalFacturado, 2) }}</div>
+            @if($totalFacPEN > 0)<div class="stat-value">PEN {{ number_format($totalFacPEN, 2) }}</div>@endif
+            @if($totalFacUSD > 0)<div class="stat-value" style="font-size:13px;margin-top:2px;">USD {{ number_format($totalFacUSD, 2) }}</div>@endif
         </td>
         <td class="sc-amber">
             <div class="stat-label">Saldo Pendiente</div>
-            <div class="stat-value">S/ {{ number_format($saldoPendiente, 2) }}</div>
+            @if($saldoPendPEN > 0)<div class="stat-value" style="color:#d97706;">PEN {{ number_format($saldoPendPEN, 2) }}</div>@endif
+            @if($saldoPendUSD > 0)<div class="stat-value" style="color:#d97706;font-size:13px;margin-top:2px;">USD {{ number_format($saldoPendUSD, 2) }}</div>@endif
         </td>
         <td class="sc-green">
             <div class="stat-label">Cobrado</div>
-            <div class="stat-value">S/ {{ number_format($cobrado, 2) }}</div>
+            @if($cobradoPEN > 0)<div class="stat-value" style="color:#059669;">PEN {{ number_format($cobradoPEN, 2) }}</div>@endif
+            @if($cobradoUSD > 0)<div class="stat-value" style="color:#059669;font-size:13px;margin-top:2px;">USD {{ number_format($cobradoUSD, 2) }}</div>@endif
         </td>
     </tr>
 </table>
@@ -393,15 +407,31 @@
         @foreach($facturasAgrupadas as $empresa => $facturasPorEmpresa)
             @php
                 $facturasPorEmpresaParaTotales = $facturasAgrupParaTotales[$empresa] ?? collect();
-                $totEmpresa      = $facturasPorEmpresaParaTotales->sum('importe_total');
-                $totSubEmpresa   = $facturasPorEmpresaParaTotales->sum('subtotal_gravado');
-                $totRecEmpresa   = $facturasPorEmpresaParaTotales->sum('monto_recaudacion');
-                $totAbono        = $facturasPorEmpresaParaTotales->sum('monto_abonado');
-                $totPendEmpresa  = $facturasPorEmpresaParaTotales->sum(function ($fTot) {
-                    return $fTot->estado === 'DIFERENCIA PENDIENTE'
-                        ? max(0, ($fTot->importe_total ?? 0) - ($fTot->monto_recaudacion ?? 0))
-                        : ($fTot->pendiente_display ?? $fTot->monto_pendiente ?? 0);
-                });
+                $facEmpPEN = $facturasPorEmpresaParaTotales->where('moneda', 'PEN');
+                $facEmpUSD = $facturasPorEmpresaParaTotales->where('moneda', 'USD');
+                $calcPend = function($col) {
+                    return $col->sum(function ($fTot) {
+                        return $fTot->estado === 'DIFERENCIA PENDIENTE'
+                            ? max(0, ($fTot->importe_total ?? 0) - ($fTot->monto_recaudacion ?? 0))
+                            : ($fTot->pendiente_display ?? $fTot->monto_pendiente ?? 0);
+                    });
+                };
+                $totPEN = [
+                    'cnt'   => $facEmpPEN->count(),
+                    'sub'   => $facEmpPEN->sum('subtotal_gravado'),
+                    'rec'   => $facEmpPEN->sum('monto_recaudacion'),
+                    'total' => $facEmpPEN->sum('importe_total'),
+                    'abo'   => $facEmpPEN->sum('monto_abonado'),
+                    'pend'  => $calcPend($facEmpPEN),
+                ];
+                $totUSD = [
+                    'cnt'   => $facEmpUSD->count(),
+                    'sub'   => $facEmpUSD->sum('subtotal_gravado'),
+                    'rec'   => $facEmpUSD->sum('monto_recaudacion'),
+                    'total' => $facEmpUSD->sum('importe_total'),
+                    'abo'   => $facEmpUSD->sum('monto_abonado'),
+                    'pend'  => $calcPend($facEmpUSD),
+                ];
             @endphp
 
             <div class="group-title">{{ $empresa }}</div>
@@ -419,6 +449,7 @@
                     <col class="col-tipo">  {{-- Tipo --}}
                     <col class="col-abo">   {{-- Abonado --}}
                     <col class="col-fabo">  {{-- F.Abono --}}
+                    <col class="col-cuenta">{{-- Cuentas --}}
                     <col class="col-pend">  {{-- Pendiente --}}
                     <col class="col-est">   {{-- Estado --}}
                 </colgroup>
@@ -436,6 +467,7 @@
                     <th>Tipo</th>
                     <th class="r">Abonado</th>
                     <th>Pagos (fecha / monto)</th>
+                    <th>Cta. Origen / Destino</th>
                     <th class="r">Pendiente</th>
                     <th>Estado</th>
                 </tr>
@@ -488,15 +520,33 @@
                         <td class="r abonado">
                             {{ ($f->monto_abonado ?? 0) > 0 ? $f->moneda.' '.number_format($f->monto_abonado, 2) : '—' }}
                         </td>
-                        {{-- Pagos apilados: fecha / monto / banco por línea --}}
+                        {{-- Pagos apilados: fecha / monto por línea --}}
                         <td class="mono" style="font-size:8px;color:#059669;line-height:1.6;word-break:keep-all;overflow-wrap:break-word;">
                             @if($pagosFila->isEmpty())
                                 <span style="color:#9ca3af;">—</span>
                             @else
                                 @foreach($pagosFila as $pago)
-                                    <div>{{ $pago->fecha_pago ? \Carbon\Carbon::parse($pago->fecha_pago)->format('d/m/Y') : '—' }}&nbsp;&nbsp;{{ $f->moneda }}&nbsp;{{ number_format((float)$pago->monto_pagado, 2) }}
-                                    @if(!empty($pago->banco_origen))<span style="color:#7c3aed;font-size:7.5px;"> · {{ $pago->banco_origen }}</span>@endif
-                                    @if(!empty($pago->cuenta_pago))<span style="color:#64748b;font-size:7.5px;"> → {{ $pago->cuenta_pago }}</span>@endif
+                                    <div>{{ $pago->fecha_pago ? \Carbon\Carbon::parse($pago->fecha_pago)->format('d/m/Y') : '—' }}&nbsp;&nbsp;{{ number_format((float)$pago->monto_pagado, 2) }}</div>
+                                @endforeach
+                            @endif
+                        </td>
+                        {{-- Cuentas: origen y destino por pago --}}
+                        <td style="font-size:7.5px;color:#475569;line-height:1.6;white-space:normal;overflow:visible;">
+                            @if($pagosFila->isEmpty())
+                                <span style="color:#9ca3af;">—</span>
+                            @else
+                                @foreach($pagosFila as $pago)
+                                    <div>
+                                        @if(!empty($pago->banco_origen))
+                                            <span style="color:#7c3aed;font-weight:700;">{{ $pago->banco_origen }}</span>
+                                        @endif
+                                        @if(!empty($pago->cuenta_pago))
+                                            @if(!empty($pago->banco_origen)) → @endif
+                                            <span style="color:#0369a1;font-weight:700;">{{ $pago->cuenta_pago }}</span>
+                                        @endif
+                                        @if(empty($pago->banco_origen) && empty($pago->cuenta_pago))
+                                            <span style="color:#9ca3af;">—</span>
+                                        @endif
                                     </div>
                                 @endforeach
                             @endif
@@ -520,21 +570,41 @@
                     </tr>
                 @endforeach
 
-                {{-- FILA TOTALES POR EMPRESA --}}
+                {{-- FILAS TOTALES POR EMPRESA (una por moneda) --}}
+                @if($totPEN['cnt'] > 0)
                 <tr class="total-empresa">
                     <td colspan="5" style="font-size:10px;letter-spacing:.3px;">
-                        SUBTOTAL — {{ $facturasPorEmpresaParaTotales->count() }} factura(s)
+                        SOLES — {{ $totPEN['cnt'] }} factura(s)
                     </td>
-                    <td class="r" style="color:#fde68a;">{{ $totSubEmpresa > 0 ? 'S/ '.number_format($totSubEmpresa, 2) : '—' }}</td>
-                    <td class="r" style="color:#fde68a;">{{ $totRecEmpresa > 0 ? 'S/ '.number_format($totRecEmpresa, 2) : '—' }}</td>
+                    <td class="r" style="color:#fcd34d;">{{ $totPEN['sub'] > 0 ? 'PEN '.number_format($totPEN['sub'], 2) : '—' }}</td>
+                    <td class="r" style="color:#fcd34d;">{{ $totPEN['rec'] > 0 ? 'PEN '.number_format($totPEN['rec'], 2) : '—' }}</td>
                     <td></td>
-                    <td class="r" style="color:#fed7aa;">S/ {{ number_format($totEmpresa, 2) }}</td>
+                    <td class="r" style="color:#fca5a5;">PEN {{ number_format($totPEN['total'], 2) }}</td>
                     <td></td>
-                    <td class="r" style="color:#a7f3d0;">{{ $totAbono > 0 ? 'S/ '.number_format($totAbono, 2) : '—' }}</td>
+                    <td class="r" style="color:#6ee7b7;">{{ $totPEN['abo'] > 0 ? 'PEN '.number_format($totPEN['abo'], 2) : '—' }}</td>
                     <td></td>
-                    <td class="r" style="color:#fca5a5;font-size:11px;">S/ {{ number_format($totPendEmpresa, 2) }}</td>
+                    <td></td>
+                    <td class="r" style="color:#fca5a5;font-size:11px;">PEN {{ number_format($totPEN['pend'], 2) }}</td>
                     <td></td>
                 </tr>
+                @endif
+                @if($totUSD['cnt'] > 0)
+                <tr class="total-empresa" style="background:#0f2518 !important;">
+                    <td colspan="5" style="font-size:10px;letter-spacing:.3px;">
+                        DÓLARES — {{ $totUSD['cnt'] }} factura(s)
+                    </td>
+                    <td class="r" style="color:#fcd34d;">{{ $totUSD['sub'] > 0 ? 'USD '.number_format($totUSD['sub'], 2) : '—' }}</td>
+                    <td class="r" style="color:#fcd34d;">{{ $totUSD['rec'] > 0 ? 'USD '.number_format($totUSD['rec'], 2) : '—' }}</td>
+                    <td></td>
+                    <td class="r" style="color:#fca5a5;">USD {{ number_format($totUSD['total'], 2) }}</td>
+                    <td></td>
+                    <td class="r" style="color:#6ee7b7;">{{ $totUSD['abo'] > 0 ? 'USD '.number_format($totUSD['abo'], 2) : '—' }}</td>
+                    <td></td>
+                    <td></td>
+                    <td class="r" style="color:#fca5a5;font-size:11px;">USD {{ number_format($totUSD['pend'], 2) }}</td>
+                    <td></td>
+                </tr>
+                @endif
                 </tbody>
             </table>
         @endforeach

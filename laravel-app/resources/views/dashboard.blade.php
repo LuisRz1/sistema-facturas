@@ -426,6 +426,15 @@
         $totalPorCobrar  = $kpis->total_por_cobrar ?? 0;
         $totalRecaudacion= $kpis->total_recaudacion?? 0;
         $pctCobro = $totalFacturado > 0 ? round(($totalCobrado / $totalFacturado) * 100, 1) : 0;
+        // Split PEN / USD
+        $kpiPEN = $kpisPorMoneda['PEN'] ?? null;
+        $kpiUSD = $kpisPorMoneda['USD'] ?? null;
+        $facPEN = (float) ($kpiPEN->total_facturado  ?? 0);
+        $facUSD = (float) ($kpiUSD->total_facturado  ?? 0);
+        $cobPEN = (float) ($kpiPEN->total_cobrado    ?? 0);
+        $cobUSD = (float) ($kpiUSD->total_cobrado    ?? 0);
+        $penPEN = (float) ($kpiPEN->total_por_cobrar ?? 0);
+        $penUSD = (float) ($kpiUSD->total_por_cobrar ?? 0);
     @endphp
     <div class="kpi-grid">
         <div class="kpi-card kpi-blue">
@@ -437,8 +446,9 @@
                     <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 </div>
             </div>
-            <div class="kpi-value">S/ {{ number_format($totalFacturado, 2) }}</div>
+            <div class="kpi-value">PEN {{ number_format($facPEN, 2) }}</div>
             <div class="kpi-sub">
+                @if($facUSD > 0)<span class="kpi-desc" style="font-weight:700;color:#2563eb;">USD {{ number_format($facUSD, 2) }}</span>@endif
                 <span class="kpi-desc">{{ $kpis->total_facturas }} facturas en el período</span>
             </div>
         </div>
@@ -452,8 +462,9 @@
                     <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 </div>
             </div>
-            <div class="kpi-value">S/ {{ number_format($totalCobrado, 2) }}</div>
+            <div class="kpi-value">PEN {{ number_format($cobPEN, 2) }}</div>
             <div class="kpi-sub">
+                @if($cobUSD > 0)<span class="kpi-desc" style="font-weight:700;color:#059669;">USD {{ number_format($cobUSD, 2) }}</span>@endif
                 <span class="kpi-change change-up">↑ {{ $pctCobro }}%</span>
                 <span class="kpi-desc">de lo facturado cobrado</span>
             </div>
@@ -468,8 +479,9 @@
                     <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 </div>
             </div>
-            <div class="kpi-value">S/ {{ number_format($totalPorCobrar, 2) }}</div>
+            <div class="kpi-value">PEN {{ number_format($penPEN, 2) }}</div>
             <div class="kpi-sub">
+                @if($penUSD > 0)<span class="kpi-desc" style="font-weight:700;color:#d97706;">USD {{ number_format($penUSD, 2) }}</span>@endif
                 <span class="kpi-desc">{{ $kpis->count_pendientes }} facturas pendientes · {{ $kpis->count_vencidas }} vencidas</span>
             </div>
         </div>

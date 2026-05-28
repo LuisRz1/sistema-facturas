@@ -213,7 +213,7 @@ class ReporteController extends Controller
         if ($estado) {
             $estadosFiltro = [$estado];
         } else {
-            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE', 'PAGADA'];
+            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE', 'PAGADA'];
         }
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
@@ -280,7 +280,7 @@ class ReporteController extends Controller
         } elseif (!empty($estadosParam)) {
             $estadosFiltro = (array) $estadosParam;
         } else {
-            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE'];
+            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE'];
         }
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
@@ -400,7 +400,7 @@ class ReporteController extends Controller
         $estadosParam  = $request->input('estados', []);
         $estadosFiltro = !empty($estadosParam)
             ? (array) $estadosParam
-            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE']);
+            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE']);
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
@@ -570,7 +570,7 @@ class ReporteController extends Controller
         $estadosParam  = $request->input('estados', []);
         $estadosFiltro = !empty($estadosParam)
             ? (array) $estadosParam
-            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE']);
+            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE']);
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
         if ($tipoReporte === 'general') {
@@ -699,7 +699,7 @@ class ReporteController extends Controller
 
         if ($estadoSimple)          $estadosFiltro = [$estadoSimple];
         elseif (!empty($estadosParam)) $estadosFiltro = (array) $estadosParam;
-        else                           $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE'];
+        else                           $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE'];
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
         $query = DB::table('factura as f')
@@ -818,7 +818,7 @@ class ReporteController extends Controller
         } elseif (!empty($estadosParam)) {
             $estadosFiltro = (array) $estadosParam;
         } else {
-            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE'];
+            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE'];
         }
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
@@ -1104,7 +1104,7 @@ class ReporteController extends Controller
             $dRow3 = $hRow3 + 1;
             $idxG  = 1;
             foreach ($facturasAgrupadas as $empresa => $grpFact) {
-                // Fila separadora de cliente (sin combinar celdas)
+                // Fila separadora de cliente (sin merge)
                 $su->setCellValue("A{$dRow3}", '  ▶  ' . strtoupper($empresa) . '  —  ' . ($grpFact->first()->ruc ?? ''));
                 $su->getStyle("A{$dRow3}:Q{$dRow3}")->applyFromArray([
                     'font'  => ['bold' => true, 'size' => 10, 'color' => ['argb' => 'FF1E3A5F']],

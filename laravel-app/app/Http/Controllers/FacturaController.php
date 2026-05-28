@@ -153,6 +153,66 @@ class FacturaController extends Controller
         ]);
     }
 
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'id_cliente'        => 'required|integer|exists:cliente,id_cliente',
+            'serie'             => 'required|string|max:10',
+            'numero'            => 'required|integer|min:1',
+            'moneda'            => 'required|in:PEN,USD',
+            'tipo_operacion'    => 'nullable|string|max:100',
+            'fecha_emision'     => 'required|date',
+            'fecha_vencimiento' => 'nullable|date',
+            'subtotal_gravado'  => 'required|numeric|min:0',
+            'monto_igv'         => 'required|numeric|min:0',
+            'importe_total'     => 'required|numeric|min:0',
+            'glosa'             => 'nullable|string|max:500',
+            'forma_pago'        => 'nullable|string|max:100',
+            'estado'            => 'nullable|in:PENDIENTE,VENCIDO,PAGADA,DIFERENCIA PENDIENTE,POR VALIDAR DETRACCION',
+            'usuario_creacion'  => 'nullable|string|max:100',
+        ]);
+
+        // Check for duplicate serie+numero per client
+        $existe = DB::table('factura')
+            ->where('serie', strtoupper(trim($validated['serie'])))
+            ->where('numero', (int) $validated['numero'])
+            ->where('id_cliente', $validated['id_cliente'])
+            ->exists();
+        if ($existe) {
+            return response()->json([
+                'success' => false,
+                'message' => "Ya existe la factura {$validated['serie']}-{$validated['numero']} para este cliente.",
+            ], 422);
+        }
+
+        $estado = $validated['estado'] ?? 'PENDIENTE';
+        $now    = now();
+        $id = DB::table('factura')->insertGetId([
+            'id_cliente'          => $validated['id_cliente'],
+            'id_usuario'          => auth()->id(),
+            'serie'               => strtoupper(trim($validated['serie'])),
+            'numero'              => (int) $validated['numero'],
+            'moneda'              => $validated['moneda'],
+            'tipo_operacion'      => $validated['tipo_operacion'] ?? null,
+            'fecha_emision'       => $validated['fecha_emision'],
+            'fecha_vencimiento'   => $validated['fecha_vencimiento'] ?? null,
+            'subtotal_gravado'    => $validated['subtotal_gravado'],
+            'monto_igv'           => $validated['monto_igv'],
+            'importe_total'       => $validated['importe_total'],
+            'monto_abonado'       => 0,
+            'monto_pendiente'     => $validated['importe_total'],
+            'glosa'               => $validated['glosa'] ?? null,
+            'forma_pago'          => $validated['forma_pago'] ?? null,
+            'estado'              => $estado,
+            'activo'              => 1,
+            'usuario_creacion'    => $validated['usuario_creacion'] ?? null,
+            'fecha_creacion'      => $now,
+            'fecha_actualizacion' => $now,
+        ]);
+        $num = strtoupper(trim($validated['serie'])) . '-' . str_pad($validated['numero'], 8, '0', STR_PAD_LEFT);
+        return response()->json(['success' => true, 'id_factura' => $id, 'message' => "Factura {$num} creada correctamente."]);
+    }
+
     public function edit($id): JsonResponse
     {
         $factura = DB::table('factura as f')
@@ -539,7 +599,7 @@ class FacturaController extends Controller
             ->where('f.id_cliente', (int) $validated['id_cliente'])
             ->where('f.activo', 1)
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
-            ->whereIn('f.estado', ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'])
+            ->whereIn('f.estado', ['PENDIENTE', 'VENCIDO', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'])
             ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
                 $q->where('c.tipo_cliente', $tipoClienteVista);
             })
@@ -655,7 +715,7 @@ class FacturaController extends Controller
                     throw new \RuntimeException('Todas las facturas seleccionadas deben pertenecer al mismo cliente.');
                 }
 
-                if (!in_array($factura->estado, ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'], true)) {
+                if (!in_array($factura->estado, ['PENDIENTE', 'VENCIDO', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'], true)) {
                     throw new \RuntimeException("La factura {$factura->serie}-{$factura->numero} ya no está disponible para pago masivo.");
                 }
 
