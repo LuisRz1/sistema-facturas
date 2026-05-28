@@ -20,7 +20,7 @@ class ClienteController extends Controller
     {
         $data = $request->validate([
             'razon_social'    => 'required|string|max:200',
-            'ruc'             => 'required|string|size:11|unique:cliente,ruc',
+            'ruc'             => 'required|string|min:8|max:15|unique:cliente,ruc',
             'celular'         => 'nullable|string|max:15',
             'direccion_fiscal'=> 'nullable|string|max:250',
             'correo'          => 'nullable|email|max:150',
@@ -41,7 +41,7 @@ class ClienteController extends Controller
 
         $data = $request->validate([
             'razon_social'    => 'required|string|max:200',
-            'ruc'             => 'required|string|size:11|unique:cliente,ruc,' . $id . ',id_cliente',
+            'ruc'             => 'required|string|min:8|max:15|unique:cliente,ruc,' . $id . ',id_cliente',
             'celular'         => 'nullable|string|max:15',
             'direccion_fiscal'=> 'nullable|string|max:250',
             'correo'          => 'nullable|email|max:150',
@@ -50,7 +50,13 @@ class ClienteController extends Controller
         $data['fecha_actualizacion'] = now();
         $data['estado_contado']      = $this->calcularEstadoContacto($data); // columna correcta en BD
 
-        $cliente->update($data);
+        try {
+            $cliente->update($data);
+        } catch (\Exception $e) {
+            return redirect()->route('clientes.index')
+                ->withInput()
+                ->withErrors(['general' => 'No se pudo actualizar el cliente. Por favor intenta de nuevo.']);
+        }
 
         return redirect()->route('clientes.index')
             ->with('success', 'Cliente actualizado correctamente.');

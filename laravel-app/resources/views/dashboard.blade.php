@@ -410,8 +410,15 @@
                 <button type="button" class="btn btn-ghost btn-sm" onclick="setRango('anio')">Este año</button>
             </div>
 
+            @php
+                $periodExtras = [];
+                if ($countFacsAnuladas > 0) $periodExtras[] = $countFacsAnuladas . ' anuladas';
+                if ($countFacsCreditos > 0) $periodExtras[] = $countFacsCreditos . ' creditos';
+                $periodExtrasStr = !empty($periodExtras) ? ' (' . implode(' · ', $periodExtras) . ')' : '';
+            @endphp
             <span class="period-info">
-            <strong>{{ $kpis->total_facturas }}</strong> facturas ·
+            <strong>{{ $countTotalFacs }}</strong> facturas{{ $periodExtrasStr }}
+            &middot;
             {{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }} al
             {{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }} ·
             {{ $tipoCliente === 'PERSONA JURIDICA' ? 'PJ' : 'PN' }}
@@ -449,7 +456,9 @@
             <div class="kpi-value">PEN {{ number_format($facPEN, 2) }}</div>
             <div class="kpi-sub">
                 @if($facUSD > 0)<span class="kpi-desc" style="font-weight:700;color:#2563eb;">USD {{ number_format($facUSD, 2) }}</span>@endif
-                <span class="kpi-desc">{{ $kpis->total_facturas }} facturas en el período</span>
+                <span class="kpi-desc">{{ $countTotalFacs }} facturas en el período</span>
+                @if($countFacsAnuladas > 0)<span class="kpi-desc" style="color:#94a3b8;"> · {{ $countFacsAnuladas }} anuladas</span>@endif
+                @if($countFacsCreditos > 0)<span class="kpi-desc" style="color:#6366f1;"> · {{ $countFacsCreditos }} créditos</span>@endif
             </div>
         </div>
 
@@ -533,7 +542,7 @@
                     <div style="width:180px;height:180px;position:relative;">
                         <canvas id="chartDonut"></canvas>
                         <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;">
-                            <div style="font-size:20px;font-weight:800;font-family:'DM Mono',monospace;">{{ $kpis->total_facturas }}</div>
+                            <div style="font-size:20px;font-weight:800;font-family:'DM Mono',monospace;">{{ $countTotalFacs }}</div>
                             <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">facturas</div>
                         </div>
                     </div>
@@ -548,7 +557,7 @@
                         'VENCIDO'              => ['label' => 'Vencidas', 'color' => '#ef4444', 'bg' => '#fee2e2'],
                         'ANULADO'              => ['label' => 'Anuladas', 'color' => '#94a3b8', 'bg' => '#f1f5f9'],
                     ];
-                    $totalCount = max(1, $kpis->total_facturas);
+                    $totalCount = max(1, $countTotalFacs);
                 @endphp
                 <div class="status-row">
                     @foreach($statusMap as $key => $info)

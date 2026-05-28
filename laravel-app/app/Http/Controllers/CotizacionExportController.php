@@ -232,14 +232,14 @@ class CotizacionExportController extends Controller
         // ── Column widths ────────────────────────────────────────────────
         if ($esMaquinaria) {
             $colDefs = [
-                'B'=>8,'C'=>14,'D'=>20,'E'=>10,'F'=>14,'G'=>10,
-                'H'=>6,'I'=>6,'J'=>11,'K'=>10,'L'=>8,'M'=>10,
+                'B'=>8,'C'=>16,'D'=>22,'E'=>12,'F'=>14,'G'=>22,
+                'H'=>6,'I'=>22,'J'=>13,'K'=>12,'L'=>12,'M'=>14,
             ];
             $lastCol = 'M';
         } else {
             $colDefs = [
-                'B'=>8,'C'=>16,'D'=>24,'E'=>10,'F'=>14,'G'=>12,
-                'H'=>7,'I'=>9,'J'=>10,'K'=>10,
+                'B'=>8,'C'=>18,'D'=>26,'E'=>12,'F'=>14,'G'=>22,
+                'H'=>6,'I'=>22,'J'=>14,'K'=>12,
             ];
             $lastCol = 'K';
         }
@@ -318,7 +318,7 @@ class CotizacionExportController extends Controller
 
         $sheet->setCellValue('F7', 'RUC:');
         $sheet->getStyle('F7')->getFont()->setBold(true)->setUnderline(true);
-        $sheet->setCellValue('G7', $cotizacion->ruc);
+        $sheet->setCellValueExplicit('G7', (string)($cotizacion->ruc ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
 
         // ── Row 8: OBRA ──────────────────────────────────────────────────
         $sheet->setCellValue('B8', 'OBRA:');

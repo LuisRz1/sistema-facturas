@@ -133,13 +133,13 @@ class DashboardController extends Controller
             ->get();
 
         // ── Distribución por estado (para mini donut) ─────────────────────
-        $porEstadoQuery = DB::table('factura as f')
+        // Sin $applyTotalesScope para incluir TODAS las facturas (incluidas ANULADAS)
+        $porEstado = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
             ->where('f.activo', 1)
-            ->where('c.tipo_cliente', $tipoCliente);
-
-        $porEstado = $applyTotalesScope($porEstadoQuery, $orphanPeriodo)
+            ->where('c.tipo_cliente', $tipoCliente)
+            ->when(!empty($orphanPeriodo), fn($q) => $q->whereNotIn('f.id_factura', $orphanPeriodo))
             ->select([
                 'f.estado',
                 DB::raw('COUNT(*) as cantidad'),
@@ -148,6 +148,23 @@ class DashboardController extends Controller
             ->groupBy('f.estado')
             ->get()
             ->keyBy('estado');
+
+        // ── Conteo total real (incluye ANULADAS y CRÉDITOS serie BBB) ────────
+        $countTodasRow = DB::table('factura as f')
+            ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
+            ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
+            ->where('f.activo', 1)
+            ->where('c.tipo_cliente', $tipoCliente)
+            ->selectRaw('
+                COUNT(*) as total,
+                COUNT(CASE WHEN f.estado = "ANULADO" THEN 1 END) as anuladas,
+                COUNT(CASE WHEN f.serie LIKE "B%" AND f.estado != "ANULADO" THEN 1 END) as creditos
+            ')
+            ->first();
+
+        $countTotalFacs    = (int) ($countTodasRow->total    ?? 0);
+        $countFacsAnuladas = (int) ($countTodasRow->anuladas ?? 0);
+        $countFacsCreditos = (int) ($countTodasRow->creditos ?? 0);
 
         // ── KPIs split por moneda (PEN / USD) ────────────────────────────────
         $kpisMonedaQuery = DB::table('factura as f')
@@ -169,7 +186,8 @@ class DashboardController extends Controller
 
         return view('dashboard', compact(
             'kpis', 'kpisPorMoneda', 'tendencia', 'topClientes', 'ultimasFacturas', 'porEstado',
-            'fechaDesde', 'fechaHasta', 'tipoCliente'
+            'fechaDesde', 'fechaHasta', 'tipoCliente',
+            'countTotalFacs', 'countFacsAnuladas', 'countFacsCreditos'
         ));
     }
 }

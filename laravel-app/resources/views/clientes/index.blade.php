@@ -397,27 +397,36 @@
                 @csrf
                 <input type="hidden" name="_method" id="formMethod" value="POST">
 
+                {{-- Errores de validación --}}
+                @if($errors->any())
+                    <div id="formErrorBanner" style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;padding:10px 16px;margin:16px 28px 0;">
+                        @foreach($errors->all() as $err)
+                            <div style="color:#dc2626;font-size:12.5px;font-weight:600;">• {{ $err }}</div>
+                        @endforeach
+                    </div>
+                @endif
+
                 <div class="modal-body">
                     <div class="form-grid">
                         <div class="form-group form-full">
                             <label class="form-label">Razón Social *</label>
-                            <input type="text" name="razon_social" id="f_razon" class="form-input" placeholder="Ej. Constructora ABC S.A.C." required>
+                            <input type="text" name="razon_social" id="f_razon" class="form-input" placeholder="Ej. Constructora ABC S.A.C." value="{{ old('razon_social') }}" required>
                         </div>
                         <div class="form-group">
                             <label class="form-label">RUC / DNI *</label>
-                            <input type="text" name="ruc" id="f_ruc" class="form-input" placeholder="20123456789" maxlength="11" required>
+                            <input type="text" name="ruc" id="f_ruc" class="form-input" placeholder="20123456789" maxlength="15" value="{{ old('ruc') }}" required>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Celular / WhatsApp</label>
-                            <input type="text" name="celular" id="f_celular" class="form-input" placeholder="+51 987 654 321">
+                            <input type="text" name="celular" id="f_celular" class="form-input" placeholder="+51 987 654 321" value="{{ old('celular') }}">
                         </div>
                         <div class="form-group form-full">
                             <label class="form-label">Correo Electrónico</label>
-                            <input type="email" name="correo" id="f_correo" class="form-input" placeholder="contacto@empresa.com">
+                            <input type="email" name="correo" id="f_correo" class="form-input" placeholder="contacto@empresa.com" value="{{ old('correo') }}">
                         </div>
                         <div class="form-group form-full">
                             <label class="form-label">Dirección Fiscal</label>
-                            <input type="text" name="direccion_fiscal" id="f_direccion" class="form-input" placeholder="Av. Los Tulipanes 123, Lima">
+                            <input type="text" name="direccion_fiscal" id="f_direccion" class="form-input" placeholder="Av. Los Tulipanes 123, Lima" value="{{ old('direccion_fiscal') }}">
                         </div>
                     </div>
                 </div>
@@ -503,6 +512,23 @@
             document.getElementById('modalDeleteClienteOverlay').addEventListener('click', function(e) {
                 if (e.target === this) cerrarModalEliminarCliente();
             });
+
+            // Reabre el modal si hubo error de validación en el servidor
+            @if($errors->any() || session('_old_input'))
+                document.getElementById('modalOverlay').classList.add('open');
+                @if(old('razon_social'))
+                    document.getElementById('f_razon').value     = @json(old('razon_social'));
+                    document.getElementById('f_ruc').value       = @json(old('ruc'));
+                    document.getElementById('f_celular').value   = @json(old('celular', ''));
+                    document.getElementById('f_correo').value    = @json(old('correo', ''));
+                    document.getElementById('f_direccion').value = @json(old('direccion_fiscal', ''));
+                    // Si el método fue PUT, mantener como edición
+                    if (document.getElementById('formMethod').value === 'POST') {
+                        document.getElementById('modalTitle').textContent = 'Nuevo Cliente';
+                        document.getElementById('btnSubmit').textContent  = 'Guardar Cliente';
+                    }
+                @endif
+            @endif
 
             function filtrarClientes() {
                 const search = document.getElementById('searchInput').value.toLowerCase();
