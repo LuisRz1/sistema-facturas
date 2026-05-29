@@ -1047,15 +1047,16 @@
                         <label class="form-label">Banco de Origen</label>
                         <select id="editPagoBanco" class="form-input" onchange="onEditBancoChange()">
                             <option value="">Seleccionar...</option>
-                            <option value="BCP">BCP</option>
-                            <option value="BBVA">BBVA</option>
-                            <option value="Interbank">Interbank</option>
-                            <option value="Scotiabank">Scotiabank</option>
-                            <option value="BN">Banco de la Nación</option>
-                            <option value="Efectivo">Efectivo</option>
-                            <option value="Yape">Yape</option>
-                            <option value="Plin">Plin</option>
-                            <option value="Otros">Otros</option>
+                            <option value="BBVA SOLES">BBVA Soles</option>
+                            <option value="BBVA DOLARES">BBVA Dólares</option>
+                            <option value="BCP SOLES">BCP Soles</option>
+                            <option value="BCP DOLARES">BCP Dólares</option>
+                            <option value="INTERBANK SOLES">Interbank Soles</option>
+                            <option value="INTERBANK DOLARES">Interbank Dólares</option>
+                            <option value="EFECTIVO">Efectivo</option>
+                            <option value="YAPE">Yape</option>
+                            <option value="PLIN">Plin</option>
+                            <option value="OTROS">Otros</option>
                         </select>
                         <input type="text" id="editPagoBancoOtro" class="form-input" placeholder="Especificar banco" style="display:none;margin-top:6px;">
                     </div>
@@ -2117,15 +2118,15 @@
                 // Banco origen select
                 const bancoSel      = document.getElementById('editPagoBanco');
                 const bancoOtroInp  = document.getElementById('editPagoBancoOtro');
-                const predefinedBancos = ['BCP','BBVA','Interbank','Scotiabank','BN','Efectivo','Yape','Plin'];
-                const bancoVal = p.banco_origen || '';
+                const predefinedBancos = ['BBVA SOLES','BBVA DOLARES','BCP SOLES','BCP DOLARES','INTERBANK SOLES','INTERBANK DOLARES','EFECTIVO','YAPE','PLIN'];
+                const bancoVal = (p.banco_origen || '').toUpperCase();
                 if (predefinedBancos.includes(bancoVal)) {
                     bancoSel.value = bancoVal;
                     bancoOtroInp.style.display = 'none';
-                } else if (bancoVal) {
-                    bancoSel.value = 'Otros';
+                } else if (p.banco_origen) {
+                    bancoSel.value = 'OTROS';
                     bancoOtroInp.style.display = 'block';
-                    bancoOtroInp.value = bancoVal;
+                    bancoOtroInp.value = p.banco_origen;
                 } else {
                     bancoSel.value = '';
                     bancoOtroInp.style.display = 'none';
@@ -2155,11 +2156,17 @@
                 document.getElementById('modalEditarPagoOverlay').classList.add('open');
             }
 
+            function onColaBancoChange(idx, val) {
+                onColaField(idx, 'bancoPreset', val);
+                if (val !== 'OTROS') onColaField(idx, 'bancoOtro', '');
+                renderCola();
+            }
+
             function onEditBancoChange() {
                 const sel  = document.getElementById('editPagoBanco');
                 const otro = document.getElementById('editPagoBancoOtro');
-                otro.style.display = sel.value === 'Otros' ? 'block' : 'none';
-                if (sel.value !== 'Otros') otro.value = '';
+                otro.style.display = sel.value === 'OTROS' ? 'block' : 'none';
+                if (sel.value !== 'OTROS') otro.value = '';
             }
 
             function onEditCuentaChange() {
@@ -2182,7 +2189,7 @@
                     ? document.getElementById('editPagoCuentaOtro').value
                     : selCuenta;
                 const selBanco  = document.getElementById('editPagoBanco').value;
-                const bancoFinal = selBanco === 'Otros'
+                const bancoFinal = selBanco === 'OTROS'
                     ? document.getElementById('editPagoBancoOtro').value
                     : selBanco;
                 try {
@@ -2217,7 +2224,7 @@
             function agregarFilaPago() {
                 const hoy = '{{ now()->format("Y-m-d") }}';
                 const idx = ++colaIdx;
-                colaPagos.push({ idx, monto:'', fecha:hoy, cuenta:'', cuentaPreset:'', cuentaOtro:'', numeroOp:'', bancoOrigen:'', formaPago:'', observacion:'', file:null });
+                colaPagos.push({ idx, monto:'', fecha:hoy, cuenta:'', cuentaPreset:'', cuentaOtro:'', numeroOp:'', bancoPreset:'', bancoOtro:'', formaPago:'', observacion:'', file:null });
                 renderCola();
                 // Enfocar el campo monto de la nueva fila
                 setTimeout(() => {
@@ -2287,9 +2294,20 @@
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px;align-items:end;">
                         <div>
                             <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">Banco origen</label>
-                            <input type="text" id="col_banco_${p.idx}" value="${p.bancoOrigen}" class="form-input" placeholder="Ej: BCP"
-                                oninput="onColaField(${p.idx},'bancoOrigen',this.value)">
-                        </div>
+                            <select id="col_banco_${p.idx}" class="form-input" onchange="onColaBancoChange(${p.idx},this.value)">
+                                <option value=""${!p.bancoPreset?' selected':''}>Seleccionar...</option>
+                                <option value="BBVA SOLES"${p.bancoPreset==='BBVA SOLES'?' selected':''}>BBVA Soles</option>
+                                <option value="BBVA DOLARES"${p.bancoPreset==='BBVA DOLARES'?' selected':''}>BBVA Dólares</option>
+                                <option value="BCP SOLES"${p.bancoPreset==='BCP SOLES'?' selected':''}>BCP Soles</option>
+                                <option value="BCP DOLARES"${p.bancoPreset==='BCP DOLARES'?' selected':''}>BCP Dólares</option>
+                                <option value="INTERBANK SOLES"${p.bancoPreset==='INTERBANK SOLES'?' selected':''}>Interbank Soles</option>
+                                <option value="INTERBANK DOLARES"${p.bancoPreset==='INTERBANK DOLARES'?' selected':''}>Interbank Dólares</option>
+                                <option value="EFECTIVO"${p.bancoPreset==='EFECTIVO'?' selected':''}>Efectivo</option>
+                                <option value="YAPE"${p.bancoPreset==='YAPE'?' selected':''}>Yape</option>
+                                <option value="PLIN"${p.bancoPreset==='PLIN'?' selected':''}>Plin</option>
+                                <option value="OTROS"${p.bancoPreset==='OTROS'?' selected':''}>Otros</option>
+                            </select>
+                            ${p.bancoPreset==='OTROS'?`<input type="text" id="col_bancoOtro_${p.idx}" value="${p.bancoOtro}" class="form-input" style="margin-top:6px;" placeholder="Especifica el banco" oninput="onColaField(${p.idx},'bancoOtro',this.value)">`:''}                        </div>
                         <div>
                             <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">Forma de pago</label>
                             <select id="col_forma_${p.idx}" class="form-input" onchange="onColaField(${p.idx},'formaPago',this.value)">
@@ -2454,7 +2472,7 @@
                         formData.append('fecha_pago',       p.fecha || new Date().toISOString().split('T')[0]);
                         formData.append('cuenta_pago',      p.cuentaPreset === 'OTROS' ? (p.cuentaOtro||'') : (p.cuentaPreset||''));
                         formData.append('numero_operacion', p.numeroOp     || '');
-                        formData.append('banco_origen',     p.bancoOrigen  || '');
+                        formData.append('banco_origen',     p.bancoPreset === 'OTROS' ? (p.bancoOtro||'') : (p.bancoPreset||''));
                         formData.append('forma_pago_abono', p.formaPago    || '');
                         formData.append('observacion',      p.observacion  || '');
                         if (p.file) formData.append('comprobante', p.file);
