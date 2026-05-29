@@ -63,7 +63,26 @@ class FacturaController extends Controller
             ->orderByDesc('f.numero')
             ->get();
 
-        $facturasCollection = collect($query->map(function ($f) {
+        // Cargar notificaciones en bloque (evita N+1 de 2 queries por factura)
+        $allFacturaIds = $query->pluck('id_factura')->toArray();
+
+        $notifWaMap = DB::table('notificacion_factura')
+            ->whereIn('id_factura', $allFacturaIds)
+            ->where('canal', 'WHATSAPP')
+            ->orderByDesc('id_notificacion')
+            ->get()
+            ->groupBy('id_factura')
+            ->map->first();
+
+        $notifCorreoMap = DB::table('notificacion_factura')
+            ->whereIn('id_factura', $allFacturaIds)
+            ->where('canal', 'CORREO')
+            ->orderByDesc('id_notificacion')
+            ->get()
+            ->groupBy('id_factura')
+            ->map->first();
+
+        $facturasCollection = collect($query->map(function ($f) use ($notifWaMap, $notifCorreoMap) {
             return (object) array_merge((array) $f, [
                 'comprobante_url' => $this->resolveComprobanteUrl($f->ruta_comprobante_pago ?? null),
                 'cliente' => (object) [
@@ -73,44 +92,54 @@ class FacturaController extends Controller
                     'correo'       => $f->cliente_correo,
                     'celular'      => $f->cliente_celular,
                 ],
-                'ultima_notif_wa' => DB::table('notificacion_factura')
-                    ->where('id_factura', $f->id_factura)
-                    ->where('canal', 'WHATSAPP')
-                    ->orderByDesc('id_notificacion')
-                    ->first(),
-                'ultima_notif_correo' => DB::table('notificacion_factura')
-                    ->where('id_factura', $f->id_factura)
-                    ->where('canal', 'CORREO')
-                    ->orderByDesc('id_notificacion')
-                    ->first(),
+                'ultima_notif_wa'     => $notifWaMap->get($f->id_factura),
+                'ultima_notif_correo' => $notifCorreoMap->get($f->id_factura),
             ]);
         }));
 
-        $facturaIds    = $facturasCollection->pluck('id_factura')->toArray();
+        $facturaIds    = $allFacturaIds;
         $creditosPorId = DB::table('credito')
             ->whereIn('id_factura', $facturaIds)
             ->where('activo', 1)
             ->get()
             ->keyBy('id_factura');
 
+        // Verificar facturas huérfanas en bloque (evita N+1 por crédito)
         $orphanFacturaIds = [];
-        foreach ($creditosPorId as $idFactura => $credito) {
-            $existe = DB::table('factura')
-                ->where('serie',  $credito->serie_doc_modificado)
-                ->where('numero', $credito->numero_doc_modificado)
+        if ($creditosPorId->isNotEmpty()) {
+            $existingPairs = DB::table('factura')
                 ->where('activo', 1)
-                ->exists();
-            if (!$existe) {
-                $orphanFacturaIds[] = (int) $idFactura;
+                ->get(['serie', 'numero'])
+                ->mapWithKeys(fn($r) => [$r->serie . '|' . $r->numero => true])
+                ->all();
+
+            foreach ($creditosPorId as $idFactura => $credito) {
+                $key = $credito->serie_doc_modificado . '|' . $credito->numero_doc_modificado;
+                if (!isset($existingPairs[$key])) {
+                    $orphanFacturaIds[] = (int) $idFactura;
+                }
             }
         }
 
-        $facturasParaTotales = $facturasCollection->reject(function ($f) use ($orphanFacturaIds) {
+        // Pre-cargar créditos de facturas ANULADAS en bloque (evita N+1 en reject)
+        $anuladoIds = $facturasCollection->where('estado', 'ANULADO')->pluck('id_factura')->all();
+        $anuladosConCredito = [];
+        if (!empty($anuladoIds)) {
+            $anuladosConCredito = array_flip(
+                DB::table('credito')
+                    ->whereIn('id_factura', $anuladoIds)
+                    ->where('activo', 1)
+                    ->pluck('id_factura')
+                    ->all()
+            );
+        }
+
+        $facturasParaTotales = $facturasCollection->reject(function ($f) use ($orphanFacturaIds, $anuladosConCredito) {
             if (in_array((int) $f->id_factura, $orphanFacturaIds)) {
                 return true;
             }
             if ($f->estado === 'ANULADO') {
-                return !DB::table('credito')->where('id_factura', $f->id_factura)->where('activo', 1)->exists();
+                return !isset($anuladosConCredito[$f->id_factura]);
             }
             return false;
         });
