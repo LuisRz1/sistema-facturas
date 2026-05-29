@@ -1224,10 +1224,10 @@
 
                     <div id="validarDetraccionWrap" style="display:none;margin-bottom:12px;padding:10px 14px;background:#fef3c7;border-radius:8px;border:1px solid #fde68a;">
                         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;font-weight:600;color:#92400e;">
-                            <input type="checkbox" id="chkValidarDetraccion" value="1" style="width:16px;height:16px;accent-color:#d97706;">
-                            Confirmo que esta factura SÍ aplica detracción
+                            <input type="checkbox" id="chkValidarDetraccion" value="1" style="width:16px;height:16px;accent-color:#d97706;" onchange="onChkDetraccionChange()">
+                            <span id="chkValidarLabel">Confirmo que esta detracción ya fue depositada</span>
                         </label>
-                        <p style="font-size:11px;color:#92400e;margin-top:6px;margin-left:26px;">Al marcar esta opción, se validará la detracción y cambiará el estado de la factura.</p>
+                        <p id="chkValidarDesc" style="font-size:11px;color:#92400e;margin-top:6px;margin-left:26px;">Al marcar esta opción se confirmará el depósito y cambiará el estado de la factura.</p>
                     </div>
 
                     <div id="camposRecaudacion" style="display:none;grid-template-columns:1fr 1fr;gap:14px;">
@@ -1948,7 +1948,7 @@
                 document.getElementById('pagoPorcentaje').value        = pctRec   > 0 ? pctRec   : '';
                 seleccionarTipoRec(tipoRec || '');
                 document.getElementById('validarDetraccionWrap').style.display =
-                    (tipoRec === 'DETRACCION' && (estado === 'POR VALIDAR DETRACCION' || estado === 'PENDIENTE')) ? 'block' : 'none';
+                    (tipoRec === 'DETRACCION' || tipoRec === 'AUTODETRACCION') ? 'block' : 'none';
 
                 renderCola();
                 actualizarResumenPago(montoAbonado, totalRec, 0);
@@ -2017,7 +2017,7 @@
                     document.getElementById('prPctLabel').style.color = '#dc2626';
                 } else {
                     alertEl.style.display = 'none';
-                    document.getElementById('btnGuardarPago').disabled = colaPagos.length === 0;
+                    document.getElementById('btnGuardarPago').disabled = colaPagos.length === 0 && !document.getElementById('chkValidarDetraccion').checked;
                     document.getElementById('prPendienteLabel').textContent = 'Saldo Pendiente';
                     document.getElementById('prPendiente').style.color = pend === 0 ? '#059669' : '#dc2626';
                     document.getElementById('prPctLabel').style.color = pct + pctCola >= 100 ? '#059669' : '#1d4ed8';
@@ -2420,62 +2420,96 @@
             }
 
             async function guardarPago() {
-                if (!colaPagos.length) { alert('Agrega al menos un abono antes de guardar.'); return; }
+                const totalRec   = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                const tipoRec    = document.getElementById('pagoTipoRecaudacion').value;
+                const validarDet = document.getElementById('chkValidarDetraccion').checked;
+                const fechaRec   = document.getElementById('pagoFechaRecaudacion').value || '';
+                const pctRec     = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
 
-                // Validar montos
-                const invalidas = colaPagos.filter(p => !(parseFloat(p.monto) > 0));
-                if (invalidas.length) { alert('Todos los abonos deben tener un monto mayor a 0.'); return; }
+                if (!colaPagos.length && !validarDet) {
+                    alert('Agrega al menos un abono o confirma la recaudación antes de guardar.'); return;
+                }
+                if (validarDet && !fechaRec) {
+                    alert('Debes indicar la Fecha de Depósito cuando confirmas la recaudación.');
+                    document.getElementById('pagoFechaRecaudacion').focus();
+                    return;
+                }
+                if (colaPagos.length) {
+                    const invalidas = colaPagos.filter(p => !(parseFloat(p.monto) > 0));
+                    if (invalidas.length) { alert('Todos los abonos deben tener un monto mayor a 0.'); return; }
+                }
 
                 const btn = document.getElementById('btnGuardarPago');
                 btn.disabled = true;
 
-                const totalRec    = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
-                const tipoRec     = document.getElementById('pagoTipoRecaudacion').value;
-                const validarDet  = document.getElementById('chkValidarDetraccion').checked;
-                const fechaRec    = document.getElementById('pagoFechaRecaudacion').value || '';
-                const pctRec      = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
-
                 let ultimoData = null;
-                for (let i = 0; i < colaPagos.length; i++) {
-                    const p = colaPagos[i];
-                    document.getElementById('btnGuardarPagoTxt').textContent = `Guardando ${i+1}/${colaPagos.length}…`;
+                if (colaPagos.length > 0) {
+                    for (let i = 0; i < colaPagos.length; i++) {
+                        const p = colaPagos[i];
+                        document.getElementById('btnGuardarPagoTxt').textContent = `Guardando ${i+1}/${colaPagos.length}…`;
 
-                    const formData = new FormData();
-                    formData.append('_token',           CSRF);
-                    formData.append('monto_pagado',     parseFloat(p.monto).toFixed(2));
-                    formData.append('fecha_pago',       p.fecha || new Date().toISOString().split('T')[0]);
-                    formData.append('cuenta_pago',      p.cuentaPreset === 'OTROS' ? (p.cuentaOtro||'') : (p.cuentaPreset||''));
-                    formData.append('numero_operacion', p.numeroOp     || '');
-                    formData.append('banco_origen',     p.bancoOrigen  || '');
-                    formData.append('forma_pago_abono', p.formaPago    || '');
-                    formData.append('observacion',      p.observacion  || '');
-                    if (p.file) formData.append('comprobante', p.file);
-                    // Recaudación solo en el último abono si hay datos
-                    if (i === colaPagos.length - 1) {
-                        formData.append('total_recaudacion',      totalRec.toFixed(2));
-                        formData.append('porcentaje_recaudacion', pctRec.toString());
-                        formData.append('tipo_recaudacion',       tipoRec || '');
-                        formData.append('fecha_recaudacion',      (validarDet && !fechaRec) ? new Date().toISOString().split('T')[0] : fechaRec);
-                        formData.append('validar_detraccion',     validarDet ? '1' : '0');
+                        const formData = new FormData();
+                        formData.append('_token',           CSRF);
+                        formData.append('monto_pagado',     parseFloat(p.monto).toFixed(2));
+                        formData.append('fecha_pago',       p.fecha || new Date().toISOString().split('T')[0]);
+                        formData.append('cuenta_pago',      p.cuentaPreset === 'OTROS' ? (p.cuentaOtro||'') : (p.cuentaPreset||''));
+                        formData.append('numero_operacion', p.numeroOp     || '');
+                        formData.append('banco_origen',     p.bancoOrigen  || '');
+                        formData.append('forma_pago_abono', p.formaPago    || '');
+                        formData.append('observacion',      p.observacion  || '');
+                        if (p.file) formData.append('comprobante', p.file);
+                        // Recaudación solo en el último abono
+                        if (i === colaPagos.length - 1) {
+                            formData.append('total_recaudacion',      totalRec.toFixed(2));
+                            formData.append('porcentaje_recaudacion', pctRec.toString());
+                            formData.append('tipo_recaudacion',       tipoRec || '');
+                            formData.append('fecha_recaudacion',      fechaRec);
+                            formData.append('validar_detraccion',     validarDet ? '1' : '0');
+                        }
+
+                        try {
+                            const res  = await fetch(`/facturas/${facturaActualId}/pago`, {
+                                method : 'POST',
+                                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                                body   : formData,
+                            });
+                            ultimoData = await res.json();
+                            if (!ultimoData.success) throw new Error(ultimoData.message || 'Error al guardar pago');
+                        } catch (e) {
+                            alert(`Error en abono ${i+1}: ${e.message}`);
+                            btn.disabled = false;
+                            document.getElementById('btnGuardarPagoTxt').textContent = 'Guardar pagos';
+                            return;
+                        }
                     }
-
+                } else {
+                    // Solo confirmación de recaudación (sin abonos en cola)
+                    document.getElementById('btnGuardarPagoTxt').textContent = 'Guardando recaudación…';
+                    const formData = new FormData();
+                    formData.append('_token',                 CSRF);
+                    formData.append('monto_pagado',           '0');
+                    formData.append('total_recaudacion',      totalRec.toFixed(2));
+                    formData.append('porcentaje_recaudacion', pctRec.toString());
+                    formData.append('tipo_recaudacion',       tipoRec || '');
+                    formData.append('fecha_recaudacion',      fechaRec);
+                    formData.append('validar_detraccion',     '1');
                     try {
-                        const res  = await fetch(`/facturas/${facturaActualId}/pago`, {
+                        const res = await fetch(`/facturas/${facturaActualId}/pago`, {
                             method : 'POST',
                             headers: { 'X-Requested-With': 'XMLHttpRequest' },
                             body   : formData,
                         });
                         ultimoData = await res.json();
-                        if (!ultimoData.success) throw new Error(ultimoData.message || 'Error al guardar pago');
+                        if (!ultimoData.success) throw new Error(ultimoData.message || 'Error al guardar');
                     } catch (e) {
-                        alert(`Error en abono ${i+1}: ${e.message}`);
+                        alert(`Error: ${e.message}`);
                         btn.disabled = false;
                         document.getElementById('btnGuardarPagoTxt').textContent = 'Guardar pagos';
                         return;
                     }
                 }
 
-                showToastFactura(`✓ ${colaPagos.length} abono(s) guardados correctamente.`);
+                showToastFactura(`✓ ${colaPagos.length > 0 ? colaPagos.length + ' abono(s) guardados' : 'Recaudación confirmada'} correctamente.`);
                 cerrarModalPago();
                 location.reload();
             }
@@ -2507,10 +2541,15 @@
                 if (tipo === 'DETRACCION') {
                     document.getElementById('btnTipoDet').classList.add('active-det');
                     camposRec.style.display = 'grid';
+                    validarWrap.style.display = 'block';
+                    const lbl = document.getElementById('chkValidarLabel');
+                    if (lbl) lbl.textContent = 'Confirmo que esta detracción ya fue depositada';
                 } else if (tipo === 'AUTODETRACCION') {
                     document.getElementById('btnTipoAuto').classList.add('active-auto');
                     camposRec.style.display = 'grid';
-                    validarWrap.style.display = 'none';
+                    validarWrap.style.display = 'block';
+                    const lbl = document.getElementById('chkValidarLabel');
+                    if (lbl) lbl.textContent = 'Confirmo que esta autodetracción ya fue depositada';
                 } else if (tipo === 'RETENCION') {
                     document.getElementById('btnTipoRet').classList.add('active-ret');
                     camposRec.style.display = 'grid';
@@ -2538,6 +2577,14 @@
                 const pct = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
                 if (pct > 0 && facturaImporte > 0) {
                     document.getElementById('pagoTotalRecaudacion').value = (facturaImporte * pct / 100).toFixed(2);
+                }
+            }
+
+            function onChkDetraccionChange() {
+                const over = document.getElementById('alertaOverflow').style.display !== 'none';
+                if (!over) {
+                    const chk = document.getElementById('chkValidarDetraccion').checked;
+                    document.getElementById('btnGuardarPago').disabled = colaPagos.length === 0 && !chk;
                 }
             }
 
