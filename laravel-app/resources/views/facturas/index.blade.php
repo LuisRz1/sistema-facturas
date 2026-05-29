@@ -1949,7 +1949,7 @@
                 document.getElementById('pagoPorcentaje').value        = pctRec   > 0 ? pctRec   : '';
                 seleccionarTipoRec(tipoRec || '');
                 document.getElementById('validarDetraccionWrap').style.display =
-                    (tipoRec === 'DETRACCION' || tipoRec === 'AUTODETRACCION') ? 'block' : 'none';
+                    (tipoRec === 'DETRACCION' || tipoRec === 'AUTODETRACCION' || tipoRec === 'RETENCION') ? 'block' : 'none';
 
                 renderCola();
                 actualizarResumenPago(montoAbonado, totalRec, 0);
@@ -2571,7 +2571,9 @@
                 } else if (tipo === 'RETENCION') {
                     document.getElementById('btnTipoRet').classList.add('active-ret');
                     camposRec.style.display = 'grid';
-                    validarWrap.style.display = 'none';
+                    validarWrap.style.display = 'block';
+                    const lbl = document.getElementById('chkValidarLabel');
+                    if (lbl) lbl.textContent = 'Confirmo que esta retención ya fue depositada';
                 } else {
                     const btn = document.getElementById('btnTipoNinguna');
                     btn.style.borderColor = '#1d4ed8'; btn.style.background = '#dbeafe'; btn.style.color = '#1d4ed8';
