@@ -717,7 +717,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">RUC</label>
-                        <input class="form-input" type="text" name="ruc" id="cotCliRuc" value="{{ $cotizacion->ruc }}" maxlength="11" required>
+                        <input class="form-input" type="text" name="ruc" id="cotCliRuc" value="{{ $cotizacion->ruc }}" maxlength="15" required>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Celular</label>

@@ -1045,7 +1045,19 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Banco de Origen</label>
-                        <input type="text" id="editPagoBanco" class="form-input" placeholder="Ej: BCP, BBVA, Interbank...">
+                        <select id="editPagoBanco" class="form-input" onchange="onEditBancoChange()">
+                            <option value="">Seleccionar...</option>
+                            <option value="BCP">BCP</option>
+                            <option value="BBVA">BBVA</option>
+                            <option value="Interbank">Interbank</option>
+                            <option value="Scotiabank">Scotiabank</option>
+                            <option value="BN">Banco de la Nación</option>
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Yape">Yape</option>
+                            <option value="Plin">Plin</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                        <input type="text" id="editPagoBancoOtro" class="form-input" placeholder="Especificar banco" style="display:none;margin-top:6px;">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Cuenta Destino</label>
@@ -1303,7 +1315,7 @@
                 @csrf @method('PUT')
                 <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                     <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Razón Social</label><input type="text" name="razon_social" id="editRazonSocial" class="form-input" required></div>
-                    <div class="form-group"><label class="form-label">RUC</label><input type="text" name="ruc" id="editRuc" class="form-input" maxlength="11" required></div>
+                    <div class="form-group"><label class="form-label">RUC / DNI</label><input type="text" name="ruc" id="editRuc" class="form-input" maxlength="15" required></div>
                     <div class="form-group"><label class="form-label">Celular</label><input type="text" name="celular" id="editCelular" class="form-input" maxlength="15"></div>
                     <div class="form-group"><label class="form-label">Correo</label><input type="email" name="correo" id="editCorreo" class="form-input"></div>
                     <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Dirección Fiscal</label><input type="text" name="direccion_fiscal" id="editDireccionFiscal" class="form-input"></div>
@@ -1958,7 +1970,9 @@
                 document.getElementById('prImporte').textContent  = `${sym} ${facturaImporte.toFixed(2)}`;
                 document.getElementById('prPagado').textContent   = `${sym} ${pagado.toFixed(2)}`;
                 document.getElementById('prPendiente').textContent = `${sym} ${pend.toFixed(2)}`;
-                document.getElementById('prPctLabel').textContent  = Math.round(pct + pctCola) + '%';
+                const rawPct     = Math.round(pct + pctCola);
+                const displayPct = (pend > 0.005) ? Math.min(rawPct, 99) : rawPct;
+                document.getElementById('prPctLabel').textContent  = displayPct + '%';
 
                 // Barras
                 document.getElementById('prBarPagado').style.width = pct + '%';
@@ -2100,7 +2114,22 @@
                 document.getElementById('editPagoId').value          = idPago;
                 document.getElementById('editPagoMonto').value       = Number(p.monto_pagado).toFixed(2);
                 document.getElementById('editPagoFecha').value       = p.fecha_pago || '';
-                document.getElementById('editPagoBanco').value       = p.banco_origen || '';
+                // Banco origen select
+                const bancoSel      = document.getElementById('editPagoBanco');
+                const bancoOtroInp  = document.getElementById('editPagoBancoOtro');
+                const predefinedBancos = ['BCP','BBVA','Interbank','Scotiabank','BN','Efectivo','Yape','Plin'];
+                const bancoVal = p.banco_origen || '';
+                if (predefinedBancos.includes(bancoVal)) {
+                    bancoSel.value = bancoVal;
+                    bancoOtroInp.style.display = 'none';
+                } else if (bancoVal) {
+                    bancoSel.value = 'Otros';
+                    bancoOtroInp.style.display = 'block';
+                    bancoOtroInp.value = bancoVal;
+                } else {
+                    bancoSel.value = '';
+                    bancoOtroInp.style.display = 'none';
+                }
                 document.getElementById('editPagoNumOp').value       = p.numero_operacion || '';
                 document.getElementById('editPagoObs').value         = p.observacion || '';
                 // Handle cuenta_pago as select
@@ -2126,6 +2155,13 @@
                 document.getElementById('modalEditarPagoOverlay').classList.add('open');
             }
 
+            function onEditBancoChange() {
+                const sel  = document.getElementById('editPagoBanco');
+                const otro = document.getElementById('editPagoBancoOtro');
+                otro.style.display = sel.value === 'Otros' ? 'block' : 'none';
+                if (sel.value !== 'Otros') otro.value = '';
+            }
+
             function onEditCuentaChange() {
                 const sel = document.getElementById('editPagoCuenta');
                 const otro = document.getElementById('editPagoCuentaOtro');
@@ -2145,13 +2181,17 @@
                 const cuentaFinal = selCuenta === 'OTROS'
                     ? document.getElementById('editPagoCuentaOtro').value
                     : selCuenta;
+                const selBanco  = document.getElementById('editPagoBanco').value;
+                const bancoFinal = selBanco === 'Otros'
+                    ? document.getElementById('editPagoBancoOtro').value
+                    : selBanco;
                 try {
                     const body = new URLSearchParams({
                         _token:           CSRF,
                         _method:          'PUT',
                         monto_pagado:     document.getElementById('editPagoMonto').value,
                         fecha_pago:       document.getElementById('editPagoFecha').value,
-                        banco_origen:     document.getElementById('editPagoBanco').value,
+                        banco_origen:     bancoFinal,
                         cuenta_pago:      cuentaFinal,
                         numero_operacion: document.getElementById('editPagoNumOp').value,
                         forma_pago:       document.getElementById('editPagoForma').value,
@@ -2669,7 +2709,7 @@
                     .catch(err=>alert('Error: '+err.message));
             }
 
-            ['modalPagoMasivoOverlay','modalPagoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay','modalVerPagosOverlay','modalNuevaFacturaOverlay'].forEach(id => {
+            ['modalPagoMasivoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay','modalVerPagosOverlay','modalNuevaFacturaOverlay'].forEach(id => {
                 document.getElementById(id)?.addEventListener('click', e => { if(e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
             });
 

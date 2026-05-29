@@ -910,7 +910,7 @@ class FacturaController extends Controller
         $cliente = $factura->cliente;
         $validated = $request->validate([
             'razon_social'    => 'required|string|max:200',
-            'ruc'             => 'required|string|size:11|unique:cliente,ruc,'.$cliente->id_cliente.',id_cliente',
+            'ruc'             => 'required|string|min:8|max:15|unique:cliente,ruc,'.$cliente->id_cliente.',id_cliente',
             'celular'         => 'nullable|string|max:15',
             'direccion_fiscal'=> 'nullable|string|max:250',
             'correo'          => 'nullable|email|max:150',
