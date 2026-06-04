@@ -2686,9 +2686,8 @@
                     document.getElementById('pagoPorcentaje').value = '';
                 }
                 // Mostrar bloque de conversión:
-                // - Siempre para facturas USD con recaudación
-                // - También para cualquier moneda si hay monto_cambio guardado en BD
-                const useConversion = (isUSD || facturaMontoCambio > 0) && tipo !== '' && tipo !== 'NINGUNA';
+                // - Siempre para cualquier recaudación (USD necesita TC para convertir; PEN lo muestra informativo)
+                const useConversion = tipo !== '' && tipo !== 'NINGUNA';
                 const convWrap = document.getElementById('recaudUsdConvWrap');
                 const montoGrp = document.getElementById('recaudMontoGrp');
                 if (useConversion) {
