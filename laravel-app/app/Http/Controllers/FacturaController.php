@@ -654,6 +654,8 @@ class FacturaController extends Controller
             'monto_total'  => 'required|numeric|min:0.01',
             'fecha_abono'  => 'required|date',
             'cuenta_pago'  => 'nullable|string|max:255',
+            'banco_origen' => 'nullable|string|max:255',
+            'observacion'  => 'nullable|string|max:1000',
             'detalles'     => 'required',
             'comprobante'  => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:20480',
         ]);
@@ -762,6 +764,8 @@ class FacturaController extends Controller
                     'monto_pagado'          => round((float) $d['monto'], 2),
                     'fecha_pago'            => $validated['fecha_abono'],
                     'cuenta_pago'           => $validated['cuenta_pago'] ?? null,
+                    'banco_origen'          => $validated['banco_origen'] ?? null,
+                    'observacion'           => $validated['observacion'] ?? null,
                     'ruta_comprobante_pago' => $rutaComprobanteMasivo,
                     'activo'                => 1,
                     'fecha_creacion'        => now(),

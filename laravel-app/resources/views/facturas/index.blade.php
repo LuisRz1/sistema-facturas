@@ -901,11 +901,47 @@
 
                     <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                         <div class="form-group">
-                            <label class="form-label">Cuenta de Pago</label>
-                            <input type="text" id="pmCuentaPago" class="form-input" placeholder="Ej: BCP / BBVA / Interbank / Yape">
+                            <label class="form-label">Cuenta Destino</label>
+                            <select id="pmCuentaPago" class="form-input" onchange="onPmCuentaChange()">
+                                <option value="">Seleccionar...</option>
+                                <option value="BBVA SOLES">BBVA Soles</option>
+                                <option value="BBVA DOLARES">BBVA Dólares</option>
+                                <option value="BCP SOLES">BCP Soles</option>
+                                <option value="BCP DOLARES">BCP Dólares</option>
+                                <option value="INTERBANK SOLES">Interbank Soles</option>
+                                <option value="INTERBANK DOLARES">Interbank Dólares</option>
+                                <option value="EFECTIVO">Efectivo</option>
+                                <option value="YAPE">Yape</option>
+                                <option value="PLIN">Plin</option>
+                                <option value="OTROS">Otros</option>
+                            </select>
+                            <input type="text" id="pmCuentaPagoOtro" class="form-input" placeholder="Especifica la cuenta" style="display:none;margin-top:6px;">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Comprobante (opcional)</label>
+                            <label class="form-label">Banco Origen</label>
+                            <select id="pmBancoOrigen" class="form-input" onchange="onPmBancoChange()">
+                                <option value="">Seleccionar...</option>
+                                <option value="BBVA SOLES">BBVA Soles</option>
+                                <option value="BBVA DOLARES">BBVA Dólares</option>
+                                <option value="BCP SOLES">BCP Soles</option>
+                                <option value="BCP DOLARES">BCP Dólares</option>
+                                <option value="INTERBANK SOLES">Interbank Soles</option>
+                                <option value="INTERBANK DOLARES">Interbank Dólares</option>
+                                <option value="EFECTIVO">Efectivo</option>
+                                <option value="YAPE">Yape</option>
+                                <option value="PLIN">Plin</option>
+                                <option value="OTROS">Otros</option>
+                            </select>
+                            <input type="text" id="pmBancoOrigenOtro" class="form-input" placeholder="Especifica el banco" style="display:none;margin-top:6px;">
+                        </div>
+                    </div>
+                    <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="form-group">
+                            <label class="form-label">Observación</label>
+                            <input type="text" id="pmObservacion" class="form-input" value="Pago realizado desde un pago masivo">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Comprobante (se aplica a todas las facturas)</label>
                             <input type="file" id="pmComprobante" class="form-input" accept="image/*,application/pdf">
                         </div>
                     </div>
@@ -1232,17 +1268,28 @@
                     </div>
 
                     <div id="camposRecaudacion" style="display:none;grid-template-columns:1fr 1fr;gap:14px;">
-                        <div class="form-group">
+                        <div class="form-group" id="recaudPctGrp">
                             <label class="form-label">Porcentaje (%)</label>
                             <input type="number" id="pagoPorcentaje" step="0.01" min="0" max="100" class="form-input" placeholder="10.00" oninput="calcularRecaudacion()">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" id="recaudMontoGrp">
                             <label class="form-label" id="recaudMontoLabel">Monto Recaudación</label>
                             <input type="number" id="pagoTotalRecaudacion" step="0.01" min="0" class="form-input" placeholder="0.00">
                             <span id="recaudUsdNote" style="display:none;font-size:11px;color:#1d4ed8;margin-top:3px;">
                                 Factura en USD — ingresa el monto directamente en dólares. Este valor reducirá el saldo pendiente.
                             </span>
-                            </span>
+                        </div>
+                        {{-- Conversión USD: monto soles + tipo de cambio (facturas USD con detracción/retención) --}}
+                        <div id="recaudUsdConvWrap" style="display:none;grid-column:1/-1;grid-template-columns:1fr 1fr;gap:14px;">
+                            <div class="form-group">
+                                <label class="form-label">Monto Recaudación (S/ Soles)</label>
+                                <input type="number" id="pagoMontoSoles" step="0.01" min="0" class="form-input" placeholder="0.00" oninput="calcularEquivalenteUSD()">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Tipo de Cambio (S/ por 1 USD)</label>
+                                <input type="number" id="pagoTipoCambio" step="0.001" min="0.001" class="form-input" placeholder="3.750" oninput="calcularEquivalenteUSD()">
+                                <span id="recaudEquivDisplay" style="font-size:11px;color:#059669;margin-top:4px;display:block;font-weight:600;"></span>
+                            </div>
                         </div>
                         <div class="form-group" style="grid-column:1/-1;">
                             <label class="form-label">Fecha de Depósito / Recaudación</label>
@@ -1707,6 +1754,12 @@
                 document.getElementById('pmMontoTotal').value = '';
                 document.getElementById('pmFechaAbono').value = '{{ now()->format("Y-m-d") }}';
                 document.getElementById('pmCuentaPago').value = '';
+                document.getElementById('pmCuentaPagoOtro').value = '';
+                document.getElementById('pmCuentaPagoOtro').style.display = 'none';
+                document.getElementById('pmBancoOrigen').value = '';
+                document.getElementById('pmBancoOrigenOtro').value = '';
+                document.getElementById('pmBancoOrigenOtro').style.display = 'none';
+                document.getElementById('pmObservacion').value = 'Pago realizado desde un pago masivo';
                 document.getElementById('pmComprobante').value = '';
                 pagoMasivoFacturas = [];
                 renderFacturasPagoMasivo();
@@ -1862,7 +1915,11 @@
                 const idCliente = document.getElementById('pmCliente').value;
                 const montoTotal = Number(document.getElementById('pmMontoTotal').value || 0);
                 const fechaAbono = document.getElementById('pmFechaAbono').value;
-                const cuentaPago = (document.getElementById('pmCuentaPago').value || '').trim();
+                const cuentaSel  = document.getElementById('pmCuentaPago').value;
+                const cuentaPago = cuentaSel === 'OTROS' ? (document.getElementById('pmCuentaPagoOtro').value || '').trim() : cuentaSel;
+                const bancoSel   = document.getElementById('pmBancoOrigen').value;
+                const bancoFinal = bancoSel === 'OTROS' ? (document.getElementById('pmBancoOrigenOtro').value || '').trim() : bancoSel;
+                const observacionMasivo = (document.getElementById('pmObservacion').value || '').trim();
                 const detalles = pagoMasivoFacturas
                     .filter(f => f.selected)
                     .map(f => ({ id_factura: f.id_factura, monto: Number(Number(f.monto || 0).toFixed(2)) }));
@@ -1886,6 +1943,8 @@
                 formData.append('monto_total', montoTotal.toFixed(2));
                 formData.append('fecha_abono', fechaAbono);
                 formData.append('cuenta_pago', cuentaPago);
+                formData.append('banco_origen', bancoFinal);
+                formData.append('observacion',  observacionMasivo);
                 formData.append('detalles', JSON.stringify(detalles));
                 const comp = document.getElementById('pmComprobante').files[0];
                 if (comp) formData.append('comprobante', comp);
@@ -1950,6 +2009,13 @@
                 seleccionarTipoRec(tipoRec || '');
                 document.getElementById('validarDetraccionWrap').style.display =
                     (tipoRec === 'DETRACCION' || tipoRec === 'AUTODETRACCION' || tipoRec === 'RETENCION') ? 'block' : 'none';
+                // Reset USD conversion fields
+                const _msInp = document.getElementById('pagoMontoSoles');
+                const _tcInp = document.getElementById('pagoTipoCambio');
+                const _edDisp = document.getElementById('recaudEquivDisplay');
+                if (_msInp) _msInp.value = '';
+                if (_tcInp) _tcInp.value = '';
+                if (_edDisp) _edDisp.textContent = '';
 
                 renderCola();
                 actualizarResumenPago(montoAbonado, totalRec, 0);
@@ -2444,6 +2510,18 @@
                 const fechaRec   = document.getElementById('pagoFechaRecaudacion').value || '';
                 const pctRec     = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
 
+                // Validar conversión USD si está activa
+                const convWrapG = document.getElementById('recaudUsdConvWrap');
+                if (convWrapG && convWrapG.style.display !== 'none') {
+                    const soles = parseFloat(document.getElementById('pagoMontoSoles').value) || 0;
+                    const tc    = parseFloat(document.getElementById('pagoTipoCambio').value) || 0;
+                    if (soles > 0 && tc === 0) {
+                        alert('Debes indicar el Tipo de Cambio para calcular el equivalente en USD.');
+                        document.getElementById('pagoTipoCambio').focus();
+                        return;
+                    }
+                }
+
                 if (!colaPagos.length && !validarDet) {
                     alert('Agrega al menos un abono o confirma la recaudación antes de guardar.'); return;
                 }
@@ -2554,7 +2632,7 @@
                 const camposRec   = document.getElementById('camposRecaudacion');
                 const validarWrap = document.getElementById('validarDetraccionWrap');
                 const usdNote     = document.getElementById('recaudUsdNote');
-                const pctGroup    = document.getElementById('pagoPorcentaje')?.closest('.form-group');
+                const pctGroup    = document.getElementById('recaudPctGrp');
                 const isUSD       = (facturaMoneda || '').includes('USD');
                 if (tipo === 'DETRACCION') {
                     document.getElementById('btnTipoDet').classList.add('active-det');
@@ -2582,12 +2660,24 @@
                     document.getElementById('pagoTotalRecaudacion').value = '';
                     document.getElementById('pagoPorcentaje').value = '';
                 }
-                // USD: hide percentage field, show manual note
-                if (pctGroup) pctGroup.style.display = isUSD ? 'none' : '';
-                if (usdNote) usdNote.style.display = (isUSD && tipo !== '') ? 'block' : 'none';
-                if (isUSD) {
-                    const label = document.getElementById('recaudMontoLabel');
-                    if (label) label.textContent = 'Monto (USD)';
+                // USD con recaudación: mostrar campos de conversión soles/tipo de cambio
+                const useConversion = isUSD && tipo !== '' && tipo !== 'NINGUNA';
+                const convWrap = document.getElementById('recaudUsdConvWrap');
+                const montoGrp = document.getElementById('recaudMontoGrp');
+                if (useConversion) {
+                    if (convWrap) convWrap.style.display = 'grid';
+                    if (montoGrp) montoGrp.style.display = 'none';
+                    if (pctGroup) pctGroup.style.display = 'none';
+                    if (usdNote) usdNote.style.display = 'none';
+                } else {
+                    if (convWrap) convWrap.style.display = 'none';
+                    if (montoGrp) montoGrp.style.display = '';
+                    if (pctGroup) pctGroup.style.display = isUSD ? 'none' : '';
+                    if (usdNote) usdNote.style.display = (isUSD && tipo !== '') ? 'block' : 'none';
+                    if (isUSD) {
+                        const label = document.getElementById('recaudMontoLabel');
+                        if (label) label.textContent = 'Monto (USD)';
+                    }
                 }
             }
 
@@ -2598,6 +2688,31 @@
                 if (pct > 0 && facturaImporte > 0) {
                     document.getElementById('pagoTotalRecaudacion').value = (facturaImporte * pct / 100).toFixed(2);
                 }
+            }
+
+            function calcularEquivalenteUSD() {
+                const soles = parseFloat(document.getElementById('pagoMontoSoles').value) || 0;
+                const tc    = parseFloat(document.getElementById('pagoTipoCambio').value) || 0;
+                const equiv = (tc > 0 && soles > 0) ? soles / tc : 0;
+                document.getElementById('pagoTotalRecaudacion').value = equiv > 0 ? equiv.toFixed(2) : '';
+                const disp = document.getElementById('recaudEquivDisplay');
+                if (disp) disp.textContent = equiv > 0
+                    ? `≈ USD ${equiv.toFixed(2)} se descontarán del total de la factura`
+                    : '';
+            }
+
+            function onPmCuentaChange() {
+                const sel  = document.getElementById('pmCuentaPago');
+                const otro = document.getElementById('pmCuentaPagoOtro');
+                otro.style.display = sel.value === 'OTROS' ? 'block' : 'none';
+                if (sel.value !== 'OTROS') otro.value = '';
+            }
+
+            function onPmBancoChange() {
+                const sel  = document.getElementById('pmBancoOrigen');
+                const otro = document.getElementById('pmBancoOrigenOtro');
+                otro.style.display = sel.value === 'OTROS' ? 'block' : 'none';
+                if (sel.value !== 'OTROS') otro.value = '';
             }
 
             function onChkDetraccionChange() {
