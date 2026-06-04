@@ -143,12 +143,14 @@ class ValidarDetraccionesController extends Controller
                 $importeTotal     = (float)($factura->importe_total ?? 0);
                 $recExistente     = DB::table('recaudacion')->where('id_factura',$factura->id_factura)->first();
                 $totalRecaudacion = $monto > 0 ? $monto : (float)($recExistente->total_recaudacion ?? 0);
-                $montoPendiente   = max(0, $importeTotal - $montoAbonado - $totalRecaudacion);
+                // Al validar la detraccion, fecha_recaudacion SE ESTABLECE → recIsPaid = true
+                // → pendiente = importe_total - abonado (la parte SUNAT queda confirmada)
+                $montoPendiente   = max(0, $importeTotal - $montoAbonado);
 
                 if ($montoPendiente <= 0) {
                     $nuevoEstado = 'PAGADA';
                 } elseif ($montoAbonado > 0) {
-                    $nuevoEstado = 'PAGO PARCIAL';
+                    $nuevoEstado = 'DIFERENCIA PENDIENTE';
                 } else {
                     $nuevoEstado = 'DIFERENCIA PENDIENTE';
                 }

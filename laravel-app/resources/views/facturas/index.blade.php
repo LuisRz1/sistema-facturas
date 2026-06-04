@@ -713,6 +713,7 @@
                                         data-tipo-rec="{{ e((string) $tipoRecaudacion) }}"
                                         data-estado="{{ e((string) $estado) }}"
                                         data-fecha-recaudacion="{{ e((string) ($factura->fecha_recaudacion ?? '')) }}"
+                                        data-monto-cambio="{{ (float) ($factura->monto_cambio ?? 0) }}"
                                         onclick="abrirModalPagoDesdeBtn(this)"
                                         class="action-btn"
                                         title="{{ $estado === 'PAGADA' ? 'Ver/Actualizar pago' : 'Registrar pago' }}"
@@ -1998,11 +1999,12 @@
                     parseFloat(btn.dataset.porcentaje || '0'),
                     btn.dataset.tipoRec || '',
                     btn.dataset.estado || '',
-                    btn.dataset.fechaRecaudacion || ''
+                    btn.dataset.fechaRecaudacion || '',
+                    parseFloat(btn.dataset.montoCambio || '0')
                 );
             }
 
-            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, fechaRec) {
+            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, fechaRec, montoCambio) {
                 facturaActualId = id;
                 facturaImporte  = parseFloat(importe);
                 facturaMoneda   = moneda;
@@ -2024,7 +2026,8 @@
                 const _tcInp = document.getElementById('pagoTipoCambio');
                 const _edDisp = document.getElementById('recaudEquivDisplay');
                 if (_msInp) _msInp.value = (moneda && moneda.includes('USD') && totalRec > 0) ? parseFloat(totalRec).toFixed(2) : '';
-                if (_tcInp) _tcInp.value = '';
+                // Pre-fill tipo de cambio from monto_cambio stored on the invoice
+                if (_tcInp) _tcInp.value = (moneda && moneda.includes('USD') && montoCambio > 0) ? parseFloat(montoCambio).toFixed(4) : '';
                 if (_edDisp) _edDisp.textContent = (moneda && moneda.includes('USD') && pctRec > 0)
                     ? `≈ USD ${parseFloat(pctRec).toFixed(2)} se descontarán del total de la factura` : '';
 
