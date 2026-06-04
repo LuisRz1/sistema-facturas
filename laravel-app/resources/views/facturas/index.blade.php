@@ -2032,8 +2032,12 @@
                 const _tcInp = document.getElementById('pagoTipoCambio');
                 const _edDisp = document.getElementById('recaudEquivDisplay');
                 if (_msInp) _msInp.value = (totalRec > 0) ? parseFloat(totalRec).toFixed(2) : '';
-                // Pre-fill tipo de cambio desde monto_cambio guardado en BD (cualquier moneda)
-                if (_tcInp) _tcInp.value = (montoCambio > 0) ? parseFloat(montoCambio).toFixed(4) : '';
+                // Pre-fill tipo de cambio desde monto_cambio guardado en BD (solo para USD)
+                if (_tcInp && moneda.includes('USD')) {
+                    _tcInp.value = (facturaMontoCambio > 0) ? parseFloat(facturaMontoCambio).toFixed(4) : '';
+                } else if (_tcInp) {
+                    _tcInp.value = '';
+                }
                 if (_edDisp) _edDisp.textContent = (moneda && moneda.includes('USD') && pctRec > 0)
                     ? `≈ USD ${parseFloat(pctRec).toFixed(2)} se descontarán del total de la factura` : '';
 
