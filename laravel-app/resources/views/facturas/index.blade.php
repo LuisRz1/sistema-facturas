@@ -714,6 +714,7 @@
                                         data-estado="{{ e((string) $estado) }}"
                                         data-fecha-recaudacion="{{ e((string) ($factura->fecha_recaudacion ?? '')) }}"
                                         data-monto-cambio="{{ (float) ($factura->monto_cambio ?? 0) }}"
+                                        data-monto-pendiente="{{ (float) ($factura->monto_pendiente ?? 0) }}"
                                         onclick="abrirModalPagoDesdeBtn(this)"
                                         class="action-btn"
                                         title="{{ $estado === 'PAGADA' ? 'Ver/Actualizar pago' : 'Registrar pago' }}"
@@ -1560,10 +1561,11 @@
                 }
             });
 
-            let facturaActualId  = null;
-            let facturaImporte   = 0;
-            let facturaMoneda    = 'S/';
-            let recaudYaPagada   = false; // true when existing recaudacion already has fecha (paid)
+            let facturaActualId      = null;
+            let facturaImporte       = 0;
+            let facturaMoneda        = 'S/';
+            let facturaMontoPendiente = 0; // monto_pendiente directo de BD (al abrir el modal)
+            let recaudYaPagada       = false; // true when existing recaudacion already has fecha (paid)
             const CSRF = document.querySelector('meta[name="csrf-token"]').content;
             const PM_FETCH_URL = '{{ route("facturas.pago-masivo.facturas-cliente") }}';
             const PM_SAVE_URL = '{{ route("facturas.pago-masivo.procesar") }}';
@@ -2000,15 +2002,17 @@
                     btn.dataset.tipoRec || '',
                     btn.dataset.estado || '',
                     btn.dataset.fechaRecaudacion || '',
-                    parseFloat(btn.dataset.montoCambio || '0')
+                    parseFloat(btn.dataset.montoCambio || '0'),
+                    parseFloat(btn.dataset.montoPendiente || '0')
                 );
             }
 
-            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, fechaRec, montoCambio) {
-                facturaActualId = id;
-                facturaImporte  = parseFloat(importe);
-                facturaMoneda   = moneda;
-                recaudYaPagada  = !!(fechaRec && fechaRec.trim() !== '');
+            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, fechaRec, montoCambio, montoPendienteDB) {
+                facturaActualId       = id;
+                facturaImporte        = parseFloat(importe);
+                facturaMoneda         = moneda;
+                facturaMontoPendiente = parseFloat(montoPendienteDB || 0);
+                recaudYaPagada        = !!(fechaRec && fechaRec.trim() !== '');
                 colaPagos       = [];
                 colaIdx         = 0;
                 document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} — ${moneda} ${parseFloat(importe).toFixed(2)}`;
@@ -2043,10 +2047,12 @@
                 const pagado = Number(montoAbonado);
                 const rec    = Number(totalRec);
                 const cola   = Number(totalCola);
-                const pend   = Math.max(0, facturaImporte - pagado - rec);
-                const over   = Math.max(0, pagado + rec + cola - facturaImporte);
-                const pct    = facturaImporte > 0 ? Math.min(100, (pagado + rec) / facturaImporte * 100) : 0;
-                const pctCola= facturaImporte > 0 ? Math.min(100 - pct, cola / facturaImporte * 100) : 0;
+                // Saldo pendiente = monto_pendiente de BD menos lo que hay en cola por confirmar
+                const pend   = Math.max(0, facturaMontoPendiente - cola);
+                const over   = Math.max(0, cola - facturaMontoPendiente);
+                const base   = facturaImporte > 0 ? facturaImporte : 1;
+                const pct    = Math.min(100, (facturaImporte - facturaMontoPendiente) / base * 100);
+                const pctCola= facturaImporte > 0 ? Math.min(100 - pct, cola / base * 100) : 0;
 
                 document.getElementById('prImporte').textContent  = `${sym} ${facturaImporte.toFixed(2)}`;
                 document.getElementById('prPagado').textContent   = `${sym} ${pagado.toFixed(2)}`;
@@ -2129,6 +2135,7 @@
                     renderListaPagos();
                     // Actualizar resumen con el total real del servidor
                     const montoAbonado = data.monto_abonado ?? pagoListaCargada.reduce((s,p)=>s+Number(p.monto_pagado),0);
+                    if (data.monto_pendiente !== undefined) facturaMontoPendiente = parseFloat(data.monto_pendiente);
                     const totalRec     = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
                     actualizarResumenPago(montoAbonado, totalRec, calcularTotalCola());
                 } catch (e) {
@@ -2183,6 +2190,7 @@
                     const data = await res.json();
                     if (!data.success) throw new Error(data.message || 'No se pudo eliminar');
                     const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                    if (data.monto_pendiente !== undefined) facturaMontoPendiente = parseFloat(data.monto_pendiente);
                     actualizarResumenPago(data.monto_abonado, totalRec, calcularTotalCola());
                     await cargarListaPagos(facturaActualId);
                     showToastFactura('✓ Abono eliminado y totales recalculados.');
@@ -2293,6 +2301,7 @@
                     if (!data.success) throw new Error(data.message || 'No se pudo editar');
                     cerrarModalEditarPago();
                     const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                    if (data.monto_pendiente !== undefined) facturaMontoPendiente = parseFloat(data.monto_pendiente);
                     actualizarResumenPago(data.monto_abonado, totalRec, calcularTotalCola());
                     await cargarListaPagos(facturaActualId);
                     showToastFactura('✓ Abono actualizado correctamente.');

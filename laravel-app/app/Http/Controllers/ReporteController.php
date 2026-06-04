@@ -223,9 +223,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? max(0, $f->importe_total - ($f->monto_recaudacion ?? 0))
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
         $facturas = $this->enriquecerRelacionCredito($facturas);
@@ -294,9 +292,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? $f->importe_total
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
         $facturas = $this->enriquecerRelacionCredito($facturas);
@@ -444,9 +440,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? $f->importe_total
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
         $facturas = $this->enriquecerRelacionCredito($facturas);
@@ -596,9 +590,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? $f->importe_total
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
         $facturas = $this->enriquecerRelacionCredito($facturas);

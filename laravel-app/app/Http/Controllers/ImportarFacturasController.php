@@ -281,7 +281,7 @@ class ImportarFacturasController extends Controller
                         'fecha_emision'     => $fechaEmision,
                         'monto_abonado'     => 0.00,
                         'monto_pendiente'   => $montoPendiente,
-                        'monto_cambio'      => $montoCambioFila > 0 ? $montoCambioFila : null,
+                        'monto_cambio'      => $montoCambioFila > 0 ? round($montoCambioFila, 4) : null,
                         'activo'            => 1,
                         'fecha_actualizacion' => now(),
                     ]);
@@ -310,7 +310,7 @@ class ImportarFacturasController extends Controller
                         'usuario_creacion'  => $idUsuario,
                         'monto_abonado'     => 0.00,
                         'monto_pendiente'   => $montoPendiente,
-                        'monto_cambio'      => $montoCambioFila > 0 ? $montoCambioFila : null,
+                        'monto_cambio'      => $montoCambioFila > 0 ? round($montoCambioFila, 4) : null,
                     ]);
                     $accionSinc = 'INSERTADA';
                 }

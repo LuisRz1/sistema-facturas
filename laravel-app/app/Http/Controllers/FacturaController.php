@@ -479,9 +479,10 @@ class FacturaController extends Controller
         });
 
         return response()->json([
-            'success'       => true,
-            'pagos'         => $pagosArray,
-            'monto_abonado' => (float) DB::table('pago_factura')->where('id_factura', $id)->where('activo', 1)->sum('monto_pagado'),
+            'success'         => true,
+            'pagos'           => $pagosArray,
+            'monto_abonado'   => (float) DB::table('pago_factura')->where('id_factura', $id)->where('activo', 1)->sum('monto_pagado'),
+            'monto_pendiente' => (float) DB::table('factura')->where('id_factura', $id)->value('monto_pendiente'),
         ]);
     }
 
