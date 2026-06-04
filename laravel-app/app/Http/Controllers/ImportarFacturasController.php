@@ -366,7 +366,8 @@ class ImportarFacturasController extends Controller
             DB::table('sincronizacion_nubefact')
                 ->where('id_sincronizacion', $idSincronizacion)
                 ->update(['estado' => 'ERROR', 'fecha_fin' => now()]);
-            return back()->with('error', $this->mensajeErrorImportacionControlado($encabezados))->withInput();
+            $msgDetalle = app()->isLocal() ? ' [' . $e->getMessage() . ']' : '';
+            return back()->with('error', $this->mensajeErrorImportacionControlado($encabezados) . $msgDetalle)->withInput();
         }
 
         if ($insertadas > 0 && !empty($fechasImportadas)) {
