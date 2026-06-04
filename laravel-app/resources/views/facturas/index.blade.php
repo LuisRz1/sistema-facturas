@@ -1286,6 +1286,9 @@
                         </div>
                         {{-- Conversión USD: monto soles + tipo de cambio (facturas USD con detracción/retención) --}}
                         <div id="recaudUsdConvWrap" style="display:none;grid-column:1/-1;grid-template-columns:1fr 1fr;gap:14px;">
+                            <div id="recaudConvLockNote" style="display:none;grid-column:1/-1;padding:8px 12px;background:#dbeafe;border:1px solid #93c5fd;border-radius:6px;font-size:12px;color:#1d4ed8;font-weight:600;">
+                                ✓ La recaudación ya fue registrada y depositada. Los valores no pueden modificarse.
+                            </div>
                             <div class="form-group">
                                 <label class="form-label">Monto Recaudación (S/ Soles)</label>
                                 <input type="number" id="pagoMontoSoles" step="0.01" min="0" class="form-input" placeholder="0.00" oninput="calcularEquivalenteUSD()">
@@ -1556,9 +1559,10 @@
                 }
             });
 
-            let facturaActualId = null;
-            let facturaImporte  = 0;
-            let facturaMoneda   = 'S/';
+            let facturaActualId  = null;
+            let facturaImporte   = 0;
+            let facturaMoneda    = 'S/';
+            let recaudYaPagada   = false; // true when existing recaudacion already has fecha (paid)
             const CSRF = document.querySelector('meta[name="csrf-token"]').content;
             const PM_FETCH_URL = '{{ route("facturas.pago-masivo.facturas-cliente") }}';
             const PM_SAVE_URL = '{{ route("facturas.pago-masivo.procesar") }}';
@@ -2002,6 +2006,7 @@
                 facturaActualId = id;
                 facturaImporte  = parseFloat(importe);
                 facturaMoneda   = moneda;
+                recaudYaPagada  = !!(fechaRec && fechaRec.trim() !== '');
                 colaPagos       = [];
                 colaIdx         = 0;
                 document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} — ${moneda} ${parseFloat(importe).toFixed(2)}`;
@@ -2516,9 +2521,9 @@
                 const fechaRec   = document.getElementById('pagoFechaRecaudacion').value || '';
                 const pctRec     = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
 
-                // Validar conversión USD si está activa
+                // Validar conversión USD si está activa y NO fue ya pagada
                 const convWrapG = document.getElementById('recaudUsdConvWrap');
-                if (convWrapG && convWrapG.style.display !== 'none') {
+                if (convWrapG && convWrapG.style.display !== 'none' && !recaudYaPagada) {
                     const soles = parseFloat(document.getElementById('pagoMontoSoles').value) || 0;
                     const tc    = parseFloat(document.getElementById('pagoTipoCambio').value) || 0;
                     if (soles > 0 && tc === 0) {
@@ -2667,6 +2672,7 @@
                     document.getElementById('pagoPorcentaje').value = '';
                 }
                 // USD con recaudación: mostrar campos de conversión soles/tipo de cambio
+                // PERO si la recaudación ya fue pagada (fecha establecida), solo mostrar en modo lectura
                 const useConversion = isUSD && tipo !== '' && tipo !== 'NINGUNA';
                 const convWrap = document.getElementById('recaudUsdConvWrap');
                 const montoGrp = document.getElementById('recaudMontoGrp');
@@ -2675,6 +2681,20 @@
                     if (montoGrp) montoGrp.style.display = 'none';
                     if (pctGroup) pctGroup.style.display = 'none';
                     if (usdNote) usdNote.style.display = 'none';
+                    // Si la recaudación ya fue pagada, bloquear edición de los campos de conversión
+                    const solesInp = document.getElementById('pagoMontoSoles');
+                    const tcInp   = document.getElementById('pagoTipoCambio');
+                    if (recaudYaPagada) {
+                        if (solesInp) { solesInp.readOnly = true; solesInp.style.background = '#f1f5f9'; solesInp.style.color = '#64748b'; }
+                        if (tcInp)    { tcInp.readOnly = true;    tcInp.style.background    = '#f1f5f9'; tcInp.style.color    = '#64748b'; }
+                        const lockNote = document.getElementById('recaudConvLockNote');
+                        if (lockNote) lockNote.style.display = 'block';
+                    } else {
+                        if (solesInp) { solesInp.readOnly = false; solesInp.style.background = ''; solesInp.style.color = ''; }
+                        if (tcInp)    { tcInp.readOnly = false;    tcInp.style.background    = ''; tcInp.style.color    = ''; }
+                        const lockNote = document.getElementById('recaudConvLockNote');
+                        if (lockNote) lockNote.style.display = 'none';
+                    }
                 } else {
                     if (convWrap) convWrap.style.display = 'none';
                     if (montoGrp) montoGrp.style.display = '';

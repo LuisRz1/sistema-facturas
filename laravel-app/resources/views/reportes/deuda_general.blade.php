@@ -169,27 +169,34 @@
     $totalSubtotalPen = (float) ($totalSubtotalPen ?? collect($clientes)->sum(fn($c) => (float) ($c['subtotal_pen'] ?? 0)));
     $countEmpresas = count($clientes);
     $countVencidas = collect($clientes)->filter(fn($c) => in_array('VENCIDO', $c['estados']))->count();
-    $totalFacturado     = (float) ($dashboard['total_facturado'] ?? 0);
-    $saldoPendiente     = (float) ($dashboard['saldo_pendiente'] ?? 0);
-    $cobrado            = (float) ($dashboard['cobrado'] ?? 0);
     $montoRecaudacion   = (float) ($dashboard['monto_recaudacion'] ?? 0);
     $recaudDepositada   = (float) ($dashboard['recaud_depositada'] ?? 0);
     $recaudSinConfirmar = (float) ($dashboard['recaud_sin_confirmar'] ?? 0);
+    // PEN / USD split desde $clientes (ya acumulados en el controller)
+    $totalFacPEN  = array_sum(array_column($clientes, 'deuda_pen'));
+    $totalFacUSD  = array_sum(array_column($clientes, 'deuda_usd'));
+    $saldoPendPEN = $totalPendientePen;
+    $saldoPendUSD = $totalPendienteUsd ?? 0;
+    $cobradoPEN   = array_sum(array_column($clientes, 'abonado_pen'));
+    $cobradoUSD   = array_sum(array_column($clientes, 'abonado_usd'));
 @endphp
 
 <table class="stats-grid three">
     <tr>
         <td class="sc-blue">
             <div class="stat-label">Total Facturado</div>
-            <div class="stat-value">S/ {{ number_format($totalFacturado, 2) }}</div>
+            @if($totalFacPEN > 0)<div class="stat-value">PEN {{ number_format($totalFacPEN, 2) }}</div>@endif
+            @if($totalFacUSD > 0)<div class="stat-value" style="font-size:13px;margin-top:2px;">USD {{ number_format($totalFacUSD, 2) }}</div>@endif
         </td>
         <td class="sc-amber">
             <div class="stat-label">Saldo Pendiente</div>
-            <div class="stat-value">S/ {{ number_format($saldoPendiente, 2) }}</div>
+            @if($saldoPendPEN > 0)<div class="stat-value" style="color:#d97706;">PEN {{ number_format($saldoPendPEN, 2) }}</div>@endif
+            @if($saldoPendUSD > 0)<div class="stat-value" style="color:#d97706;font-size:13px;margin-top:2px;">USD {{ number_format($saldoPendUSD, 2) }}</div>@endif
         </td>
         <td class="sc-green">
             <div class="stat-label">Cobrado</div>
-            <div class="stat-value">S/ {{ number_format($cobrado, 2) }}</div>
+            @if($cobradoPEN > 0)<div class="stat-value" style="color:#059669;">PEN {{ number_format($cobradoPEN, 2) }}</div>@endif
+            @if($cobradoUSD > 0)<div class="stat-value" style="color:#059669;font-size:13px;margin-top:2px;">USD {{ number_format($cobradoUSD, 2) }}</div>@endif
         </td>
     </tr>
 </table>
