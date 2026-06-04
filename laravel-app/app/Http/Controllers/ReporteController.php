@@ -1017,7 +1017,14 @@ class ReporteController extends Controller
                 foreach ($grpFact as $f) {
                     $esH = in_array((int) $f->id_factura, $orphanFacturaIds);
                     $rec = (float) ($f->monto_recaudacion ?? 0);
-                    $pen = $esH ? 0 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0); $idxF++);
+                    $pen = $esH ? 0 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
+                    $pagosStr = (function () use ($f, $pagosMap) {
+                        $pp = $pagosMap->get($f->id_factura, collect());
+                        if ($pp->isEmpty()) return '—';
+                        return $pp->map(fn($p) => ($p->fecha_pago ? \Carbon\Carbon::parse($p->fecha_pago)->format('d/m/Y') : '—') . '  ' . number_format((float)$p->monto_pagado, 2))->implode("\n");
+                    })();
+
+                    $ds->setCellValue("A{$dRow2}", $idxF++);
                     $ds->setCellValue("B{$dRow2}", $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—');
                     $ds->setCellValue("C{$dRow2}", $f->fecha_vencimiento ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—');
                     $ds->setCellValue("D{$dRow2}", $f->serie . '-' . str_pad((string) $f->numero, 8, '0', STR_PAD_LEFT));
@@ -1113,7 +1120,14 @@ class ReporteController extends Controller
                 foreach ($grpFact as $f) {
                     $esH = in_array((int) $f->id_factura, $orphanFacturaIds);
                     $rec = (float) ($f->monto_recaudacion ?? 0);
-                    $pen = $esH ? 0 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0); $idxG++);
+                    $pen = $esH ? 0 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
+                    $pagosStr = (function () use ($f, $pagosMap) {
+                        $pp = $pagosMap->get($f->id_factura, collect());
+                        if ($pp->isEmpty()) return '—';
+                        return $pp->map(fn($p) => ($p->fecha_pago ? \Carbon\Carbon::parse($p->fecha_pago)->format('d/m/Y') : '—') . '  ' . number_format((float)$p->monto_pagado, 2))->implode("\n");
+                    })();
+
+                    $su->setCellValue("A{$dRow3}", $idxG++);
                     $su->setCellValue("B{$dRow3}", $empresa);
                     $su->setCellValue("C{$dRow3}", (string) ($f->ruc ?? ''));
                     $su->setCellValue("D{$dRow3}", $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—');
