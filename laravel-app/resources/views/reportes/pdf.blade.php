@@ -410,11 +410,7 @@
                 $facEmpPEN = $facturasPorEmpresaParaTotales->where('moneda', 'PEN');
                 $facEmpUSD = $facturasPorEmpresaParaTotales->where('moneda', 'USD');
                 $calcPend = function($col) {
-                    return $col->sum(function ($fTot) {
-                        return $fTot->estado === 'DIFERENCIA PENDIENTE'
-                            ? max(0, ($fTot->importe_total ?? 0) - ($fTot->monto_recaudacion ?? 0))
-                            : ($fTot->pendiente_display ?? $fTot->monto_pendiente ?? 0);
-                    });
+                    return $col->sum(fn($fTot) => $fTot->pendiente_display ?? $fTot->monto_pendiente ?? 0);
                 };
                 $totPEN = [
                     'cnt'   => $facEmpPEN->count(),
@@ -481,11 +477,9 @@
                         $recaudacion      = $f->monto_recaudacion ?? 0;
                         $tipoRec          = $f->tipo_recaudacion  ?? '—';
                         $badgeKey         = str_replace([' '], ['_'], $f->estado);
-                        // Pendiente corregido: para DIFERENCIA PENDIENTE restar la recaudación
+                        // Pendiente: directo de monto_pendiente en BD
                         $pendienteDisplay = $esNcHuerfana ? 0 :
-                            ($f->estado === 'DIFERENCIA PENDIENTE'
-                                ? max(0, ($f->importe_total ?? 0) - ($recaudacion))
-                                : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                            ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
                         $pagosFila = $pagosMap->get($f->id_factura, collect());
                     @endphp
                     <tr class="{{ $esNcHuerfana ? 'nc-huerfana' : '' }}">

@@ -843,9 +843,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
 
@@ -955,9 +953,7 @@ class ReporteController extends Controller
             $idxE = 1;
             foreach ($facturasAgrupadas as $empresa => $grp) {
                 $tot = $facturasAgrupParaTotales[$empresa] ?? collect();
-                $pendCalc = $tot->sum(fn($f) => $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                $pendCalc = $tot->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0);
                 $estados  = $grp->pluck('estado')->unique()->values()->implode(', ');
                 $altFill  = $idxE % 2 === 0
                     ? ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $C_ALT]]
@@ -989,10 +985,7 @@ class ReporteController extends Controller
             $sRes->setCellValue("F{$dRow}", (float) $facturasParaTotales->sum('monto_recaudacion'));
             $sRes->setCellValue("G{$dRow}", (float) $facturasParaTotales->sum('importe_total'));
             $sRes->setCellValue("H{$dRow}", (float) $facturasParaTotales->sum('monto_abonado'));
-            $sRes->setCellValue("I{$dRow}", (float) $facturasParaTotales->sum(fn($f) =>
-                $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+            $sRes->setCellValue("I{$dRow}", (float) $facturasParaTotales->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0));
             $sRes->setCellValue("J{$dRow}", $facturasParaTotales->count());
             $sRes->getStyle("A{$dRow}:K{$dRow}")->applyFromArray($estiloTotal);
             foreach (['D','E','F','G','H','I'] as $nc) {
@@ -1024,16 +1017,7 @@ class ReporteController extends Controller
                 foreach ($grpFact as $f) {
                     $esH = in_array((int) $f->id_factura, $orphanFacturaIds);
                     $rec = (float) ($f->monto_recaudacion ?? 0);
-                    $pen = $esH ? 0 : ($f->estado === 'DIFERENCIA PENDIENTE'
-                        ? max(0, ($f->importe_total ?? 0) - $rec)
-                        : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
-                    $pagosStr = (function () use ($f, $pagosMap) {
-                        $pp = $pagosMap->get($f->id_factura, collect());
-                        if ($pp->isEmpty()) return '—';
-                        return $pp->map(fn($p) => ($p->fecha_pago ? \Carbon\Carbon::parse($p->fecha_pago)->format('d/m/Y') : '—') . '  ' . number_format((float)$p->monto_pagado, 2))->implode("\n");
-                    })();
-
-                    $ds->setCellValue("A{$dRow2}", $idxF++);
+                    $pen = $esH ? 0 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0); $idxF++);
                     $ds->setCellValue("B{$dRow2}", $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—');
                     $ds->setCellValue("C{$dRow2}", $f->fecha_vencimiento ? \Carbon\Carbon::parse($f->fecha_vencimiento)->format('d/m/Y') : '—');
                     $ds->setCellValue("D{$dRow2}", $f->serie . '-' . str_pad((string) $f->numero, 8, '0', STR_PAD_LEFT));
@@ -1074,10 +1058,7 @@ class ReporteController extends Controller
                 $ds->setCellValue("H{$dRow2}", (float) $totGrp->sum('monto_recaudacion'));
                 $ds->setCellValue("J{$dRow2}", (float) $totGrp->sum('importe_total'));
                 $ds->setCellValue("L{$dRow2}", (float) $totGrp->sum('monto_abonado'));
-                $ds->setCellValue("N{$dRow2}", (float) $totGrp->sum(fn($f) =>
-                    $f->estado === 'DIFERENCIA PENDIENTE'
-                        ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                        : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+                $ds->setCellValue("N{$dRow2}", (float) $totGrp->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0));
                 $ds->getStyle("A{$dRow2}:O{$dRow2}")->applyFromArray($estiloTotal);
                 foreach (['F','G','H','J','L','N'] as $nc) {
                     $ds->getStyle("{$nc}{$dRow2}")->getNumberFormat()->setFormatCode('#,##0.00');
@@ -1132,16 +1113,7 @@ class ReporteController extends Controller
                 foreach ($grpFact as $f) {
                     $esH = in_array((int) $f->id_factura, $orphanFacturaIds);
                     $rec = (float) ($f->monto_recaudacion ?? 0);
-                    $pen = $esH ? 0 : ($f->estado === 'DIFERENCIA PENDIENTE'
-                        ? max(0, ($f->importe_total ?? 0) - $rec)
-                        : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
-                    $pagosStr = (function () use ($f, $pagosMap) {
-                        $pp = $pagosMap->get($f->id_factura, collect());
-                        if ($pp->isEmpty()) return '—';
-                        return $pp->map(fn($p) => ($p->fecha_pago ? \Carbon\Carbon::parse($p->fecha_pago)->format('d/m/Y') : '—') . '  ' . number_format((float)$p->monto_pagado, 2))->implode("\n");
-                    })();
-
-                    $su->setCellValue("A{$dRow3}", $idxG++);
+                    $pen = $esH ? 0 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0); $idxG++);
                     $su->setCellValue("B{$dRow3}", $empresa);
                     $su->setCellValue("C{$dRow3}", (string) ($f->ruc ?? ''));
                     $su->setCellValue("D{$dRow3}", $f->fecha_emision ? \Carbon\Carbon::parse($f->fecha_emision)->format('d/m/Y') : '—');
@@ -1180,10 +1152,7 @@ class ReporteController extends Controller
             $su->setCellValue("J{$dRow3}", (float) $facturasParaTotales->sum('monto_recaudacion'));
             $su->setCellValue("L{$dRow3}", (float) $facturasParaTotales->sum('importe_total'));
             $su->setCellValue("N{$dRow3}", (float) $facturasParaTotales->sum('monto_abonado'));
-            $su->setCellValue("P{$dRow3}", (float) $facturasParaTotales->sum(fn($f) =>
-                $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+            $su->setCellValue("P{$dRow3}", (float) $facturasParaTotales->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0));
             $su->getStyle("A{$dRow3}:Q{$dRow3}")->applyFromArray($estiloTotal);
             foreach (['H','I','J','L','N','P'] as $nc) {
                 $su->getStyle("{$nc}{$dRow3}")->getNumberFormat()->setFormatCode('#,##0.00');
@@ -1212,9 +1181,7 @@ class ReporteController extends Controller
             $idxR  = 1;
             foreach ($facturasAgrupadas as $empresa => $grp) {
                 $tot     = $facturasAgrupParaTotales[$empresa] ?? collect();
-                $pendR   = (float) $tot->sum(fn($f) => $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                $pendR   = (float) $tot->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0);
                 $estados = $grp->pluck('estado')->unique()->values()->implode(', ');
 
                 $sr->setCellValue("A{$dRow4}", $idxR++);
@@ -1248,10 +1215,7 @@ class ReporteController extends Controller
             $sr->setCellValue("G{$dRow4}", (float) $facturasParaTotales->sum('monto_recaudacion'));
             $sr->setCellValue("H{$dRow4}", (float) $facturasParaTotales->sum('importe_total'));
             $sr->setCellValue("I{$dRow4}", (float) $facturasParaTotales->sum('monto_abonado'));
-            $sr->setCellValue("J{$dRow4}", (float) $facturasParaTotales->sum(fn($f) =>
-                $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+            $sr->setCellValue("J{$dRow4}", (float) $facturasParaTotales->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0));
             $sr->getStyle("A{$dRow4}:K{$dRow4}")->applyFromArray($estiloTotal);
             foreach (['E','F','G','H','I','J'] as $nc) {
                 $sr->getStyle("{$nc}{$dRow4}")->getNumberFormat()->setFormatCode('#,##0.00');

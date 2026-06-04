@@ -1565,6 +1565,7 @@
             let facturaImporte       = 0;
             let facturaMoneda        = 'S/';
             let facturaMontoPendiente = 0; // monto_pendiente directo de BD (al abrir el modal)
+            let facturaMontoCambio   = 0; // monto_cambio (tipo de cambio) de BD
             let recaudYaPagada       = false; // true when existing recaudacion already has fecha (paid)
             const CSRF = document.querySelector('meta[name="csrf-token"]').content;
             const PM_FETCH_URL = '{{ route("facturas.pago-masivo.facturas-cliente") }}';
@@ -2012,6 +2013,7 @@
                 facturaImporte        = parseFloat(importe);
                 facturaMoneda         = moneda;
                 facturaMontoPendiente = parseFloat(montoPendienteDB || 0);
+                facturaMontoCambio    = parseFloat(montoCambio || 0);
                 recaudYaPagada        = !!(fechaRec && fechaRec.trim() !== '');
                 colaPagos       = [];
                 colaIdx         = 0;
@@ -2029,9 +2031,9 @@
                 const _msInp = document.getElementById('pagoMontoSoles');
                 const _tcInp = document.getElementById('pagoTipoCambio');
                 const _edDisp = document.getElementById('recaudEquivDisplay');
-                if (_msInp) _msInp.value = (moneda && moneda.includes('USD') && totalRec > 0) ? parseFloat(totalRec).toFixed(2) : '';
-                // Pre-fill tipo de cambio from monto_cambio stored on the invoice
-                if (_tcInp) _tcInp.value = (moneda && moneda.includes('USD') && montoCambio > 0) ? parseFloat(montoCambio).toFixed(4) : '';
+                if (_msInp) _msInp.value = (totalRec > 0) ? parseFloat(totalRec).toFixed(2) : '';
+                // Pre-fill tipo de cambio desde monto_cambio guardado en BD (cualquier moneda)
+                if (_tcInp) _tcInp.value = (montoCambio > 0) ? parseFloat(montoCambio).toFixed(4) : '';
                 if (_edDisp) _edDisp.textContent = (moneda && moneda.includes('USD') && pctRec > 0)
                     ? `≈ USD ${parseFloat(pctRec).toFixed(2)} se descontarán del total de la factura` : '';
 
@@ -2683,9 +2685,10 @@
                     document.getElementById('pagoTotalRecaudacion').value = '';
                     document.getElementById('pagoPorcentaje').value = '';
                 }
-                // USD con recaudación: mostrar campos de conversión soles/tipo de cambio
-                // PERO si la recaudación ya fue pagada (fecha establecida), solo mostrar en modo lectura
-                const useConversion = isUSD && tipo !== '' && tipo !== 'NINGUNA';
+                // Mostrar bloque de conversión:
+                // - Siempre para facturas USD con recaudación
+                // - También para cualquier moneda si hay monto_cambio guardado en BD
+                const useConversion = (isUSD || facturaMontoCambio > 0) && tipo !== '' && tipo !== 'NINGUNA';
                 const convWrap = document.getElementById('recaudUsdConvWrap');
                 const montoGrp = document.getElementById('recaudMontoGrp');
                 if (useConversion) {
