@@ -80,16 +80,16 @@
         .body { padding:20px 32px 32px; }
 
         /* TABLE */
-        table { width:100%; border-collapse:collapse; table-layout:fixed; }
-        thead tr { background:#1e3a5f; color:#fff; }
-        thead th { padding:8px 10px; text-align:left; font-size:8.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        thead th.r { text-align:right; }
-        thead th.c { text-align:center; }
-        tbody tr { border-bottom:1px solid #e0ecff; }
-        tbody tr:nth-child(even) { background:#f0f7ff; }
-        tbody td { padding:7px 10px; font-size:10px; vertical-align:top; overflow:hidden; text-overflow:ellipsis; }
-        tbody td.r { text-align:right; }
-        tbody td.c { text-align:center; }
+        table#tablaDeuda { width:100%; border-collapse:collapse; table-layout:fixed; }
+        table#tablaDeuda thead tr { background:#0f172a; color:#fff; }
+        table#tablaDeuda thead th { padding:6px 4px; text-align:left; font-size:8.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        table#tablaDeuda thead th.r { text-align:right; }
+        table#tablaDeuda thead th.c { text-align:center; }
+        table#tablaDeuda tbody tr { border-bottom:1px solid #f1f5f9; }
+        table#tablaDeuda tbody tr:nth-child(even) { background:#f8fafc; }
+        table#tablaDeuda tbody td { padding:7px 6px; font-size:10px; vertical-align:top; overflow:hidden; text-overflow:ellipsis; font-weight:700; }
+        table#tablaDeuda tbody td.r { text-align:right; }
+        table#tablaDeuda tbody td.c { text-align:center; }
 
         /* Anchos fijos – 10 columnas en A4 landscape */
         col.col-rank  { width:3%; }
@@ -104,8 +104,8 @@
         col.col-est   { width:19%; }
 
         .rank    { color:#94a3b8; font-size:10px; font-weight:700; text-align:center; }
-        .empresa { font-weight:700; font-size:11px; color:#0f172a; }
-        .ruc     { font-family:'Courier New',monospace; font-size:10px; color:#64748b; margin-top:1px; }
+        .empresa { font-weight:800; font-size:11px; color:#0f172a; }
+        .ruc     { font-family:'Courier New',monospace; font-size:10px; color:#64748b; margin-top:1px; font-weight:700; }
         .deuda-pen  { font-weight:800; font-family:'Courier New',monospace; font-size:11px; color:#dc2626; }
         .deuda-usd  { font-weight:700; font-family:'Courier New',monospace; font-size:10.5px; color:#1d4ed8; }
         .detrac-val { font-family:'Courier New',monospace; font-size:10px; color:#d97706; font-weight:600; }
@@ -264,10 +264,10 @@
                     {{-- SUB TOTAL --}}
                     <td class="r">
                         @if($tienePEN && ($c['subtotal_pen'] ?? 0) > 0)
-                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0369a1;font-weight:700;">S/ {{ number_format($c['subtotal_pen'], 2) }}</div>
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0f172a;font-weight:800;">S/ {{ number_format($c['subtotal_pen'], 2) }}</div>
                         @endif
                         @if($tieneUSD && ($c['subtotal_usd'] ?? 0) > 0)
-                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#1d4ed8;font-weight:700;">USD {{ number_format($c['subtotal_usd'], 2) }}</div>
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0f172a;font-weight:800;">USD {{ number_format($c['subtotal_usd'], 2) }}</div>
                         @endif
                         @if(!$tienePEN && !$tieneUSD)<span style="color:#cbd5e1;">—</span>@endif
                     </td>
@@ -282,15 +282,15 @@
                     {{-- TOTAL (+IGV) --}}
                     <td class="r">
                         @if($tienePEN && $c['deuda_pen'] > 0)
-                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#dc2626;font-weight:800;">S/ {{ number_format($c['deuda_pen'], 2) }}</div>
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0f172a;font-weight:800;">S/ {{ number_format($c['deuda_pen'], 2) }}</div>
                             @if(($c['igv_pen'] ?? 0) > 0)
-                                <div style="font-size:8px;color:#64748b;">IGV S/ {{ number_format($c['igv_pen'], 2) }}</div>
+                                <div style="font-size:8px;color:#64748b;font-weight:700;">IGV S/ {{ number_format($c['igv_pen'], 2) }}</div>
                             @endif
                         @endif
                         @if($tieneUSD && $c['deuda_usd'] > 0)
-                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#1d4ed8;font-weight:700;">USD {{ number_format($c['deuda_usd'], 2) }}</div>
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0f172a;font-weight:800;">USD {{ number_format($c['deuda_usd'], 2) }}</div>
                             @if(($c['igv_usd'] ?? 0) > 0)
-                                <div style="font-size:8px;color:#64748b;">IGV USD {{ number_format($c['igv_usd'], 2) }}</div>
+                                <div style="font-size:8px;color:#64748b;font-weight:700;">IGV USD {{ number_format($c['igv_usd'], 2) }}</div>
                             @endif
                         @endif
                         @if(!$tienePEN && !$tieneUSD)<span style="color:#cbd5e1;">—</span>@endif
@@ -351,9 +351,9 @@
                 <td style="font-size:11px;color:#f1f5f9;">{{ $countEmpresas }} EMPRESAS</td>
                 {{-- SubTotal --}}
                 <td class="r">
-                    <div style="font-family:'Courier New',monospace;color:#93c5fd;">S/ {{ number_format($totalSubtotalPen ?? 0, 2) }}</div>
+                    <div style="font-family:'Courier New',monospace;color:#fcd34d;font-weight:800;">S/ {{ number_format($totalSubtotalPen ?? 0, 2) }}</div>
                     @if(($totalSubtotalUsd ?? 0) > 0)
-                        <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#bfdbfe;">USD {{ number_format($totalSubtotalUsd, 2) }}</div>
+                        <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#fcd34d;font-weight:800;">USD {{ number_format($totalSubtotalUsd, 2) }}</div>
                     @endif
                 </td>
                 {{-- Detrac/Rente Total (PEN) --}}
@@ -362,12 +362,12 @@
                 </td>
                 {{-- Total (+IGV) --}}
                 <td class="r">
-                    <div style="font-family:'Courier New',monospace;color:#fca5a5;">S/ {{ number_format($totalPen, 2) }}</div>
-                    <div style="font-size:8px;color:#cbd5e1;">IGV: {{ ($totalIgvPen ?? 0) > 0 ? 'S/ '.number_format($totalIgvPen, 2) : '—' }}</div>
+                    <div style="font-family:'Courier New',monospace;color:#fff;font-weight:800;">S/ {{ number_format($totalPen, 2) }}</div>
+                    <div style="font-size:8px;color:#cbd5e1;font-weight:700;">IGV: {{ ($totalIgvPen ?? 0) > 0 ? 'S/ '.number_format($totalIgvPen, 2) : '—' }}</div>
                     @if(($totalUsd ?? 0) > 0)
-                        <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#bfdbfe;">USD {{ number_format($totalUsd, 2) }}</div>
+                        <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#fff;font-weight:800;">USD {{ number_format($totalUsd, 2) }}</div>
                         @if(($totalIgvUsd ?? 0) > 0)
-                            <div style="font-size:8px;color:#cbd5e1;">IGV USD {{ number_format($totalIgvUsd, 2) }}</div>
+                            <div style="font-size:8px;color:#cbd5e1;font-weight:700;">IGV USD {{ number_format($totalIgvUsd, 2) }}</div>
                         @endif
                     @endif
                 </td>
