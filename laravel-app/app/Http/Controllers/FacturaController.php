@@ -311,7 +311,7 @@ class FacturaController extends Controller
             'comprobante'            => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:20480',
             // Recaudación (nivel factura)
             'total_recaudacion'      => 'nullable|numeric|min:0',
-            'porcentaje_recaudacion' => 'nullable|numeric|min:0|max:100',
+            'porcentaje_recaudacion' => 'nullable|numeric|min:0',
             'tipo_recaudacion'       => 'nullable|string|in:DETRACCION,AUTODETRACCION,RETENCION',
             'validar_detraccion'     => 'nullable|boolean',
             'fecha_recaudacion'      => 'nullable|date',
@@ -377,7 +377,12 @@ class FacturaController extends Controller
             );
 
             $importeTotal   = round((float) $factura->importe_total, 2);
-            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $totalRecaudacion), 2);
+            // Para facturas USD: el descuento de recaudación es el equivalente USD (porcentaje);
+            // para facturas PEN: es el monto en soles (total_recaudacion).
+            $deduccionRec   = ($factura->moneda === 'USD' && (float)($porcentaje ?? 0) > 0)
+                ? round((float) $porcentaje, 2)
+                : $totalRecaudacion;
+            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $deduccionRec), 2);
 
             $estado = $this->calcularEstado(
                 $factura, $montoAbonadoTotal, $montoPendiente,
@@ -478,6 +483,7 @@ class FacturaController extends Controller
 
             $recaudacion      = DB::table('recaudacion')->where('id_factura', $id)->first();
             $totalRecaudacion = round((float) ($recaudacion->total_recaudacion ?? 0), 2);
+            $porcentajeRec    = round((float) ($recaudacion->porcentaje ?? 0), 2);
             $fechaRecaudacion = $recaudacion->fecha_recaudacion ?? null;
 
             $montoAbonadoTotal = round(
@@ -489,7 +495,10 @@ class FacturaController extends Controller
             );
 
             $importeTotal   = round((float) $factura->importe_total, 2);
-            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $totalRecaudacion), 2);
+            $deduccionRec   = ($factura->moneda === 'USD' && $porcentajeRec > 0)
+                ? $porcentajeRec
+                : $totalRecaudacion;
+            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $deduccionRec), 2);
 
             $estado = $this->calcularEstado(
                 $factura, $montoAbonadoTotal, $montoPendiente,
@@ -565,6 +574,7 @@ class FacturaController extends Controller
 
             $recaudacion      = DB::table('recaudacion')->where('id_factura', $id)->first();
             $totalRecaudacion = round((float) ($recaudacion->total_recaudacion ?? 0), 2);
+            $porcentajeRec    = round((float) ($recaudacion->porcentaje ?? 0), 2);
             $fechaRecaudacion = $recaudacion->fecha_recaudacion ?? null;
 
             $montoAbonadoTotal = round(
@@ -576,7 +586,10 @@ class FacturaController extends Controller
             );
 
             $importeTotal   = round((float) $factura->importe_total, 2);
-            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $totalRecaudacion), 2);
+            $deduccionRec   = ($factura->moneda === 'USD' && $porcentajeRec > 0)
+                ? $porcentajeRec
+                : $totalRecaudacion;
+            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $deduccionRec), 2);
 
             $estado = $this->calcularEstado(
                 $factura, $montoAbonadoTotal, $montoPendiente,

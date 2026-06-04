@@ -709,8 +709,9 @@ class ReporteController extends Controller
             ->where('f.activo', 1)
             ->select([
                 'f.id_factura', 'c.id_cliente', 'c.razon_social', 'c.ruc',
-                'f.moneda', 'f.estado', 'f.importe_total', 'f.monto_pendiente', 'f.subtotal_gravado', 'f.monto_igv',
+                'f.moneda', 'f.estado', 'f.importe_total', 'f.monto_pendiente', 'f.subtotal_gravado', 'f.monto_igv', 'f.monto_abonado',
                 DB::raw('COALESCE(rec.total_recaudacion, 0) AS monto_recaudacion'),
+                DB::raw('COALESCE(rec.porcentaje, 0) AS porcentaje_recaudacion'),
                 'rec.fecha_recaudacion',
             ]);
 
@@ -730,53 +731,74 @@ class ReporteController extends Controller
             $id = $f->id_cliente;
             if (!isset($clientes[$id])) {
                 $clientes[$id] = [
-                    'razon_social'   => $f->razon_social,
-                    'ruc'            => $f->ruc,
-                    'deuda_pen'      => 0,
-                    'deuda_usd'      => 0,
-                    'subtotal_pen'   => 0,
-                    'subtotal_usd'   => 0,
-                    'igv_pen'        => 0,
-                    'igv_usd'        => 0,
-                    'recaudacion_pen'=> 0,
-                    'recaudacion_usd'=> 0,
-                    'pendiente_pen'  => 0,
-                    'pendiente_usd'  => 0,
-                    'facturas'       => 0,
-                    'estados'        => [],
+                    'razon_social'       => $f->razon_social,
+                    'ruc'                => $f->ruc,
+                    'deuda_pen'          => 0,
+                    'deuda_usd'          => 0,
+                    'subtotal_pen'       => 0,
+                    'subtotal_usd'       => 0,
+                    'igv_pen'            => 0,
+                    'igv_usd'            => 0,
+                    // Recaudación: siempre en soles (total_recaudacion)
+                    'recaudacion_pen'    => 0,  // suma de TODAS las soles (de cualquier moneda)
+                    'recaud_cobrada_pen' => 0,  // soles pagados (fecha_recaudacion set)
+                    // Equivalentes USD pagados (para facturas USD con fecha_recaudacion)
+                    'recaudacion_usd'    => 0,
+                    'abonado_pen'        => 0,
+                    'abonado_usd'        => 0,
+                    'pendiente_pen'      => 0,
+                    'pendiente_usd'      => 0,
+                    'pagadas_pen'        => 0,
+                    'pagadas_usd'        => 0,
+                    'facturas'           => 0,
+                    'estados'            => [],
                 ];
             }
             $clientes[$id]['facturas']++;
             $pendienteReal = $f->monto_pendiente;
+            // Recaudación siempre en soles (total_recaudacion), sin importar la moneda de la factura
+            $clientes[$id]['recaudacion_pen'] += $f->monto_recaudacion;
+            if (!empty($f->fecha_recaudacion)) {
+                $clientes[$id]['recaud_cobrada_pen'] += $f->monto_recaudacion;
+            }
             if ($f->moneda === 'USD') {
                 $clientes[$id]['deuda_usd']        += $f->importe_total;
                 $clientes[$id]['subtotal_usd']     += ($f->subtotal_gravado ?? 0);
                 $clientes[$id]['igv_usd']          += ($f->monto_igv ?? 0);
-                $clientes[$id]['recaudacion_usd']  += $f->monto_recaudacion;
+                $clientes[$id]['abonado_usd']      += ($f->monto_abonado ?? 0);
                 $clientes[$id]['pendiente_usd']    += $pendienteReal;
+                // Para USD: guardar el equivalente USD pagado en recaudacion_usd
+                if (!empty($f->fecha_recaudacion) && ($f->porcentaje_recaudacion ?? 0) > 0) {
+                    $clientes[$id]['recaudacion_usd'] += $f->porcentaje_recaudacion;
+                }
+                if ($f->estado === 'PAGADA') $clientes[$id]['pagadas_usd']++;
             } else {
                 $clientes[$id]['deuda_pen']        += $f->importe_total;
                 $clientes[$id]['subtotal_pen']     += ($f->subtotal_gravado ?? 0);
                 $clientes[$id]['igv_pen']          += ($f->monto_igv ?? 0);
-                $clientes[$id]['recaudacion_pen']  += $f->monto_recaudacion;
+                $clientes[$id]['abonado_pen']      += ($f->monto_abonado ?? 0);
                 $clientes[$id]['pendiente_pen']    += $pendienteReal;
+                if ($f->estado === 'PAGADA') $clientes[$id]['pagadas_pen']++;
             }
             if (!in_array($f->estado, $clientes[$id]['estados'])) {
                 $clientes[$id]['estados'][] = $f->estado;
             }
         }
-        uasort($clientes, fn($a, $b) => $b['pendiente_pen'] <=> $a['pendiente_pen']);
+        uasort($clientes, fn($a, $b) => strcmp($a['razon_social'], $b['razon_social']));
 
-        $totalPen            = array_sum(array_column($clientes, 'deuda_pen'));
-        $totalUsd            = array_sum(array_column($clientes, 'deuda_usd'));
-        $totalSubtotalPen    = array_sum(array_column($clientes, 'subtotal_pen'));
-        $totalSubtotalUsd    = array_sum(array_column($clientes, 'subtotal_usd'));
-        $totalIgvPen         = array_sum(array_column($clientes, 'igv_pen'));
-        $totalIgvUsd         = array_sum(array_column($clientes, 'igv_usd'));
-        $totalRecaudacionPen = array_sum(array_column($clientes, 'recaudacion_pen'));
-        $totalRecaudacionUsd = array_sum(array_column($clientes, 'recaudacion_usd'));
-        $totalPendientePen   = array_sum(array_column($clientes, 'pendiente_pen'));
-        $totalPendienteUsd   = array_sum(array_column($clientes, 'pendiente_usd'));
+        $totalPen              = array_sum(array_column($clientes, 'deuda_pen'));
+        $totalUsd              = array_sum(array_column($clientes, 'deuda_usd'));
+        $totalSubtotalPen      = array_sum(array_column($clientes, 'subtotal_pen'));
+        $totalSubtotalUsd      = array_sum(array_column($clientes, 'subtotal_usd'));
+        $totalIgvPen           = array_sum(array_column($clientes, 'igv_pen'));
+        $totalIgvUsd           = array_sum(array_column($clientes, 'igv_usd'));
+        $totalRecaudacionPen   = array_sum(array_column($clientes, 'recaudacion_pen'));
+        $totalRecaudCobradaPen = array_sum(array_column($clientes, 'recaud_cobrada_pen'));
+        $totalRecaudacionUsd   = array_sum(array_column($clientes, 'recaudacion_usd'));
+        $totalAbonadoPen       = array_sum(array_column($clientes, 'abonado_pen'));
+        $totalAbonadoUsd       = array_sum(array_column($clientes, 'abonado_usd'));
+        $totalPendientePen     = array_sum(array_column($clientes, 'pendiente_pen'));
+        $totalPendienteUsd     = array_sum(array_column($clientes, 'pendiente_usd'));
 
         $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
@@ -798,7 +820,8 @@ class ReporteController extends Controller
             'clientes', 'totalPen', 'totalUsd',
             'totalSubtotalPen', 'totalSubtotalUsd',
             'totalIgvPen', 'totalIgvUsd',
-            'totalRecaudacionPen', 'totalRecaudacionUsd',
+            'totalRecaudacionPen', 'totalRecaudCobradaPen', 'totalRecaudacionUsd',
+            'totalAbonadoPen', 'totalAbonadoUsd',
             'totalPendientePen', 'totalPendienteUsd', 'periodoLabel', 'fechaDesde', 'fechaHasta',
             'estadoLabel', 'usuariosDestino', 'todosUsuarios', 'estadosFiltroJson', 'dashboard'
         ));

@@ -603,14 +603,19 @@
                         <td style="text-align:center;">
                             @if($montoRecaudacion > 0)
                                 <div style="font-weight:700;font-family:'DM Mono',monospace;font-size:12px;color:#d97706;">
-                                    {{ $factura->moneda }} {{ number_format($montoRecaudacion,2) }}
+                                    PEN {{ number_format($montoRecaudacion,2) }}
                                 </div>
                                 <div style="font-size:10px;color:#92400e;font-weight:600;">{{ $tipoRecaudacion ?? '' }}</div>
                                 @if(!empty($factura->fecha_recaudacion))
                                     <div style="font-size:10px;color:#059669;font-weight:600;margin-top:2px;">
                                         {{ \Carbon\Carbon::parse($factura->fecha_recaudacion)->format('d/m/Y') }}
                                     </div>
-                                @elseif($porcentaje > 0)
+                                    @if($factura->moneda === 'USD' && $porcentaje > 0)
+                                        <div style="font-size:10px;color:#1d4ed8;font-weight:700;margin-top:1px;">
+                                            USD {{ number_format($porcentaje,2) }}
+                                        </div>
+                                    @endif
+                                @elseif($factura->moneda !== 'USD' && $porcentaje > 0)
                                     <div style="font-size:10px;color:#92400e;font-weight:600;">{{ $porcentaje }}%</div>
                                 @endif
                             @else
@@ -2009,13 +2014,14 @@
                 seleccionarTipoRec(tipoRec || '');
                 document.getElementById('validarDetraccionWrap').style.display =
                     (tipoRec === 'DETRACCION' || tipoRec === 'AUTODETRACCION' || tipoRec === 'RETENCION') ? 'block' : 'none';
-                // Reset USD conversion fields
+                // Pre-fill / reset USD conversion fields
                 const _msInp = document.getElementById('pagoMontoSoles');
                 const _tcInp = document.getElementById('pagoTipoCambio');
                 const _edDisp = document.getElementById('recaudEquivDisplay');
-                if (_msInp) _msInp.value = '';
+                if (_msInp) _msInp.value = (moneda && moneda.includes('USD') && totalRec > 0) ? parseFloat(totalRec).toFixed(2) : '';
                 if (_tcInp) _tcInp.value = '';
-                if (_edDisp) _edDisp.textContent = '';
+                if (_edDisp) _edDisp.textContent = (moneda && moneda.includes('USD') && pctRec > 0)
+                    ? `≈ USD ${parseFloat(pctRec).toFixed(2)} se descontarán del total de la factura` : '';
 
                 renderCola();
                 actualizarResumenPago(montoAbonado, totalRec, 0);
@@ -2694,7 +2700,10 @@
                 const soles = parseFloat(document.getElementById('pagoMontoSoles').value) || 0;
                 const tc    = parseFloat(document.getElementById('pagoTipoCambio').value) || 0;
                 const equiv = (tc > 0 && soles > 0) ? soles / tc : 0;
-                document.getElementById('pagoTotalRecaudacion').value = equiv > 0 ? equiv.toFixed(2) : '';
+                // total_recaudacion stores the PEN soles amount
+                document.getElementById('pagoTotalRecaudacion').value = soles > 0 ? soles.toFixed(2) : '';
+                // porcentaje_recaudacion stores the USD equivalent
+                document.getElementById('pagoPorcentaje').value = equiv > 0 ? equiv.toFixed(2) : '';
                 const disp = document.getElementById('recaudEquivDisplay');
                 if (disp) disp.textContent = equiv > 0
                     ? `≈ USD ${equiv.toFixed(2)} se descontarán del total de la factura`

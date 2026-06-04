@@ -419,7 +419,8 @@
                 $totPEN = [
                     'cnt'   => $facEmpPEN->count(),
                     'sub'   => $facEmpPEN->sum('subtotal_gravado'),
-                    'rec'   => $facEmpPEN->sum('monto_recaudacion'),
+                    // Recaudación siempre en soles: suma de TODAS las facturas (PEN + USD)
+                    'rec'   => $facEmpPEN->sum('monto_recaudacion') + $facEmpUSD->sum('monto_recaudacion'),
                     'total' => $facEmpPEN->sum('importe_total'),
                     'abo'   => $facEmpPEN->sum('monto_abonado'),
                     'pend'  => $calcPend($facEmpPEN),
@@ -427,7 +428,8 @@
                 $totUSD = [
                     'cnt'   => $facEmpUSD->count(),
                     'sub'   => $facEmpUSD->sum('subtotal_gravado'),
-                    'rec'   => $facEmpUSD->sum('monto_recaudacion'),
+                    // USD rec = solo los equivalentes USD pagados (donde fecha_recaudacion está set)
+                    'rec'   => $facEmpUSD->filter(fn($f) => !empty($f->fecha_recaudacion))->sum('porcentaje_recaudacion'),
                     'total' => $facEmpUSD->sum('importe_total'),
                     'abo'   => $facEmpUSD->sum('monto_abonado'),
                     'pend'  => $calcPend($facEmpUSD),
@@ -505,7 +507,12 @@
                                 —
                             @endif
                         </td>
-                        <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda.' '.number_format($recaudacion, 2) : '—' }}</td>
+                        <td class="r detrac">
+                            {{ $recaudacion > 0 ? 'PEN '.number_format($recaudacion, 2) : '—' }}
+                            @if($recaudacion > 0 && $f->moneda === 'USD' && !empty($f->fecha_recaudacion) && ($f->porcentaje_recaudacion ?? 0) > 0)
+                                <span class="igv-note" style="color:#1d4ed8;font-weight:700;">USD {{ number_format($f->porcentaje_recaudacion, 2) }}</span>
+                            @endif
+                        </td>
                         <td class="mono" style="font-size:8.5px;color:#d97706;">
                             {{ $f->fecha_recaudacion ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—' }}
                         </td>
@@ -594,7 +601,9 @@
                         DÓLARES — {{ $totUSD['cnt'] }} factura(s)
                     </td>
                     <td class="r" style="color:#fcd34d;">{{ $totUSD['sub'] > 0 ? 'USD '.number_format($totUSD['sub'], 2) : '—' }}</td>
-                    <td class="r" style="color:#fcd34d;">{{ $totUSD['rec'] > 0 ? 'USD '.number_format($totUSD['rec'], 2) : '—' }}</td>
+                    <td class="r" style="color:#fcd34d;">{{ $totUSD['rec'] > 0 ? 'USD '.number_format($totUSD['rec'], 2) : '—' }}
+                        @if($totUSD['rec'] > 0)<span class="igv-note" style="color:#93c5fd;">(pagadas)</span>@endif
+                    </td>
                     <td></td>
                     <td class="r" style="color:#fca5a5;">USD {{ number_format($totUSD['total'], 2) }}</td>
                     <td></td>
