@@ -2027,15 +2027,21 @@
                 seleccionarTipoRec(tipoRec || '');
                 document.getElementById('validarDetraccionWrap').style.display =
                     (tipoRec === 'DETRACCION' || tipoRec === 'AUTODETRACCION' || tipoRec === 'RETENCION') ? 'block' : 'none';
-                // Pre-fill / reset USD conversion fields
+
+                // Pre-fill campos de conversión USD — setTimeout garantiza que el bloque ya es visible
                 const _msInp = document.getElementById('pagoMontoSoles');
-                const _tcInp = document.getElementById('pagoTipoCambio');
                 const _edDisp = document.getElementById('recaudEquivDisplay');
                 if (_msInp) _msInp.value = (totalRec > 0) ? parseFloat(totalRec).toFixed(2) : '';
-                // Pre-fill tipo de cambio desde monto_cambio guardado en BD (solo para USD)
-                if (_tcInp) {
-                    _tcInp.value = (facturaMontoCambio > 0) ? parseFloat(facturaMontoCambio).toFixed(4) : '';
-                }
+
+                setTimeout(() => {
+                    const _tcInp = document.getElementById('pagoTipoCambio');
+                    if (_tcInp && facturaMontoCambio > 0) {
+                        _tcInp.value = parseFloat(facturaMontoCambio).toFixed(4);
+                        // Recalcular el equivalente USD con el tipo de cambio pre-llenado
+                        calcularEquivalenteUSD();
+                    }
+                }, 50);
+
                 if (_edDisp) _edDisp.textContent = (moneda && moneda.includes('USD') && pctRec > 0)
                     ? `≈ USD ${parseFloat(pctRec).toFixed(2)} se descontarán del total de la factura` : '';
 
