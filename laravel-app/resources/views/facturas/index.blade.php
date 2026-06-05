@@ -1292,7 +1292,7 @@
                                 ✓ La recaudación ya fue registrada y depositada. Los valores no pueden modificarse.
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Monto Recaudación (S/ Soles)</label>
+                                <label class="form-label" id="recaudSolesLabel">Monto Recaudación (S/ Soles)</label>
                                 <input type="number" id="pagoMontoSoles" step="0.01" min="0" class="form-input" placeholder="0.00" oninput="calcularEquivalenteUSD()">
                             </div>
                             <div class="form-group">
@@ -2033,10 +2033,8 @@
                 const _edDisp = document.getElementById('recaudEquivDisplay');
                 if (_msInp) _msInp.value = (totalRec > 0) ? parseFloat(totalRec).toFixed(2) : '';
                 // Pre-fill tipo de cambio desde monto_cambio guardado en BD (solo para USD)
-                if (_tcInp && moneda.includes('USD')) {
+                if (_tcInp) {
                     _tcInp.value = (facturaMontoCambio > 0) ? parseFloat(facturaMontoCambio).toFixed(4) : '';
-                } else if (_tcInp) {
-                    _tcInp.value = '';
                 }
                 if (_edDisp) _edDisp.textContent = (moneda && moneda.includes('USD') && pctRec > 0)
                     ? `≈ USD ${parseFloat(pctRec).toFixed(2)} se descontarán del total de la factura` : '';
@@ -2691,11 +2689,18 @@
                 }
                 // Mostrar bloque de conversión:
                 // - Siempre para cualquier recaudación (USD necesita TC para convertir; PEN lo muestra informativo)
-                const useConversion = tipo !== '' && tipo !== 'NINGUNA';
+                const useConversion = tipo !== '' && tipo !== 'NINGUNA' && (facturaMoneda || '').includes('USD');
                 const convWrap = document.getElementById('recaudUsdConvWrap');
                 const montoGrp = document.getElementById('recaudMontoGrp');
                 if (useConversion) {
                     if (convWrap) convWrap.style.display = 'grid';
+                    // Actualizar label según moneda
+                    const solesLabel = document.getElementById('recaudSolesLabel');
+                    if (solesLabel) {
+                        solesLabel.textContent = (facturaMoneda || '').includes('USD')
+                            ? 'Monto Recaudación (S/ Soles)'
+                            : 'Monto Recaudación';
+                    }
                     if (montoGrp) montoGrp.style.display = 'none';
                     if (pctGroup) pctGroup.style.display = 'none';
                     if (usdNote) usdNote.style.display = 'none';
