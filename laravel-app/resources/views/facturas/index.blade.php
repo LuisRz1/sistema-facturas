@@ -2036,8 +2036,11 @@
                 setTimeout(() => {
                     const _tcInp = document.getElementById('pagoTipoCambio');
                     if (_tcInp && facturaMontoCambio > 0) {
+                        // Quitar readOnly temporalmente para poder escribir el valor
+                        const wasReadOnly = _tcInp.readOnly;
+                        _tcInp.readOnly = false;
                         _tcInp.value = parseFloat(facturaMontoCambio).toFixed(4);
-                        // Recalcular el equivalente USD con el tipo de cambio pre-llenado
+                        _tcInp.readOnly = wasReadOnly;
                         calcularEquivalenteUSD();
                     }
                 }, 50);
