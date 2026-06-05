@@ -2033,21 +2033,10 @@
                 const _edDisp = document.getElementById('recaudEquivDisplay');
                 if (_msInp) _msInp.value = (totalRec > 0) ? parseFloat(totalRec).toFixed(2) : '';
                 // Pre-fill tipo de cambio desde monto_cambio guardado en BD (solo para USD)
+                // Pre-fill tipo de cambio desde monto_cambio guardado en BD
                 if (_tcInp) {
                     if (facturaMontoCambio > 0) {
-                        // Tiene valor guardado en BD → usarlo directo
                         _tcInp.value = parseFloat(facturaMontoCambio).toFixed(4);
-                    } else if (moneda.includes('USD')) {
-                        // No tiene guardado pero es USD → traer desde backend
-                        _tcInp.value = '';
-                        fetch(`/tu-endpoint/tipo-cambio?fecha=${fechaRec || ''}`)
-                            .then(r => r.json())
-                            .then(data => {
-                                if (data.tipo_cambio) {
-                                    _tcInp.value = parseFloat(data.tipo_cambio).toFixed(4);
-                                }
-                            })
-                            .catch(() => { /* silencioso */ });
                     } else {
                         _tcInp.value = '';
                     }
