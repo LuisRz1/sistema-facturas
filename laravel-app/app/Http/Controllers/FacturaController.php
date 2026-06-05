@@ -46,6 +46,7 @@ class FacturaController extends Controller
             'rec.total_recaudacion as monto_recaudacion',
             'rec.porcentaje as porcentaje_recaudacion',
             'rec.fecha_recaudacion',
+            'f.monto_cambio',
             DB::raw('NULL as ruta_comprobante_pago'),
         ];
 
