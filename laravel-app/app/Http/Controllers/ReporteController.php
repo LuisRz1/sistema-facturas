@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Collection;
+use Symfony\Component\Mime\Email;
 use App\Services\WhatsAppGatewayService;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -575,12 +577,15 @@ class ReporteController extends Controller
             $asunto       = "Reporte Deuda General — {$periodoLabel}";
 
             try {
-                Mail::html($htmlReporte, function ($mail) use ($correo, $asunto) {
-                    $mail->to($correo)->subject($asunto);
-                });
+                $symfonyEmail = (new Email())
+                    ->from(config('mail.from.address', 'sistema@crcsac.com'))
+                    ->subject($asunto)
+                    ->to($correo)
+                    ->html($htmlReporte);
+                Mail::mailer()->send($symfonyEmail);
                 return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::error('Error al enviar reporte general por correo: ' . $e->getMessage());
+                Log::error('Error al enviar reporte general por correo: ' . $e->getMessage());
                 return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
             }
         }
@@ -634,12 +639,15 @@ class ReporteController extends Controller
         $asunto      = "Reporte Financiero — {$clienteNombre} — {$periodoLabel}";
 
         try {
-            Mail::html($htmlReporte, function ($mail) use ($correo, $asunto) {
-                $mail->to($correo)->subject($asunto);
-            });
+            $symfonyEmail = (new Email())
+                ->from(config('mail.from.address', 'sistema@crcsac.com'))
+                ->subject($asunto)
+                ->to($correo)
+                ->html($htmlReporte);
+            Mail::mailer()->send($symfonyEmail);
             return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
         } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('Error al enviar reporte específico por correo: ' . $e->getMessage());
+            Log::error('Error al enviar reporte específico por correo: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
         }
     }

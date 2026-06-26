@@ -111,6 +111,7 @@ class NotificacionController extends Controller
         try {
             // Usar Symfony Email directamente — compatible con Laravel 12
             $symfonyEmail = (new Email())
+                ->from(config('mail.from.address', 'sistema@crcsac.com'))
                 ->subject($asunto)
                 ->to($correo)
                 ->text($mensaje);
@@ -237,6 +238,7 @@ class NotificacionController extends Controller
 
         try {
             $symfonyEmail = (new Email())
+                ->from(config('mail.from.address', 'sistema@crcsac.com'))
                 ->subject($asunto)
                 ->to($correo)
                 ->text($mensaje);
