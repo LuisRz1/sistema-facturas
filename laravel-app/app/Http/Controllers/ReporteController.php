@@ -3,11 +3,10 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Collection;
-use Symfony\Component\Mime\Email;
 use App\Services\WhatsAppGatewayService;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -578,12 +577,11 @@ class ReporteController extends Controller
 
             try {
                 DB::disconnect();
-                $symfonyEmail = (new Email())
-                    ->from(config('mail.from.address', 'sistema@crcsac.com'))
-                    ->subject($asunto)
-                    ->to($correo)
-                    ->html($htmlReporte);
-                Mail::mailer()->send($symfonyEmail);
+                Mail::html($htmlReporte, function ($message) use ($correo, $asunto) {
+                    $message->to($correo)
+                            ->subject($asunto)
+                            ->from(config('mail.from.address'), config('mail.from.name'));
+                });
                 DB::reconnect();
                 return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
             } catch (\Throwable $e) {
@@ -643,12 +641,11 @@ class ReporteController extends Controller
 
         try {
             DB::disconnect();
-            $symfonyEmail = (new Email())
-                ->from(config('mail.from.address', 'sistema@crcsac.com'))
-                ->subject($asunto)
-                ->to($correo)
-                ->html($htmlReporte);
-            Mail::mailer()->send($symfonyEmail);
+            Mail::html($htmlReporte, function ($message) use ($correo, $asunto) {
+                $message->to($correo)
+                        ->subject($asunto)
+                        ->from(config('mail.from.address'), config('mail.from.name'));
+            });
             DB::reconnect();
             return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
         } catch (\Throwable $e) {

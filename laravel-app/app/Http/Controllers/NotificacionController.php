@@ -10,7 +10,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\Mime\Email;
 
 class NotificacionController extends Controller
 {
@@ -110,16 +109,14 @@ class NotificacionController extends Controller
         }
 
         try {
-            // Liberar conexión DB antes del envío para evitar timeout en el pool
+            // Liberar conexiones DB antes del envío SMTP para evitar timeout en el pool
             DB::disconnect();
 
-            $symfonyEmail = (new Email())
-                ->from(config('mail.from.address', 'sistema@crcsac.com'))
-                ->subject($asunto)
-                ->to($correo)
-                ->text($mensaje);
-
-            Mail::mailer()->send($symfonyEmail);
+            Mail::raw($mensaje, function ($message) use ($correo, $asunto) {
+                $message->to($correo)
+                        ->subject($asunto)
+                        ->from(config('mail.from.address'), config('mail.from.name'));
+            });
 
             Log::info("enviarCorreoManual: factura #{$id} enviado OK a {$correo}");
 
@@ -247,13 +244,11 @@ class NotificacionController extends Controller
         try {
             DB::disconnect();
 
-            $symfonyEmail = (new Email())
-                ->from(config('mail.from.address', 'sistema@crcsac.com'))
-                ->subject($asunto)
-                ->to($correo)
-                ->text($mensaje);
-
-            Mail::mailer()->send($symfonyEmail);
+            Mail::raw($mensaje, function ($message) use ($correo, $asunto) {
+                $message->to($correo)
+                        ->subject($asunto)
+                        ->from(config('mail.from.address'), config('mail.from.name'));
+            });
 
             Log::info("enviarFacturaPagadaCorreo: factura #{$id} enviado OK a {$correo}");
 
