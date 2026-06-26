@@ -6,6 +6,7 @@ use App\Models\Factura;
 use App\Models\NotificacionFactura;
 use App\Services\WhatsAppGatewayService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -109,7 +110,9 @@ class NotificacionController extends Controller
         }
 
         try {
-            // Usar Symfony Email directamente — compatible con Laravel 12
+            // Liberar conexión DB antes del envío para evitar timeout en el pool
+            DB::disconnect();
+
             $symfonyEmail = (new Email())
                 ->from(config('mail.from.address', 'sistema@crcsac.com'))
                 ->subject($asunto)
@@ -119,6 +122,9 @@ class NotificacionController extends Controller
             Mail::mailer()->send($symfonyEmail);
 
             Log::info("enviarCorreoManual: factura #{$id} enviado OK a {$correo}");
+
+            // Reconectar DB para guardar la notificación
+            DB::reconnect();
 
             try {
                 NotificacionFactura::create($this->baseNotif(
@@ -132,6 +138,8 @@ class NotificacionController extends Controller
 
             return back()->with('success', 'Correo enviado correctamente.');
         } catch (\Throwable $e) {
+            DB::reconnect(); // reconectar DB tras fallo
+
             $errorMsg = mb_substr($e->getMessage(), 0, 1000);
             Log::error("enviarCorreoManual: ERROR factura #{$id} - " . $e->getMessage());
 
@@ -237,6 +245,8 @@ class NotificacionController extends Controller
         $mensaje .= "\nGracias por su confianza.\n\nAtentamente,\nSistema de Facturación";
 
         try {
+            DB::disconnect();
+
             $symfonyEmail = (new Email())
                 ->from(config('mail.from.address', 'sistema@crcsac.com'))
                 ->subject($asunto)
@@ -247,6 +257,8 @@ class NotificacionController extends Controller
 
             Log::info("enviarFacturaPagadaCorreo: factura #{$id} enviado OK a {$correo}");
 
+            DB::reconnect();
+
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
                 $correo, $asunto, $mensaje, 'ENVIADO',
@@ -255,8 +267,10 @@ class NotificacionController extends Controller
 
             return back()->with('success', 'Confirmación de pago enviada por correo.');
         } catch (\Throwable $e) {
+            DB::reconnect();
+
             $errorMsg = mb_substr($e->getMessage(), 0, 1000);
-            \Illuminate\Support\Facades\Log::error('Error al enviar correo de pago factura #' . $id . ': ' . $e->getMessage());
+            Log::error('Error al enviar correo de pago factura #' . $id . ': ' . $e->getMessage());
             try {
                 NotificacionFactura::create($this->baseNotif(
                     $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
@@ -264,7 +278,7 @@ class NotificacionController extends Controller
                     'Error al enviar correo', null, $errorMsg
                 ));
             } catch (\Throwable $ex) {
-                \Illuminate\Support\Facades\Log::error('Error adicional al registrar notificación de fallo: ' . $ex->getMessage());
+                Log::error('Error adicional al registrar notificación de fallo: ' . $ex->getMessage());
             }
             return back()->with('error', 'No se pudo enviar el correo.');
         }

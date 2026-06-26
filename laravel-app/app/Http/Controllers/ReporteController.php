@@ -577,14 +577,17 @@ class ReporteController extends Controller
             $asunto       = "Reporte Deuda General — {$periodoLabel}";
 
             try {
+                DB::disconnect();
                 $symfonyEmail = (new Email())
                     ->from(config('mail.from.address', 'sistema@crcsac.com'))
                     ->subject($asunto)
                     ->to($correo)
                     ->html($htmlReporte);
                 Mail::mailer()->send($symfonyEmail);
+                DB::reconnect();
                 return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
             } catch (\Throwable $e) {
+                DB::reconnect();
                 Log::error('Error al enviar reporte general por correo: ' . $e->getMessage());
                 return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
             }
@@ -639,14 +642,17 @@ class ReporteController extends Controller
         $asunto      = "Reporte Financiero — {$clienteNombre} — {$periodoLabel}";
 
         try {
+            DB::disconnect();
             $symfonyEmail = (new Email())
                 ->from(config('mail.from.address', 'sistema@crcsac.com'))
                 ->subject($asunto)
                 ->to($correo)
                 ->html($htmlReporte);
             Mail::mailer()->send($symfonyEmail);
+            DB::reconnect();
             return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
         } catch (\Throwable $e) {
+            DB::reconnect();
             Log::error('Error al enviar reporte específico por correo: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
         }
