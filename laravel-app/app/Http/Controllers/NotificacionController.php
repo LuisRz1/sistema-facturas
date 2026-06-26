@@ -63,31 +63,57 @@ class NotificacionController extends Controller
         }
 
         if (!$factura->cliente?->correo) {
-            NotificacionFactura::create($this->baseNotif($factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL', '', 'Factura pendiente', 'Sin correo registrado.', 'ERROR', 'Cliente sin correo'));
+            try {
+                NotificacionFactura::create($this->baseNotif(
+                    $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
+                    '', 'Factura pendiente', 'Sin correo registrado.', 'ERROR', 'Cliente sin correo'
+                ));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Error al registrar notificación de correo faltante: ' . $e->getMessage());
+            }
             return back()->with('error', 'El cliente no tiene correo registrado.');
         }
 
-        $contenido = $this->buildMensajeCobranza($factura);
-        $asunto    = $contenido['asunto'];
-        $mensaje   = $contenido['mensaje'];
+        // Validar que el correo tenga formato válido
+        $correo = trim($factura->cliente->correo);
+        if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+            return back()->with('error', 'El correo del cliente no tiene un formato válido: ' . $correo);
+        }
 
         try {
-            Mail::raw($mensaje, fn($m) => $m->to($factura->cliente->correo)->subject($asunto));
+            $contenido = $this->buildMensajeCobranza($factura);
+            $asunto    = $contenido['asunto'];
+            $mensaje   = $contenido['mensaje'];
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error al construir mensaje de cobranza: ' . $e->getMessage());
+            return back()->with('error', 'Error al preparar el correo. Intente nuevamente.');
+        }
+
+        try {
+            Mail::raw($mensaje, function ($message) use ($correo, $asunto) {
+                $message->to($correo)->subject($asunto);
+            });
 
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
-                $factura->cliente->correo, $asunto, $mensaje, 'ENVIADO',
+                $correo, $asunto, $mensaje, 'ENVIADO',
                 'Envío manual por botón', now(), 'Correo enviado correctamente'
             ));
 
             return back()->with('success', 'Correo enviado correctamente.');
-        } catch (\Exception $e) {
-            NotificacionFactura::create($this->baseNotif(
-                $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
-                $factura->cliente->correo, $asunto, $mensaje, 'ERROR',
-                'Error al enviar correo', null, $e->getMessage()
-            ));
-            return back()->with('error', 'No se pudo enviar el correo.');
+        } catch (\Throwable $e) {
+            $errorMsg = mb_substr($e->getMessage(), 0, 1000); // truncar para BD
+            \Illuminate\Support\Facades\Log::error('Error al enviar correo manual factura #' . $id . ': ' . $e->getMessage());
+            try {
+                NotificacionFactura::create($this->baseNotif(
+                    $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
+                    $correo, $asunto ?? 'Error', $mensaje ?? '', 'ERROR',
+                    'Error al enviar correo', null, $errorMsg
+                ));
+            } catch (\Throwable $ex) {
+                \Illuminate\Support\Facades\Log::error('Error adicional al registrar notificación de fallo: ' . $ex->getMessage());
+            }
+            return back()->with('error', 'No se pudo enviar el correo. ' . $e->getMessage());
         }
     }
 
@@ -151,8 +177,12 @@ class NotificacionController extends Controller
     {
         $factura = Factura::with('cliente')->findOrFail($id);
 
-        if (!$factura->cliente?->correo) {
+        $correo = trim($factura->cliente?->correo ?? '');
+        if ($correo === '') {
             return back()->with('error', 'El cliente no tiene correo registrado.');
+        }
+        if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+            return back()->with('error', 'El correo del cliente no tiene un formato válido: ' . $correo);
         }
 
         $fechaPago = $factura->fecha_abono
@@ -175,21 +205,29 @@ class NotificacionController extends Controller
         $mensaje .= "\nGracias por su confianza.\n\nAtentamente,\nSistema de Facturación";
 
         try {
-            Mail::raw($mensaje, fn($m) => $m->to($factura->cliente->correo)->subject($asunto));
+            Mail::raw($mensaje, function ($message) use ($correo, $asunto) {
+                $message->to($correo)->subject($asunto);
+            });
 
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
-                $factura->cliente->correo, $asunto, $mensaje, 'ENVIADO',
+                $correo, $asunto, $mensaje, 'ENVIADO',
                 'Confirmación de pago', now()
             ));
 
             return back()->with('success', 'Confirmación de pago enviada por correo.');
-        } catch (\Exception $e) {
-            NotificacionFactura::create($this->baseNotif(
-                $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
-                $factura->cliente->correo, $asunto, $mensaje, 'ERROR',
-                'Error al enviar correo', null, $e->getMessage()
-            ));
+        } catch (\Throwable $e) {
+            $errorMsg = mb_substr($e->getMessage(), 0, 1000);
+            \Illuminate\Support\Facades\Log::error('Error al enviar correo de pago factura #' . $id . ': ' . $e->getMessage());
+            try {
+                NotificacionFactura::create($this->baseNotif(
+                    $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
+                    $correo, $asunto, $mensaje, 'ERROR',
+                    'Error al enviar correo', null, $errorMsg
+                ));
+            } catch (\Throwable $ex) {
+                \Illuminate\Support\Facades\Log::error('Error adicional al registrar notificación de fallo: ' . $ex->getMessage());
+            }
             return back()->with('error', 'No se pudo enviar el correo.');
         }
     }

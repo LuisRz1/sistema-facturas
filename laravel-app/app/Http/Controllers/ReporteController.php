@@ -575,11 +575,12 @@ class ReporteController extends Controller
             $asunto       = "Reporte Deuda General — {$periodoLabel}";
 
             try {
-                Mail::send([], [], function ($mail) use ($correo, $asunto, $htmlReporte) {
-                    $mail->to($correo)->subject($asunto)->html($htmlReporte);
+                Mail::html($htmlReporte, function ($mail) use ($correo, $asunto) {
+                    $mail->to($correo)->subject($asunto);
                 });
                 return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Error al enviar reporte general por correo: ' . $e->getMessage());
                 return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
             }
         }
@@ -633,11 +634,12 @@ class ReporteController extends Controller
         $asunto      = "Reporte Financiero — {$clienteNombre} — {$periodoLabel}";
 
         try {
-            Mail::send([], [], function ($mail) use ($correo, $asunto, $htmlReporte) {
-                $mail->to($correo)->subject($asunto)->html($htmlReporte);
+            Mail::html($htmlReporte, function ($mail) use ($correo, $asunto) {
+                $mail->to($correo)->subject($asunto);
             });
             return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Error al enviar reporte específico por correo: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
         }
     }
