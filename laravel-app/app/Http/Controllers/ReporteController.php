@@ -3,10 +3,9 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Collection;
 use App\Services\WhatsAppGatewayService;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -576,17 +575,11 @@ class ReporteController extends Controller
             $asunto       = "Reporte Deuda General — {$periodoLabel}";
 
             try {
-                DB::disconnect();
-                Mail::html($htmlReporte, function ($message) use ($correo, $asunto) {
-                    $message->to($correo)
-                            ->subject($asunto)
-                            ->from(config('mail.from.address'), config('mail.from.name'));
+                Mail::send([], [], function ($mail) use ($correo, $asunto, $htmlReporte) {
+                    $mail->to($correo)->subject($asunto)->html($htmlReporte);
                 });
-                DB::reconnect();
                 return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
-            } catch (\Throwable $e) {
-                DB::reconnect();
-                Log::error('Error al enviar reporte general por correo: ' . $e->getMessage());
+            } catch (\Exception $e) {
                 return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
             }
         }
@@ -640,17 +633,11 @@ class ReporteController extends Controller
         $asunto      = "Reporte Financiero — {$clienteNombre} — {$periodoLabel}";
 
         try {
-            DB::disconnect();
-            Mail::html($htmlReporte, function ($message) use ($correo, $asunto) {
-                $message->to($correo)
-                        ->subject($asunto)
-                        ->from(config('mail.from.address'), config('mail.from.name'));
+            Mail::send([], [], function ($mail) use ($correo, $asunto, $htmlReporte) {
+                $mail->to($correo)->subject($asunto)->html($htmlReporte);
             });
-            DB::reconnect();
             return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
-        } catch (\Throwable $e) {
-            DB::reconnect();
-            Log::error('Error al enviar reporte específico por correo: ' . $e->getMessage());
+        } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
         }
     }
