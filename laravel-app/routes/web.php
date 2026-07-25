@@ -227,4 +227,23 @@ Route::middleware('auth')->group(function () {
         [ReporteController::class, 'enviarReporteCorreo']
     )->name('reportes.enviar-correo');
 
+    // ── CONCILIACION AUTOMATICA DE PAGOS ────────────────────────────────
+    Route::prefix('conciliacion')->name('conciliacion.')->group(function () {
+        Route::get('/dashboard', [App\Http\Controllers\Conciliacion\ConciliacionDashboardController::class, 'index'])->name('dashboard');
+        Route::get('/importar', [App\Http\Controllers\Conciliacion\ConciliacionImportarController::class, 'index'])->name('importar');
+        Route::post('/importar', [App\Http\Controllers\Conciliacion\ConciliacionImportarController::class, 'procesar'])->name('importar.procesar');
+        Route::get('/historial', [App\Http\Controllers\Conciliacion\ConciliacionHistorialController::class, 'index'])->name('historial');
+        Route::get('/historial/{id}', [App\Http\Controllers\Conciliacion\ConciliacionHistorialController::class, 'detalle'])->whereNumber('id')->name('historial.detalle');
+        Route::get('/bandeja', [App\Http\Controllers\Conciliacion\ConciliacionBandejaController::class, 'index'])->name('bandeja');
+        Route::post('/movimientos/{id}/conciliar', [App\Http\Controllers\Conciliacion\ConciliacionBandejaController::class, 'conciliarManual'])->whereNumber('id')->name('movimientos.conciliar');
+        Route::post('/movimientos/{id}/descartar', [App\Http\Controllers\Conciliacion\ConciliacionBandejaController::class, 'descartar'])->whereNumber('id')->name('movimientos.descartar');
+        Route::post('/movimientos/{id}/revisar-auto', [App\Http\Controllers\Conciliacion\ConciliacionBandejaController::class, 'revisarAutoConciliacion'])->whereNumber('id')->name('movimientos.revisar-auto');
+        Route::post('/movimientos/{id}/extornar', [App\Http\Controllers\Conciliacion\ConciliacionExtornoController::class, 'solicitar'])->whereNumber('id')->name('movimientos.extornar');
+        Route::post('/extornos/{id}/aprobar', [App\Http\Controllers\Conciliacion\ConciliacionExtornoController::class, 'aprobar'])->whereNumber('id')->name('extornos.aprobar');
+        Route::post('/extornos/{id}/rechazar', [App\Http\Controllers\Conciliacion\ConciliacionExtornoController::class, 'rechazar'])->whereNumber('id')->name('extornos.rechazar');
+        Route::get('/configuracion', [App\Http\Controllers\Conciliacion\ConciliacionConfigController::class, 'index'])->name('configuracion');
+        Route::post('/configuracion/parsers', [App\Http\Controllers\Conciliacion\ConciliacionConfigController::class, 'guardarParser'])->name('configuracion.parsers.guardar');
+        Route::get('/auditoria', [App\Http\Controllers\Conciliacion\ConciliacionAuditoriaController::class, 'index'])->name('auditoria');
+    });
+
 });

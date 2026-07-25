@@ -34,26 +34,22 @@ class Factura extends Model
         'usuario_creacion',
         'monto_abonado',
         'monto_pendiente',
+        'id_movimiento',
+        'estado_conciliacion',
     ];
 
-    // ── Relaciones ─────────────────────────────────────────────────────────
+    // ── Relaciones existentes ─────────────────────────────────────────────
 
     public function cliente(): BelongsTo
     {
         return $this->belongsTo(Cliente::class, 'id_cliente', 'id_cliente');
     }
 
-    /**
-     * El usuario principal responsable de la factura.
-     */
     public function usuario(): BelongsTo
     {
         return $this->belongsTo(Usuario::class, 'id_usuario', 'id_usuario');
     }
 
-    /**
-     * El usuario que creó el registro de la factura.
-     */
     public function usuarioCreacion(): BelongsTo
     {
         return $this->belongsTo(Usuario::class, 'usuario_creacion', 'id_usuario');
@@ -72,11 +68,20 @@ class Factura extends Model
             ->orderBy('id_pago');
     }
 
-    /**
-     * Si esta factura es una nota de crédito, obtiene la relación con el crédito.
-     */
     public function credito()
     {
         return $this->hasOne(Credito::class, 'id_factura', 'id_factura');
+    }
+
+    // ── Nuevas relaciones para Conciliacion ────────────────────────────────
+
+    public function movimiento(): BelongsTo
+    {
+        return $this->belongsTo(MovimientoBancario::class, 'id_movimiento', 'id_movimiento');
+    }
+
+    public function aplicacionesParciales(): HasMany
+    {
+        return $this->hasMany(AplicacionParcial::class, 'id_factura', 'id_factura');
     }
 }
