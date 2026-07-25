@@ -72,6 +72,7 @@ class ImportarFacturasController extends Controller
         $colSerieModificado  = null;
         $colNumeroModificado = null;
         $colDetalleItems     = null;
+        $colTC               = null; // Columna tipo de cambio (T/C)
 
         foreach ($encabezados as $columna => $valor) {
             $nombreEncabezado = strtoupper(trim((string)$valor));
@@ -89,6 +90,11 @@ class ImportarFacturasController extends Controller
                 (str_contains($nombreNormalizado, 'LINEAS') || str_contains($nombreNormalizado, 'LINEA')) &&
                 str_contains($nombreNormalizado, 'ITEM')) {
                 $colDetalleItems = $columna;
+            }
+
+            // Detectar columna T/C (tipo de cambio)
+            if (in_array($nombreEncabezado, ['T/C', 'TC', 'TIPO DE CAMBIO', 'T.C.', 'T.C'])) {
+                $colTC = $columna;
             }
         }
 
@@ -130,6 +136,7 @@ class ImportarFacturasController extends Controller
                 $montoIgv         = $this->monto($f['R'] ?? 0);   // IGV
                 $importeTotal     = $this->monto($f['V'] ?? 0);   // TOTAL
                 $moneda           = trim((string)($f['J'] ?? 'PEN')); // MONEDA
+                $montoCambioFila  = $this->monto($f[$colTC ?? 'K'] ?? 0); // T/C
 
                 // ── Recaudación ──────────────────────────────────────────────
                 // TOTAL RETENCIÓN (Z): si > 0 fuerza tipo RETENCION para esta fila
@@ -231,10 +238,20 @@ class ImportarFacturasController extends Controller
 
                 if ($estadoFinal === 'ANULADO') {
                     $montoPendiente = 0;
-                } elseif (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
+                } elseif ($tipoRecaudacionFila === 'AUTODETRACCION' || $montoRecaudacion <= 0) {
+                    // Sin recaudacion o autodetraccion: pendiente = importe_total
                     $montoPendiente = $importeTotal;
                 } else {
-                    $montoPendiente = max(0, $importeTotal - $montoRecaudacion);
+                    // DETRACCION/RETENCION no confirmada aún: pendiente = total + recaudacion_en_moneda
+                    if ($moneda === 'USD' && $montoCambioFila > 0) {
+                        $recEnMoneda = round($montoRecaudacion / $montoCambioFila, 2);
+                    } elseif ($moneda === 'USD') {
+                        // No hay TC disponible, conservar solo importe_total
+                        $recEnMoneda = 0;
+                    } else {
+                        $recEnMoneda = $montoRecaudacion;
+                    }
+                    $montoPendiente = $importeTotal + $recEnMoneda;
                 }
 
                 $tipoOperacion = trim((string)($f['I'] ?? '')); // TIPO DE OPERACIÓN
@@ -264,6 +281,7 @@ class ImportarFacturasController extends Controller
                         'fecha_emision'     => $fechaEmision,
                         'monto_abonado'     => 0.00,
                         'monto_pendiente'   => $montoPendiente,
+                        'monto_cambio'      => $montoCambioFila > 0 ? round($montoCambioFila, 4) : null,
                         'activo'            => 1,
                         'fecha_actualizacion' => now(),
                     ]);
@@ -292,6 +310,7 @@ class ImportarFacturasController extends Controller
                         'usuario_creacion'  => $idUsuario,
                         'monto_abonado'     => 0.00,
                         'monto_pendiente'   => $montoPendiente,
+                        'monto_cambio'      => $montoCambioFila > 0 ? round($montoCambioFila, 4) : null,
                     ]);
                     $accionSinc = 'INSERTADA';
                 }
@@ -347,7 +366,8 @@ class ImportarFacturasController extends Controller
             DB::table('sincronizacion_nubefact')
                 ->where('id_sincronizacion', $idSincronizacion)
                 ->update(['estado' => 'ERROR', 'fecha_fin' => now()]);
-            return back()->with('error', $this->mensajeErrorImportacionControlado($encabezados))->withInput();
+            $msgDetalle = app()->isLocal() ? ' [' . $e->getMessage() . ']' : '';
+            return back()->with('error', $this->mensajeErrorImportacionControlado($encabezados) . $msgDetalle)->withInput();
         }
 
         if ($insertadas > 0 && !empty($fechasImportadas)) {

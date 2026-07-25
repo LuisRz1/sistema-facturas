@@ -79,30 +79,33 @@
 
         .body { padding:20px 32px 32px; }
 
-        /* TABLE con layout fijo para no descuadrarse */
-        table { width:100%; border-collapse:collapse; table-layout:fixed; }
-        thead tr { background:#0f172a; color:#fff; }
-        thead th { padding:10px 12px; text-align:left; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        thead th.r { text-align:right; }
-        thead th.c { text-align:center; }
-        tbody tr { border-bottom:1px solid #f1f5f9; }
-        tbody tr:nth-child(even) { background:#f8fafc; }
-        tbody td { padding:9px 12px; font-size:10.5px; vertical-align:middle; overflow:hidden; text-overflow:ellipsis; }
-        tbody td.r { text-align:right; }
-        tbody td.c { text-align:center; }
+        /* TABLE */
+        table#tablaDeuda { width:100%; border-collapse:collapse; table-layout:fixed; }
+        table#tablaDeuda thead tr { background:#0f172a; color:#fff; }
+        table#tablaDeuda thead th { padding:6px 4px; text-align:left; font-size:8.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        table#tablaDeuda thead th.r { text-align:right; }
+        table#tablaDeuda thead th.c { text-align:center; }
+        table#tablaDeuda tbody tr { border-bottom:1px solid #f1f5f9; }
+        table#tablaDeuda tbody tr:nth-child(even) { background:#f8fafc; }
+        table#tablaDeuda tbody td { padding:7px 6px; font-size:10px; vertical-align:top; overflow:hidden; text-overflow:ellipsis; font-weight:700; }
+        table#tablaDeuda tbody td.r { text-align:right; }
+        table#tablaDeuda tbody td.c { text-align:center; }
 
-        /* Anchos fijos para las columnas */
-        col.col-rank   { width:4%; }
-        col.col-emp    { width:30%; }
-        col.col-neto   { width:12%; }
-        col.col-rec    { width:12%; }
-        col.col-neto-p { width:14%; }
-        col.col-cnt    { width:6%; }
-        col.col-est    { width:10%; }
+        /* Anchos fijos – 10 columnas en A4 landscape */
+        col.col-rank  { width:3%; }
+        col.col-emp   { width:19%; }
+        col.col-sub   { width:8%; }   /* SubTotal */
+        col.col-drec  { width:9%; }   /* Detrac/Rente Total */
+        col.col-total { width:9%; }   /* Total */
+        col.col-dcob  { width:9%; }   /* Detrac/Rent Cobrada */
+        col.col-tcob  { width:10%; }  /* Total Cobrado */
+        col.col-pend  { width:10%; }  /* Total Pendiente */
+        col.col-cnt   { width:4%; }
+        col.col-est   { width:19%; }
 
         .rank    { color:#94a3b8; font-size:10px; font-weight:700; text-align:center; }
-        .empresa { font-weight:700; font-size:11px; color:#0f172a; }
-        .ruc     { font-family:'Courier New',monospace; font-size:10px; color:#64748b; margin-top:1px; }
+        .empresa { font-weight:800; font-size:11px; color:#0f172a; }
+        .ruc     { font-family:'Courier New',monospace; font-size:10px; color:#64748b; margin-top:1px; font-weight:700; }
         .deuda-pen  { font-weight:800; font-family:'Courier New',monospace; font-size:11px; color:#dc2626; }
         .deuda-usd  { font-weight:700; font-family:'Courier New',monospace; font-size:10.5px; color:#1d4ed8; }
         .detrac-val { font-family:'Courier New',monospace; font-size:10px; color:#d97706; font-weight:600; }
@@ -123,7 +126,7 @@
         @media print {
             body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
             .no-print { display:none !important; }
-            @page { size:A4 portrait; margin:10mm; }
+            @page { size:A4 landscape; margin:8mm; }
         }
     </style>
 </head>
@@ -166,27 +169,34 @@
     $totalSubtotalPen = (float) ($totalSubtotalPen ?? collect($clientes)->sum(fn($c) => (float) ($c['subtotal_pen'] ?? 0)));
     $countEmpresas = count($clientes);
     $countVencidas = collect($clientes)->filter(fn($c) => in_array('VENCIDO', $c['estados']))->count();
-    $totalFacturado     = (float) ($dashboard['total_facturado'] ?? 0);
-    $saldoPendiente     = (float) ($dashboard['saldo_pendiente'] ?? 0);
-    $cobrado            = (float) ($dashboard['cobrado'] ?? 0);
     $montoRecaudacion   = (float) ($dashboard['monto_recaudacion'] ?? 0);
     $recaudDepositada   = (float) ($dashboard['recaud_depositada'] ?? 0);
     $recaudSinConfirmar = (float) ($dashboard['recaud_sin_confirmar'] ?? 0);
+    // PEN / USD split desde $clientes (ya acumulados en el controller)
+    $totalFacPEN  = array_sum(array_column($clientes, 'deuda_pen'));
+    $totalFacUSD  = array_sum(array_column($clientes, 'deuda_usd'));
+    $saldoPendPEN = $totalPendientePen;
+    $saldoPendUSD = $totalPendienteUsd ?? 0;
+    $cobradoPEN   = array_sum(array_column($clientes, 'abonado_pen'));
+    $cobradoUSD   = array_sum(array_column($clientes, 'abonado_usd'));
 @endphp
 
 <table class="stats-grid three">
     <tr>
         <td class="sc-blue">
             <div class="stat-label">Total Facturado</div>
-            <div class="stat-value">S/ {{ number_format($totalFacturado, 2) }}</div>
+            @if($totalFacPEN > 0)<div class="stat-value">PEN {{ number_format($totalFacPEN, 2) }}</div>@endif
+            @if($totalFacUSD > 0)<div class="stat-value" style="font-size:13px;margin-top:2px;">USD {{ number_format($totalFacUSD, 2) }}</div>@endif
         </td>
         <td class="sc-amber">
             <div class="stat-label">Saldo Pendiente</div>
-            <div class="stat-value">S/ {{ number_format($saldoPendiente, 2) }}</div>
+            @if($saldoPendPEN > 0)<div class="stat-value" style="color:#d97706;">PEN {{ number_format($saldoPendPEN, 2) }}</div>@endif
+            @if($saldoPendUSD > 0)<div class="stat-value" style="color:#d97706;font-size:13px;margin-top:2px;">USD {{ number_format($saldoPendUSD, 2) }}</div>@endif
         </td>
         <td class="sc-green">
             <div class="stat-label">Cobrado</div>
-            <div class="stat-value">S/ {{ number_format($cobrado, 2) }}</div>
+            @if($cobradoPEN > 0)<div class="stat-value" style="color:#059669;">PEN {{ number_format($cobradoPEN, 2) }}</div>@endif
+            @if($cobradoUSD > 0)<div class="stat-value" style="color:#059669;font-size:13px;margin-top:2px;">USD {{ number_format($cobradoUSD, 2) }}</div>@endif
         </td>
     </tr>
 </table>
@@ -213,29 +223,33 @@
     @else
         <div class="aviso">
             Facturas con estado: {{ $estadoLabel ?? 'PENDIENTE · VENCIDO · PAGO PARCIAL · DIFERENCIA PENDIENTE' }}.
-            Ordenadas de mayor a menor saldo pendiente en soles.
+            Ordenadas alfabéticamente por razón social. Recaudación (detracción/retención) siempre en PEN.
         </div>
 
         <table id="tablaDeuda">
             <colgroup>
                 <col class="col-rank">
                 <col class="col-emp">
-                <col class="col-neto">   {{-- SUB_TOTAL --}}
-                <col class="col-rec">    {{-- RECAUDACIÓN --}}
-                <col class="col-neto">   {{-- TOTAL --}}
-                <col class="col-neto-p"> {{-- SALDO PENDIENTE --}}
-                <col class="col-cnt">    {{-- FACT. --}}
-                <col class="col-est">    {{-- ESTADOS --}}
+                <col class="col-sub">
+                <col class="col-drec">
+                <col class="col-total">
+                <col class="col-dcob">
+                <col class="col-tcob">
+                <col class="col-pend">
+                <col class="col-cnt">
+                <col class="col-est">
             </colgroup>
             <thead>
             <tr>
                 <th class="c">#</th>
                 <th>EMPRESA / CLIENTE</th>
-                <th class="r">SUB TOTAL (S/)</th>
-                <th class="r">RECAUDACIÓN (S/)</th>
-                <th class="r">TOTAL (S/)</th>
-                <th class="r">SALDO PENDIENTE (S/)</th>
-                <th class="c">FACT.</th>
+                <th class="r">SUB TOTAL</th>
+                <th class="r" style="color:#fde68a;">DETRAC/RENTE TOTAL</th>
+                <th class="r">TOTAL (+IGV)</th>
+                <th class="r" style="color:#93c5fd;">DETRAC/RENT COBRADA</th>
+                <th class="r" style="color:#86efac;">TOTAL COBRADO</th>
+                <th class="r" style="color:#fca5a5;">TOTAL PENDIENTE</th>
+                <th class="c">N° FACT.</th>
                 <th>ESTADOS</th>
             </tr>
             </thead>
@@ -243,8 +257,10 @@
             @php $item = 1; @endphp
             @foreach($clientes as $c)
                 @php
-                    $tieneVenc = in_array('VENCIDO', $c['estados']);
-                    $rowStyle  = $tieneVenc ? 'background:#fff5f5 !important;' : '';
+                    $tieneVenc  = in_array('VENCIDO', $c['estados']);
+                    $tienePEN   = ($c['deuda_pen'] ?? 0) > 0;
+                    $tieneUSD   = ($c['deuda_usd'] ?? 0) > 0;
+                    $rowStyle   = $tieneVenc ? 'background:#fff5f5 !important;' : '';
                 @endphp
                 <tr style="{{ $rowStyle }}">
                     <td class="rank">{{ $item++ }}</td>
@@ -252,36 +268,79 @@
                         <div class="empresa">{{ $c['razon_social'] }}</div>
                         <div class="ruc">{{ $c['ruc'] }}</div>
                     </td>
-                    {{-- SUB TOTAL (base sin IGV) --}}
+                    {{-- SUB TOTAL --}}
                     <td class="r">
-                        @if(($c['subtotal_pen'] ?? 0) > 0)
-                            <span class="pendiente-val" style="color:#1d4ed8;">S/ {{ number_format($c['subtotal_pen'], 2) }}</span>
+                        @if($tienePEN && ($c['subtotal_pen'] ?? 0) > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0f172a;font-weight:800;">S/ {{ number_format($c['subtotal_pen'], 2) }}</div>
+                        @endif
+                        @if($tieneUSD && ($c['subtotal_usd'] ?? 0) > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0f172a;font-weight:800;">USD {{ number_format($c['subtotal_usd'], 2) }}</div>
+                        @endif
+                        @if(!$tienePEN && !$tieneUSD)<span style="color:#cbd5e1;">—</span>@endif
+                    </td>
+                    {{-- DETRAC/RENTE TOTAL (siempre en PEN soles) --}}
+                    <td class="r">
+                        @if(($c['recaudacion_pen'] ?? 0) > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#d97706;font-weight:800;">PEN {{ number_format($c['recaudacion_pen'], 2) }}</div>
                         @else
                             <span style="color:#cbd5e1;">—</span>
                         @endif
                     </td>
-                    {{-- RECAUDACIÓN --}}
+                    {{-- TOTAL (+IGV) --}}
                     <td class="r">
-                        @if($c['recaudacion_pen'] > 0)
-                            <span class="detrac-val">S/ {{ number_format($c['recaudacion_pen'], 2) }}</span>
-                        @else
+                        @if($tienePEN && $c['deuda_pen'] > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0f172a;font-weight:800;">S/ {{ number_format($c['deuda_pen'], 2) }}</div>
+                            @if(($c['igv_pen'] ?? 0) > 0)
+                                <div style="font-size:8px;color:#64748b;font-weight:700;">IGV S/ {{ number_format($c['igv_pen'], 2) }}</div>
+                            @endif
+                        @endif
+                        @if($tieneUSD && $c['deuda_usd'] > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0f172a;font-weight:800;">USD {{ number_format($c['deuda_usd'], 2) }}</div>
+                            @if(($c['igv_usd'] ?? 0) > 0)
+                                <div style="font-size:8px;color:#64748b;font-weight:700;">IGV USD {{ number_format($c['igv_usd'], 2) }}</div>
+                            @endif
+                        @endif
+                        @if(!$tienePEN && !$tieneUSD)<span style="color:#cbd5e1;">—</span>@endif
+                    </td>
+                    {{-- DETRAC/RENT COBRADA (soles; equiv USD abajo si aplica) --}}
+                    <td class="r">
+                        @if(($c['recaud_cobrada_pen'] ?? 0) > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#2563eb;font-weight:800;">PEN {{ number_format($c['recaud_cobrada_pen'], 2) }}</div>
+                        @endif
+                        @if(($c['recaudacion_usd'] ?? 0) > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#1d4ed8;">USD {{ number_format($c['recaudacion_usd'], 2) }}</div>
+                        @endif
+                        @if(($c['recaud_cobrada_pen'] ?? 0) == 0 && ($c['recaudacion_usd'] ?? 0) == 0)
                             <span style="color:#cbd5e1;">—</span>
                         @endif
                     </td>
-                    {{-- TOTAL (importe total incluyendo IGV) --}}
+                    {{-- TOTAL COBRADO --}}
                     <td class="r">
-                        @if($c['deuda_pen'] > 0)
-                            <span class="deuda-pen">S/ {{ number_format($c['deuda_pen'], 2) }}</span>
-                            <div style="font-size:8.5px;color:#64748b;font-family:Arial, Helvetica, sans-serif;">
-                                IGV: {{ ($c['igv_pen'] ?? 0) > 0 ? 'S/ '.number_format($c['igv_pen'], 2) : '—' }}
-                            </div>
-                        @else
+                        @if(($c['abonado_pen'] ?? 0) > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#059669;font-weight:800;">S/ {{ number_format($c['abonado_pen'], 2) }}</div>
+                        @endif
+                        @if(($c['abonado_usd'] ?? 0) > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#0ea5e9;font-weight:700;">USD {{ number_format($c['abonado_usd'], 2) }}</div>
+                        @endif
+                        @php $pagadas = ($c['pagadas_pen'] ?? 0) + ($c['pagadas_usd'] ?? 0); @endphp
+                        @if($pagadas > 0)
+                            <div style="font-size:8px;color:#059669;">{{ $pagadas }} factura(s) pagada(s)</div>
+                        @endif
+                        @if(($c['abonado_pen'] ?? 0) == 0 && ($c['abonado_usd'] ?? 0) == 0)
                             <span style="color:#cbd5e1;">—</span>
                         @endif
                     </td>
-                    {{-- SALDO PENDIENTE --}}
+                    {{-- TOTAL PENDIENTE --}}
                     <td class="r">
-                        <span class="pendiente-val">S/ {{ number_format($c['pendiente_pen'], 2) }}</span>
+                        @if(($c['pendiente_pen'] ?? 0) > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#dc2626;font-weight:800;">S/ {{ number_format($c['pendiente_pen'], 2) }}</div>
+                        @endif
+                        @if(($c['pendiente_usd'] ?? 0) > 0)
+                            <div style="font-family:'Courier New',monospace;font-size:10px;color:#ef4444;font-weight:700;">USD {{ number_format($c['pendiente_usd'], 2) }}</div>
+                        @endif
+                        @if(($c['pendiente_pen'] ?? 0) == 0 && ($c['pendiente_usd'] ?? 0) == 0)
+                            <span style="color:#cbd5e1;">—</span>
+                        @endif
                     </td>
                     <td class="c" style="font-weight:700;color:#64748b;">{{ $c['facturas'] }}</td>
                     <td>
@@ -297,32 +356,58 @@
             <tr class="total-row">
                 <td class="c" style="font-size:9px;color:#94a3b8;">TOTAL</td>
                 <td style="font-size:11px;color:#f1f5f9;">{{ $countEmpresas }} EMPRESAS</td>
-                {{-- Total SubTotal --}}
+                {{-- SubTotal --}}
                 <td class="r">
-                    <span style="font-family:'Courier New',monospace;color:#93c5fd;">
-                        S/ {{ number_format($totalSubtotalPen ?? 0, 2) }}
-                    </span>
+                    <div style="font-family:'Courier New',monospace;color:#fcd34d;font-weight:800;">S/ {{ number_format($totalSubtotalPen ?? 0, 2) }}</div>
+                    @if(($totalSubtotalUsd ?? 0) > 0)
+                        <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#fcd34d;font-weight:800;">USD {{ number_format($totalSubtotalUsd, 2) }}</div>
+                    @endif
                 </td>
-                {{-- Total Recaudación --}}
+                {{-- Detrac/Rente Total (PEN) --}}
                 <td class="r">
-                    <span style="font-family:'Courier New',monospace;color:#fcd34d;">
-                        S/ {{ number_format($totalRecaudacionPen, 2) }}
-                    </span>
+                    <span style="font-family:'Courier New',monospace;color:#fcd34d;">PEN {{ number_format($totalRecaudacionPen, 2) }}</span>
                 </td>
-                {{-- Total General (antes DEUDA BRUTA) --}}
+                {{-- Total (+IGV) --}}
                 <td class="r">
-                    <span style="font-family:'Courier New',monospace;color:#fca5a5;">
-                        S/ {{ number_format($totalPen, 2) }}
-                    </span>
-                    <div style="font-size:8.5px;color:#cbd5e1;font-family:Arial, Helvetica, sans-serif;">
-                        IGV: {{ ($totalIgvPen ?? 0) > 0 ? 'S/ '.number_format($totalIgvPen, 2) : '—' }}
-                    </div>
+                    <div style="font-family:'Courier New',monospace;color:#fff;font-weight:800;">S/ {{ number_format($totalPen, 2) }}</div>
+                    <div style="font-size:8px;color:#cbd5e1;font-weight:700;">IGV: {{ ($totalIgvPen ?? 0) > 0 ? 'S/ '.number_format($totalIgvPen, 2) : '—' }}</div>
+                    @if(($totalUsd ?? 0) > 0)
+                        <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#fff;font-weight:800;">USD {{ number_format($totalUsd, 2) }}</div>
+                        @if(($totalIgvUsd ?? 0) > 0)
+                            <div style="font-size:8px;color:#cbd5e1;font-weight:700;">IGV USD {{ number_format($totalIgvUsd, 2) }}</div>
+                        @endif
+                    @endif
                 </td>
-                {{-- Saldo Pendiente Total --}}
+                {{-- Detrac/Rent Cobrada --}}
                 <td class="r">
-                    <span style="font-family:'Courier New',monospace;font-size:13px;color:#fca5a5;font-weight:900;">
-                        S/ {{ number_format($totalNetoPen, 2) }}
-                    </span>
+                    @if(($totalRecaudCobradaPen ?? 0) > 0)
+                        <div style="font-family:'Courier New',monospace;color:#93c5fd;">PEN {{ number_format($totalRecaudCobradaPen, 2) }}</div>
+                    @endif
+                    @if(($totalRecaudacionUsd ?? 0) > 0)
+                        <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#bfdbfe;">USD {{ number_format($totalRecaudacionUsd, 2) }}</div>
+                    @endif
+                    @if(!($totalRecaudCobradaPen ?? 0) && !($totalRecaudacionUsd ?? 0))
+                        <span style="color:#64748b;">—</span>
+                    @endif
+                </td>
+                {{-- Total Cobrado --}}
+                <td class="r">
+                    @if(($totalAbonadoPen ?? 0) > 0)
+                        <div style="font-family:'Courier New',monospace;color:#6ee7b7;">S/ {{ number_format($totalAbonadoPen, 2) }}</div>
+                    @endif
+                    @if(($totalAbonadoUsd ?? 0) > 0)
+                        <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#7dd3fc;">USD {{ number_format($totalAbonadoUsd, 2) }}</div>
+                    @endif
+                    @if(!($totalAbonadoPen ?? 0) && !($totalAbonadoUsd ?? 0))
+                        <span style="color:#64748b;">—</span>
+                    @endif
+                </td>
+                {{-- Total Pendiente --}}
+                <td class="r">
+                    <div style="font-family:'Courier New',monospace;font-size:12px;font-weight:900;color:#fca5a5;">S/ {{ number_format($totalPendientePen, 2) }}</div>
+                    @if(($totalPendienteUsd ?? 0) > 0)
+                        <div style="font-family:'Courier New',monospace;font-size:9.5px;color:#fca5a5;">USD {{ number_format($totalPendienteUsd, 2) }}</div>
+                    @endif
                 </td>
                 <td class="c" style="color:#94a3b8;">{{ collect($clientes)->sum('facturas') }}</td>
                 <td></td>

@@ -223,9 +223,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? max(0, $f->importe_total - ($f->monto_recaudacion ?? 0))
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
         $facturas = $this->enriquecerRelacionCredito($facturas);
@@ -294,9 +292,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? $f->importe_total
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
         $facturas = $this->enriquecerRelacionCredito($facturas);
@@ -444,9 +440,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? $f->importe_total
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
         $facturas = $this->enriquecerRelacionCredito($facturas);
@@ -596,9 +590,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? $f->importe_total
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
         $facturas = $this->enriquecerRelacionCredito($facturas);
@@ -709,8 +701,9 @@ class ReporteController extends Controller
             ->where('f.activo', 1)
             ->select([
                 'f.id_factura', 'c.id_cliente', 'c.razon_social', 'c.ruc',
-                'f.moneda', 'f.estado', 'f.importe_total', 'f.monto_pendiente', 'f.subtotal_gravado', 'f.monto_igv',
+                'f.moneda', 'f.estado', 'f.importe_total', 'f.monto_pendiente', 'f.subtotal_gravado', 'f.monto_igv', 'f.monto_abonado',
                 DB::raw('COALESCE(rec.total_recaudacion, 0) AS monto_recaudacion'),
+                DB::raw('COALESCE(rec.porcentaje, 0) AS porcentaje_recaudacion'),
                 'rec.fecha_recaudacion',
             ]);
 
@@ -730,53 +723,74 @@ class ReporteController extends Controller
             $id = $f->id_cliente;
             if (!isset($clientes[$id])) {
                 $clientes[$id] = [
-                    'razon_social'   => $f->razon_social,
-                    'ruc'            => $f->ruc,
-                    'deuda_pen'      => 0,
-                    'deuda_usd'      => 0,
-                    'subtotal_pen'   => 0,
-                    'subtotal_usd'   => 0,
-                    'igv_pen'        => 0,
-                    'igv_usd'        => 0,
-                    'recaudacion_pen'=> 0,
-                    'recaudacion_usd'=> 0,
-                    'pendiente_pen'  => 0,
-                    'pendiente_usd'  => 0,
-                    'facturas'       => 0,
-                    'estados'        => [],
+                    'razon_social'       => $f->razon_social,
+                    'ruc'                => $f->ruc,
+                    'deuda_pen'          => 0,
+                    'deuda_usd'          => 0,
+                    'subtotal_pen'       => 0,
+                    'subtotal_usd'       => 0,
+                    'igv_pen'            => 0,
+                    'igv_usd'            => 0,
+                    // Recaudación: siempre en soles (total_recaudacion)
+                    'recaudacion_pen'    => 0,  // suma de TODAS las soles (de cualquier moneda)
+                    'recaud_cobrada_pen' => 0,  // soles pagados (fecha_recaudacion set)
+                    // Equivalentes USD pagados (para facturas USD con fecha_recaudacion)
+                    'recaudacion_usd'    => 0,
+                    'abonado_pen'        => 0,
+                    'abonado_usd'        => 0,
+                    'pendiente_pen'      => 0,
+                    'pendiente_usd'      => 0,
+                    'pagadas_pen'        => 0,
+                    'pagadas_usd'        => 0,
+                    'facturas'           => 0,
+                    'estados'            => [],
                 ];
             }
             $clientes[$id]['facturas']++;
             $pendienteReal = $f->monto_pendiente;
+            // Recaudación siempre en soles (total_recaudacion), sin importar la moneda de la factura
+            $clientes[$id]['recaudacion_pen'] += $f->monto_recaudacion;
+            if (!empty($f->fecha_recaudacion)) {
+                $clientes[$id]['recaud_cobrada_pen'] += $f->monto_recaudacion;
+            }
             if ($f->moneda === 'USD') {
                 $clientes[$id]['deuda_usd']        += $f->importe_total;
                 $clientes[$id]['subtotal_usd']     += ($f->subtotal_gravado ?? 0);
                 $clientes[$id]['igv_usd']          += ($f->monto_igv ?? 0);
-                $clientes[$id]['recaudacion_usd']  += $f->monto_recaudacion;
+                $clientes[$id]['abonado_usd']      += ($f->monto_abonado ?? 0);
                 $clientes[$id]['pendiente_usd']    += $pendienteReal;
+                // Para USD: guardar el equivalente USD pagado en recaudacion_usd
+                if (!empty($f->fecha_recaudacion) && ($f->porcentaje_recaudacion ?? 0) > 0) {
+                    $clientes[$id]['recaudacion_usd'] += $f->porcentaje_recaudacion;
+                }
+                if ($f->estado === 'PAGADA') $clientes[$id]['pagadas_usd']++;
             } else {
                 $clientes[$id]['deuda_pen']        += $f->importe_total;
                 $clientes[$id]['subtotal_pen']     += ($f->subtotal_gravado ?? 0);
                 $clientes[$id]['igv_pen']          += ($f->monto_igv ?? 0);
-                $clientes[$id]['recaudacion_pen']  += $f->monto_recaudacion;
+                $clientes[$id]['abonado_pen']      += ($f->monto_abonado ?? 0);
                 $clientes[$id]['pendiente_pen']    += $pendienteReal;
+                if ($f->estado === 'PAGADA') $clientes[$id]['pagadas_pen']++;
             }
             if (!in_array($f->estado, $clientes[$id]['estados'])) {
                 $clientes[$id]['estados'][] = $f->estado;
             }
         }
-        uasort($clientes, fn($a, $b) => $b['pendiente_pen'] <=> $a['pendiente_pen']);
+        uasort($clientes, fn($a, $b) => strcmp($a['razon_social'], $b['razon_social']));
 
-        $totalPen            = array_sum(array_column($clientes, 'deuda_pen'));
-        $totalUsd            = array_sum(array_column($clientes, 'deuda_usd'));
-        $totalSubtotalPen    = array_sum(array_column($clientes, 'subtotal_pen'));
-        $totalSubtotalUsd    = array_sum(array_column($clientes, 'subtotal_usd'));
-        $totalIgvPen         = array_sum(array_column($clientes, 'igv_pen'));
-        $totalIgvUsd         = array_sum(array_column($clientes, 'igv_usd'));
-        $totalRecaudacionPen = array_sum(array_column($clientes, 'recaudacion_pen'));
-        $totalRecaudacionUsd = array_sum(array_column($clientes, 'recaudacion_usd'));
-        $totalPendientePen   = array_sum(array_column($clientes, 'pendiente_pen'));
-        $totalPendienteUsd   = array_sum(array_column($clientes, 'pendiente_usd'));
+        $totalPen              = array_sum(array_column($clientes, 'deuda_pen'));
+        $totalUsd              = array_sum(array_column($clientes, 'deuda_usd'));
+        $totalSubtotalPen      = array_sum(array_column($clientes, 'subtotal_pen'));
+        $totalSubtotalUsd      = array_sum(array_column($clientes, 'subtotal_usd'));
+        $totalIgvPen           = array_sum(array_column($clientes, 'igv_pen'));
+        $totalIgvUsd           = array_sum(array_column($clientes, 'igv_usd'));
+        $totalRecaudacionPen   = array_sum(array_column($clientes, 'recaudacion_pen'));
+        $totalRecaudCobradaPen = array_sum(array_column($clientes, 'recaud_cobrada_pen'));
+        $totalRecaudacionUsd   = array_sum(array_column($clientes, 'recaudacion_usd'));
+        $totalAbonadoPen       = array_sum(array_column($clientes, 'abonado_pen'));
+        $totalAbonadoUsd       = array_sum(array_column($clientes, 'abonado_usd'));
+        $totalPendientePen     = array_sum(array_column($clientes, 'pendiente_pen'));
+        $totalPendienteUsd     = array_sum(array_column($clientes, 'pendiente_usd'));
 
         $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
@@ -798,7 +812,8 @@ class ReporteController extends Controller
             'clientes', 'totalPen', 'totalUsd',
             'totalSubtotalPen', 'totalSubtotalUsd',
             'totalIgvPen', 'totalIgvUsd',
-            'totalRecaudacionPen', 'totalRecaudacionUsd',
+            'totalRecaudacionPen', 'totalRecaudCobradaPen', 'totalRecaudacionUsd',
+            'totalAbonadoPen', 'totalAbonadoUsd',
             'totalPendientePen', 'totalPendienteUsd', 'periodoLabel', 'fechaDesde', 'fechaHasta',
             'estadoLabel', 'usuariosDestino', 'todosUsuarios', 'estadosFiltroJson', 'dashboard'
         ));
@@ -828,9 +843,7 @@ class ReporteController extends Controller
 
         $facturas = $facturas->map(function ($f) {
             $f->neto_caja         = $f->importe_total - ($f->monto_recaudacion ?? 0);
-            $f->pendiente_display = $f->estado === 'DIFERENCIA PENDIENTE'
-                ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                : $f->monto_pendiente;
+            $f->pendiente_display = $f->monto_pendiente;
             return $f;
         });
 
@@ -940,9 +953,7 @@ class ReporteController extends Controller
             $idxE = 1;
             foreach ($facturasAgrupadas as $empresa => $grp) {
                 $tot = $facturasAgrupParaTotales[$empresa] ?? collect();
-                $pendCalc = $tot->sum(fn($f) => $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                $pendCalc = $tot->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0);
                 $estados  = $grp->pluck('estado')->unique()->values()->implode(', ');
                 $altFill  = $idxE % 2 === 0
                     ? ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => $C_ALT]]
@@ -974,10 +985,7 @@ class ReporteController extends Controller
             $sRes->setCellValue("F{$dRow}", (float) $facturasParaTotales->sum('monto_recaudacion'));
             $sRes->setCellValue("G{$dRow}", (float) $facturasParaTotales->sum('importe_total'));
             $sRes->setCellValue("H{$dRow}", (float) $facturasParaTotales->sum('monto_abonado'));
-            $sRes->setCellValue("I{$dRow}", (float) $facturasParaTotales->sum(fn($f) =>
-                $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+            $sRes->setCellValue("I{$dRow}", (float) $facturasParaTotales->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0));
             $sRes->setCellValue("J{$dRow}", $facturasParaTotales->count());
             $sRes->getStyle("A{$dRow}:K{$dRow}")->applyFromArray($estiloTotal);
             foreach (['D','E','F','G','H','I'] as $nc) {
@@ -1009,9 +1017,7 @@ class ReporteController extends Controller
                 foreach ($grpFact as $f) {
                     $esH = in_array((int) $f->id_factura, $orphanFacturaIds);
                     $rec = (float) ($f->monto_recaudacion ?? 0);
-                    $pen = $esH ? 0 : ($f->estado === 'DIFERENCIA PENDIENTE'
-                        ? max(0, ($f->importe_total ?? 0) - $rec)
-                        : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                    $pen = $esH ? 0 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
                     $pagosStr = (function () use ($f, $pagosMap) {
                         $pp = $pagosMap->get($f->id_factura, collect());
                         if ($pp->isEmpty()) return '—';
@@ -1059,10 +1065,7 @@ class ReporteController extends Controller
                 $ds->setCellValue("H{$dRow2}", (float) $totGrp->sum('monto_recaudacion'));
                 $ds->setCellValue("J{$dRow2}", (float) $totGrp->sum('importe_total'));
                 $ds->setCellValue("L{$dRow2}", (float) $totGrp->sum('monto_abonado'));
-                $ds->setCellValue("N{$dRow2}", (float) $totGrp->sum(fn($f) =>
-                    $f->estado === 'DIFERENCIA PENDIENTE'
-                        ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                        : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+                $ds->setCellValue("N{$dRow2}", (float) $totGrp->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0));
                 $ds->getStyle("A{$dRow2}:O{$dRow2}")->applyFromArray($estiloTotal);
                 foreach (['F','G','H','J','L','N'] as $nc) {
                     $ds->getStyle("{$nc}{$dRow2}")->getNumberFormat()->setFormatCode('#,##0.00');
@@ -1117,9 +1120,7 @@ class ReporteController extends Controller
                 foreach ($grpFact as $f) {
                     $esH = in_array((int) $f->id_factura, $orphanFacturaIds);
                     $rec = (float) ($f->monto_recaudacion ?? 0);
-                    $pen = $esH ? 0 : ($f->estado === 'DIFERENCIA PENDIENTE'
-                        ? max(0, ($f->importe_total ?? 0) - $rec)
-                        : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                    $pen = $esH ? 0 : ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
                     $pagosStr = (function () use ($f, $pagosMap) {
                         $pp = $pagosMap->get($f->id_factura, collect());
                         if ($pp->isEmpty()) return '—';
@@ -1165,10 +1166,7 @@ class ReporteController extends Controller
             $su->setCellValue("J{$dRow3}", (float) $facturasParaTotales->sum('monto_recaudacion'));
             $su->setCellValue("L{$dRow3}", (float) $facturasParaTotales->sum('importe_total'));
             $su->setCellValue("N{$dRow3}", (float) $facturasParaTotales->sum('monto_abonado'));
-            $su->setCellValue("P{$dRow3}", (float) $facturasParaTotales->sum(fn($f) =>
-                $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+            $su->setCellValue("P{$dRow3}", (float) $facturasParaTotales->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0));
             $su->getStyle("A{$dRow3}:Q{$dRow3}")->applyFromArray($estiloTotal);
             foreach (['H','I','J','L','N','P'] as $nc) {
                 $su->getStyle("{$nc}{$dRow3}")->getNumberFormat()->setFormatCode('#,##0.00');
@@ -1197,9 +1195,7 @@ class ReporteController extends Controller
             $idxR  = 1;
             foreach ($facturasAgrupadas as $empresa => $grp) {
                 $tot     = $facturasAgrupParaTotales[$empresa] ?? collect();
-                $pendR   = (float) $tot->sum(fn($f) => $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                $pendR   = (float) $tot->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0);
                 $estados = $grp->pluck('estado')->unique()->values()->implode(', ');
 
                 $sr->setCellValue("A{$dRow4}", $idxR++);
@@ -1233,10 +1229,7 @@ class ReporteController extends Controller
             $sr->setCellValue("G{$dRow4}", (float) $facturasParaTotales->sum('monto_recaudacion'));
             $sr->setCellValue("H{$dRow4}", (float) $facturasParaTotales->sum('importe_total'));
             $sr->setCellValue("I{$dRow4}", (float) $facturasParaTotales->sum('monto_abonado'));
-            $sr->setCellValue("J{$dRow4}", (float) $facturasParaTotales->sum(fn($f) =>
-                $f->estado === 'DIFERENCIA PENDIENTE'
-                    ? max(0, ($f->importe_total ?? 0) - ($f->monto_recaudacion ?? 0))
-                    : ($f->pendiente_display ?? $f->monto_pendiente ?? 0)));
+            $sr->setCellValue("J{$dRow4}", (float) $facturasParaTotales->sum(fn($f) => $f->pendiente_display ?? $f->monto_pendiente ?? 0));
             $sr->getStyle("A{$dRow4}:K{$dRow4}")->applyFromArray($estiloTotal);
             foreach (['E','F','G','H','I','J'] as $nc) {
                 $sr->getStyle("{$nc}{$dRow4}")->getNumberFormat()->setFormatCode('#,##0.00');

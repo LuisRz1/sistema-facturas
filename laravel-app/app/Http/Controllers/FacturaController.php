@@ -46,6 +46,7 @@ class FacturaController extends Controller
             'rec.total_recaudacion as monto_recaudacion',
             'rec.porcentaje as porcentaje_recaudacion',
             'rec.fecha_recaudacion',
+            'f.monto_cambio',
             DB::raw('NULL as ruta_comprobante_pago'),
         ];
 
@@ -63,7 +64,26 @@ class FacturaController extends Controller
             ->orderByDesc('f.numero')
             ->get();
 
-        $facturasCollection = collect($query->map(function ($f) {
+        // Cargar notificaciones en bloque (evita N+1 de 2 queries por factura)
+        $allFacturaIds = $query->pluck('id_factura')->toArray();
+
+        $notifWaMap = DB::table('notificacion_factura')
+            ->whereIn('id_factura', $allFacturaIds)
+            ->where('canal', 'WHATSAPP')
+            ->orderByDesc('id_notificacion')
+            ->get()
+            ->groupBy('id_factura')
+            ->map->first();
+
+        $notifCorreoMap = DB::table('notificacion_factura')
+            ->whereIn('id_factura', $allFacturaIds)
+            ->where('canal', 'CORREO')
+            ->orderByDesc('id_notificacion')
+            ->get()
+            ->groupBy('id_factura')
+            ->map->first();
+
+        $facturasCollection = collect($query->map(function ($f) use ($notifWaMap, $notifCorreoMap) {
             return (object) array_merge((array) $f, [
                 'comprobante_url' => $this->resolveComprobanteUrl($f->ruta_comprobante_pago ?? null),
                 'cliente' => (object) [
@@ -73,44 +93,54 @@ class FacturaController extends Controller
                     'correo'       => $f->cliente_correo,
                     'celular'      => $f->cliente_celular,
                 ],
-                'ultima_notif_wa' => DB::table('notificacion_factura')
-                    ->where('id_factura', $f->id_factura)
-                    ->where('canal', 'WHATSAPP')
-                    ->orderByDesc('id_notificacion')
-                    ->first(),
-                'ultima_notif_correo' => DB::table('notificacion_factura')
-                    ->where('id_factura', $f->id_factura)
-                    ->where('canal', 'CORREO')
-                    ->orderByDesc('id_notificacion')
-                    ->first(),
+                'ultima_notif_wa'     => $notifWaMap->get($f->id_factura),
+                'ultima_notif_correo' => $notifCorreoMap->get($f->id_factura),
             ]);
         }));
 
-        $facturaIds    = $facturasCollection->pluck('id_factura')->toArray();
+        $facturaIds    = $allFacturaIds;
         $creditosPorId = DB::table('credito')
             ->whereIn('id_factura', $facturaIds)
             ->where('activo', 1)
             ->get()
             ->keyBy('id_factura');
 
+        // Verificar facturas huérfanas en bloque (evita N+1 por crédito)
         $orphanFacturaIds = [];
-        foreach ($creditosPorId as $idFactura => $credito) {
-            $existe = DB::table('factura')
-                ->where('serie',  $credito->serie_doc_modificado)
-                ->where('numero', $credito->numero_doc_modificado)
+        if ($creditosPorId->isNotEmpty()) {
+            $existingPairs = DB::table('factura')
                 ->where('activo', 1)
-                ->exists();
-            if (!$existe) {
-                $orphanFacturaIds[] = (int) $idFactura;
+                ->get(['serie', 'numero'])
+                ->mapWithKeys(fn($r) => [$r->serie . '|' . $r->numero => true])
+                ->all();
+
+            foreach ($creditosPorId as $idFactura => $credito) {
+                $key = $credito->serie_doc_modificado . '|' . $credito->numero_doc_modificado;
+                if (!isset($existingPairs[$key])) {
+                    $orphanFacturaIds[] = (int) $idFactura;
+                }
             }
         }
 
-        $facturasParaTotales = $facturasCollection->reject(function ($f) use ($orphanFacturaIds) {
+        // Pre-cargar créditos de facturas ANULADAS en bloque (evita N+1 en reject)
+        $anuladoIds = $facturasCollection->where('estado', 'ANULADO')->pluck('id_factura')->all();
+        $anuladosConCredito = [];
+        if (!empty($anuladoIds)) {
+            $anuladosConCredito = array_flip(
+                DB::table('credito')
+                    ->whereIn('id_factura', $anuladoIds)
+                    ->where('activo', 1)
+                    ->pluck('id_factura')
+                    ->all()
+            );
+        }
+
+        $facturasParaTotales = $facturasCollection->reject(function ($f) use ($orphanFacturaIds, $anuladosConCredito) {
             if (in_array((int) $f->id_factura, $orphanFacturaIds)) {
                 return true;
             }
             if ($f->estado === 'ANULADO') {
-                return !DB::table('credito')->where('id_factura', $f->id_factura)->where('activo', 1)->exists();
+                return !isset($anuladosConCredito[$f->id_factura]);
             }
             return false;
         });
@@ -265,6 +295,23 @@ class FacturaController extends Controller
     }
 
     /**
+     * Calcula el monto de recaudación en la moneda de la factura.
+     * Para AUTODETRACCION siempre retorna 0 (no afecta el pendiente).
+     * Para USD usa monto_cambio; para PEN devuelve el monto en soles directamente.
+     */
+    private function calcularRecaudacionEnMoneda(
+        Factura $factura, float $totalRecaudacion, ?string $tipoRecaudacion
+    ): float {
+        if ($tipoRecaudacion === 'AUTODETRACCION') return 0.0;
+        if ($totalRecaudacion <= 0) return 0.0;
+        if ($factura->moneda === 'USD') {
+            $tc = round((float)($factura->monto_cambio ?? 0), 4);
+            return $tc > 0 ? round($totalRecaudacion / $tc, 2) : 0.0;
+        }
+        return $totalRecaudacion;
+    }
+
+    /**
      * Procesar pago / abono — inserta en pago_factura y recalcula totales.
      */
     public function procesarPago(Request $request, $id): JsonResponse
@@ -282,10 +329,11 @@ class FacturaController extends Controller
             'comprobante'            => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:20480',
             // Recaudación (nivel factura)
             'total_recaudacion'      => 'nullable|numeric|min:0',
-            'porcentaje_recaudacion' => 'nullable|numeric|min:0|max:100',
+            'porcentaje_recaudacion' => 'nullable|numeric|min:0',
             'tipo_recaudacion'       => 'nullable|string|in:DETRACCION,AUTODETRACCION,RETENCION',
             'validar_detraccion'     => 'nullable|boolean',
             'fecha_recaudacion'      => 'nullable|date',
+            'monto_cambio'           => 'nullable|numeric|min:0',
         ]);
 
         DB::beginTransaction();
@@ -348,7 +396,23 @@ class FacturaController extends Controller
             );
 
             $importeTotal   = round((float) $factura->importe_total, 2);
-            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $totalRecaudacion), 2);
+            // Actualizar monto_cambio en el modelo si se proporciona en el formulario
+            if (isset($validated['monto_cambio']) && (float)$validated['monto_cambio'] > 0) {
+                $factura->monto_cambio = round((float)$validated['monto_cambio'], 4);
+            }
+            // NUEVA FÓRMULA (Opción B):
+            //   - Recaudación AUN NO pagada: pendiente = importe_total + recaudacion_en_moneda - abonado
+            //     (muestra la obligación total: pago directo + depósito SUNAT pendiente)
+            //   - Recaudación YA PAGADA (fecha set) o AUTODETRACCION:
+            //     pendiente = importe_total - abonado
+            //     (sólo queda el pago directo; la parte SUNAT ya fue confirmada)
+            $recEnMoneda    = $this->calcularRecaudacionEnMoneda($factura, $totalRecaudacion, $tipoRecaudacion);
+            $recIsPaid      = !empty($fechaRecaudacion);
+            if ($recIsPaid || $tipoRecaudacion === 'AUTODETRACCION' || $recEnMoneda <= 0) {
+                $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal), 2);
+            } else {
+                $montoPendiente = round(max(0, $importeTotal + $recEnMoneda - $montoAbonadoTotal), 2);
+            }
 
             $estado = $this->calcularEstado(
                 $factura, $montoAbonadoTotal, $montoPendiente,
@@ -357,14 +421,13 @@ class FacturaController extends Controller
                 $fechaRecaudacion
             );
 
-            if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
-                $montoPendiente = $importeTotal;
-            }
-
             $factura->update([
                 'monto_abonado'      => $montoAbonadoTotal,
                 'monto_pendiente'    => $montoPendiente,
                 'tipo_recaudacion'   => $tipoRecaudacion,
+                'monto_cambio'       => isset($validated['monto_cambio']) && (float)$validated['monto_cambio'] > 0
+                                            ? round((float)$validated['monto_cambio'], 4)
+                                            : $factura->monto_cambio,
                 'estado'             => $estado,
                 'fecha_actualizacion'=> now(),
             ]);
@@ -417,9 +480,10 @@ class FacturaController extends Controller
         });
 
         return response()->json([
-            'success'       => true,
-            'pagos'         => $pagosArray,
-            'monto_abonado' => (float) DB::table('pago_factura')->where('id_factura', $id)->where('activo', 1)->sum('monto_pagado'),
+            'success'         => true,
+            'pagos'           => $pagosArray,
+            'monto_abonado'   => (float) DB::table('pago_factura')->where('id_factura', $id)->where('activo', 1)->sum('monto_pagado'),
+            'monto_pendiente' => (float) DB::table('factura')->where('id_factura', $id)->value('monto_pendiente'),
         ]);
     }
 
@@ -449,6 +513,7 @@ class FacturaController extends Controller
 
             $recaudacion      = DB::table('recaudacion')->where('id_factura', $id)->first();
             $totalRecaudacion = round((float) ($recaudacion->total_recaudacion ?? 0), 2);
+            $porcentajeRec    = round((float) ($recaudacion->porcentaje ?? 0), 2);
             $fechaRecaudacion = $recaudacion->fecha_recaudacion ?? null;
 
             $montoAbonadoTotal = round(
@@ -460,7 +525,13 @@ class FacturaController extends Controller
             );
 
             $importeTotal   = round((float) $factura->importe_total, 2);
-            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $totalRecaudacion), 2);
+            $recEnMoneda    = $this->calcularRecaudacionEnMoneda($factura, $totalRecaudacion, $factura->tipo_recaudacion);
+            $recIsPaid      = !empty($fechaRecaudacion);
+            if ($recIsPaid || $factura->tipo_recaudacion === 'AUTODETRACCION' || $recEnMoneda <= 0) {
+                $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal), 2);
+            } else {
+                $montoPendiente = round(max(0, $importeTotal + $recEnMoneda - $montoAbonadoTotal), 2);
+            }
 
             $estado = $this->calcularEstado(
                 $factura, $montoAbonadoTotal, $montoPendiente,
@@ -469,7 +540,7 @@ class FacturaController extends Controller
             );
 
             if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
-                $montoPendiente = $importeTotal;
+                $montoPendiente = $recIsPaid ? $montoPendiente : ($recEnMoneda > 0 ? round($importeTotal + $recEnMoneda, 2) : $importeTotal);
             }
 
             $factura->update([
@@ -536,6 +607,7 @@ class FacturaController extends Controller
 
             $recaudacion      = DB::table('recaudacion')->where('id_factura', $id)->first();
             $totalRecaudacion = round((float) ($recaudacion->total_recaudacion ?? 0), 2);
+            $porcentajeRec    = round((float) ($recaudacion->porcentaje ?? 0), 2);
             $fechaRecaudacion = $recaudacion->fecha_recaudacion ?? null;
 
             $montoAbonadoTotal = round(
@@ -547,7 +619,13 @@ class FacturaController extends Controller
             );
 
             $importeTotal   = round((float) $factura->importe_total, 2);
-            $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal - $totalRecaudacion), 2);
+            $recEnMoneda    = $this->calcularRecaudacionEnMoneda($factura, $totalRecaudacion, $factura->tipo_recaudacion);
+            $recIsPaid      = !empty($fechaRecaudacion);
+            if ($recIsPaid || $factura->tipo_recaudacion === 'AUTODETRACCION' || $recEnMoneda <= 0) {
+                $montoPendiente = round(max(0, $importeTotal - $montoAbonadoTotal), 2);
+            } else {
+                $montoPendiente = round(max(0, $importeTotal + $recEnMoneda - $montoAbonadoTotal), 2);
+            }
 
             $estado = $this->calcularEstado(
                 $factura, $montoAbonadoTotal, $montoPendiente,
@@ -556,7 +634,7 @@ class FacturaController extends Controller
             );
 
             if (in_array($estado, ['PENDIENTE', 'VENCIDO'])) {
-                $montoPendiente = $importeTotal;
+                $montoPendiente = $recIsPaid ? $montoPendiente : ($recEnMoneda > 0 ? round($importeTotal + $recEnMoneda, 2) : $importeTotal);
             }
 
             $factura->update([
@@ -625,6 +703,8 @@ class FacturaController extends Controller
             'monto_total'  => 'required|numeric|min:0.01',
             'fecha_abono'  => 'required|date',
             'cuenta_pago'  => 'nullable|string|max:255',
+            'banco_origen' => 'nullable|string|max:255',
+            'observacion'  => 'nullable|string|max:1000',
             'detalles'     => 'required',
             'comprobante'  => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:20480',
         ]);
@@ -733,6 +813,8 @@ class FacturaController extends Controller
                     'monto_pagado'          => round((float) $d['monto'], 2),
                     'fecha_pago'            => $validated['fecha_abono'],
                     'cuenta_pago'           => $validated['cuenta_pago'] ?? null,
+                    'banco_origen'          => $validated['banco_origen'] ?? null,
+                    'observacion'           => $validated['observacion'] ?? null,
                     'ruta_comprobante_pago' => $rutaComprobanteMasivo,
                     'activo'                => 1,
                     'fecha_creacion'        => now(),
@@ -815,31 +897,26 @@ class FacturaController extends Controller
         float $totalRecaudacion, ?string $tipoRecaudacion, bool $validarDetraccion,
         ?string $fechaRecaudacion
     ): string {
-        // Regla principal solicitada: solo cuando pendiente es 0 pasa a PAGADA.
+        // PAGADA cuando el pendiente llega a 0 (abonos cubren importe_total).
         if ($montoPendiente <= 0) return 'PAGADA';
 
-        // Si existe abono y aun queda saldo, pasa a DIFERENCIA PENDIENTE.
-        if ($montoAbonado > 0) return 'DIFERENCIA PENDIENTE';
-
-        if ($tipoRecaudacion === 'RETENCION' && $totalRecaudacion > 0 && !empty($fechaRecaudacion)) {
+        // Si la recaudación fue confirmada (fecha set) y aún hay saldo directo pendiente.
+        if (!empty($fechaRecaudacion) && $totalRecaudacion > 0 && $tipoRecaudacion !== 'AUTODETRACCION') {
             return 'DIFERENCIA PENDIENTE';
         }
 
+        // Si hay abono parcial pero sigue habiendo saldo.
+        if ($montoAbonado > 0) return 'DIFERENCIA PENDIENTE';
+
+        // AUTODETRACCION registrada pero nada pagado directamente.
         if ($tipoRecaudacion === 'AUTODETRACCION' && $totalRecaudacion > 0) {
             return 'DIFERENCIA PENDIENTE';
         }
 
-        if ($tipoRecaudacion === 'AUTODETRACCION') return 'PENDIENTE';
-
-        if ($tipoRecaudacion === 'DETRACCION' && $validarDetraccion) {
-            return 'DIFERENCIA PENDIENTE';
+        // Sin pagos aún → PENDIENTE o VENCIDO según fecha.
+        if ($factura->fecha_vencimiento && $factura->fecha_vencimiento < now()->toDateString()) {
+            return 'VENCIDO';
         }
-
-        if ($montoAbonado == 0) {
-            if ($factura->fecha_vencimiento && $factura->fecha_vencimiento < now()->toDateString()) return 'VENCIDO';
-            return 'PENDIENTE';
-        }
-
         return 'PENDIENTE';
     }
 
@@ -910,7 +987,7 @@ class FacturaController extends Controller
         $cliente = $factura->cliente;
         $validated = $request->validate([
             'razon_social'    => 'required|string|max:200',
-            'ruc'             => 'required|string|size:11|unique:cliente,ruc,'.$cliente->id_cliente.',id_cliente',
+            'ruc'             => 'required|string|min:8|max:15|unique:cliente,ruc,'.$cliente->id_cliente.',id_cliente',
             'celular'         => 'nullable|string|max:15',
             'direccion_fiscal'=> 'nullable|string|max:250',
             'correo'          => 'nullable|email|max:150',

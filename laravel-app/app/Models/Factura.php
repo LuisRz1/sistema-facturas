@@ -34,6 +34,7 @@ class Factura extends Model
         'usuario_creacion',
         'monto_abonado',
         'monto_pendiente',
+        'monto_cambio',
         'id_movimiento',
         'estado_conciliacion',
     ];

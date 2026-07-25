@@ -259,11 +259,11 @@
         col.col-emi    { width:6%; }
         col.col-vcto   { width:5%; }
         col.col-fact   { width:8%; }
-        col.col-glosa  { width:8%; }
+        col.col-glosa  { width:6%; }
         col.col-sub    { width:7%; }
         col.col-pen    { width:6%; }
         col.col-rec    { width:7%; }
-        col.col-total  { width:8%; }
+        col.col-total  { width:10%; }
         col.col-tipo   { width:5%; }
         col.col-abo    { width:6%; }
         col.col-fabo   { width:10%; }
@@ -410,16 +410,13 @@
                 $facEmpPEN = $facturasPorEmpresaParaTotales->where('moneda', 'PEN');
                 $facEmpUSD = $facturasPorEmpresaParaTotales->where('moneda', 'USD');
                 $calcPend = function($col) {
-                    return $col->sum(function ($fTot) {
-                        return $fTot->estado === 'DIFERENCIA PENDIENTE'
-                            ? max(0, ($fTot->importe_total ?? 0) - ($fTot->monto_recaudacion ?? 0))
-                            : ($fTot->pendiente_display ?? $fTot->monto_pendiente ?? 0);
-                    });
+                    return $col->sum(fn($fTot) => $fTot->pendiente_display ?? $fTot->monto_pendiente ?? 0);
                 };
                 $totPEN = [
                     'cnt'   => $facEmpPEN->count(),
                     'sub'   => $facEmpPEN->sum('subtotal_gravado'),
-                    'rec'   => $facEmpPEN->sum('monto_recaudacion'),
+                    // Recaudación siempre en soles: suma de TODAS las facturas (PEN + USD)
+                    'rec'   => $facEmpPEN->sum('monto_recaudacion') + $facEmpUSD->sum('monto_recaudacion'),
                     'total' => $facEmpPEN->sum('importe_total'),
                     'abo'   => $facEmpPEN->sum('monto_abonado'),
                     'pend'  => $calcPend($facEmpPEN),
@@ -427,7 +424,8 @@
                 $totUSD = [
                     'cnt'   => $facEmpUSD->count(),
                     'sub'   => $facEmpUSD->sum('subtotal_gravado'),
-                    'rec'   => $facEmpUSD->sum('monto_recaudacion'),
+                    // USD rec = solo los equivalentes USD pagados (donde fecha_recaudacion está set)
+                    'rec'   => $facEmpUSD->filter(fn($f) => !empty($f->fecha_recaudacion))->sum('porcentaje_recaudacion'),
                     'total' => $facEmpUSD->sum('importe_total'),
                     'abo'   => $facEmpUSD->sum('monto_abonado'),
                     'pend'  => $calcPend($facEmpUSD),
@@ -479,11 +477,9 @@
                         $recaudacion      = $f->monto_recaudacion ?? 0;
                         $tipoRec          = $f->tipo_recaudacion  ?? '—';
                         $badgeKey         = str_replace([' '], ['_'], $f->estado);
-                        // Pendiente corregido: para DIFERENCIA PENDIENTE restar la recaudación
+                        // Pendiente: directo de monto_pendiente en BD
                         $pendienteDisplay = $esNcHuerfana ? 0 :
-                            ($f->estado === 'DIFERENCIA PENDIENTE'
-                                ? max(0, ($f->importe_total ?? 0) - ($recaudacion))
-                                : ($f->pendiente_display ?? $f->monto_pendiente ?? 0));
+                            ($f->pendiente_display ?? $f->monto_pendiente ?? 0);
                         $pagosFila = $pagosMap->get($f->id_factura, collect());
                     @endphp
                     <tr class="{{ $esNcHuerfana ? 'nc-huerfana' : '' }}">
@@ -498,19 +494,24 @@
                         </td>
                         <td class="td-glosa" style="font-size:9px;">{{ $f->glosa ?? '—' }}</td>
                         {{-- Sub Total = subtotal_gravado (base sin IGV) --}}
-                        <td class="r mono">
+                        <td class="r mono" style="color:#0f172a;font-weight:800;">
                             @if(!$esNcHuerfana && ($f->subtotal_gravado ?? 0) > 0)
                                 {{ $f->moneda }} {{ number_format($f->subtotal_gravado, 2) }}
                             @else
                                 —
                             @endif
                         </td>
-                        <td class="r detrac">{{ $recaudacion > 0 ? $f->moneda.' '.number_format($recaudacion, 2) : '—' }}</td>
+                        <td class="r detrac">
+                            {{ $recaudacion > 0 ? 'PEN '.number_format($recaudacion, 2) : '—' }}
+                            @if($recaudacion > 0 && $f->moneda === 'USD' && !empty($f->fecha_recaudacion) && ($f->porcentaje_recaudacion ?? 0) > 0)
+                                <span class="igv-note" style="color:#1d4ed8;font-weight:700;">USD {{ number_format($f->porcentaje_recaudacion, 2) }}</span>
+                            @endif
+                        </td>
                         <td class="mono" style="font-size:8.5px;color:#d97706;">
                             {{ $f->fecha_recaudacion ? \Carbon\Carbon::parse($f->fecha_recaudacion)->format('d/m/Y') : '—' }}
                         </td>
                         {{-- Total = importe_total (antes "Importe"). IGV se muestra debajo. --}}
-                        <td class="r mono">
+                        <td class="r mono" style="color:#0f172a;font-weight:800;">
                             {{ $f->moneda }} {{ number_format($f->importe_total, 2) }}
                             <span class="igv-note">
                                 IGV: {{ ($f->monto_igv ?? 0) > 0 ? $f->moneda.' '.number_format($f->monto_igv, 2) : '—' }}
@@ -576,10 +577,10 @@
                     <td colspan="5" style="font-size:10px;letter-spacing:.3px;">
                         SOLES — {{ $totPEN['cnt'] }} factura(s)
                     </td>
-                    <td class="r" style="color:#fcd34d;">{{ $totPEN['sub'] > 0 ? 'PEN '.number_format($totPEN['sub'], 2) : '—' }}</td>
-                    <td class="r" style="color:#fcd34d;">{{ $totPEN['rec'] > 0 ? 'PEN '.number_format($totPEN['rec'], 2) : '—' }}</td>
+                    <td class="r" style="color:#fcd34d;font-weight:800;">{{ $totPEN['sub'] > 0 ? 'PEN '.number_format($totPEN['sub'], 2) : '—' }}</td>
+                    <td class="r" style="color:#fcd34d;font-weight:800;">{{ $totPEN['rec'] > 0 ? 'PEN '.number_format($totPEN['rec'], 2) : '—' }}</td>
                     <td></td>
-                    <td class="r" style="color:#fca5a5;">PEN {{ number_format($totPEN['total'], 2) }}</td>
+                    <td class="r" style="color:#fff;font-weight:800;">PEN {{ number_format($totPEN['total'], 2) }}</td>
                     <td></td>
                     <td class="r" style="color:#6ee7b7;">{{ $totPEN['abo'] > 0 ? 'PEN '.number_format($totPEN['abo'], 2) : '—' }}</td>
                     <td></td>
@@ -593,10 +594,12 @@
                     <td colspan="5" style="font-size:10px;letter-spacing:.3px;">
                         DÓLARES — {{ $totUSD['cnt'] }} factura(s)
                     </td>
-                    <td class="r" style="color:#fcd34d;">{{ $totUSD['sub'] > 0 ? 'USD '.number_format($totUSD['sub'], 2) : '—' }}</td>
-                    <td class="r" style="color:#fcd34d;">{{ $totUSD['rec'] > 0 ? 'USD '.number_format($totUSD['rec'], 2) : '—' }}</td>
+                    <td class="r" style="color:#fcd34d;font-weight:800;">{{ $totUSD['sub'] > 0 ? 'USD '.number_format($totUSD['sub'], 2) : '—' }}</td>
+                    <td class="r" style="color:#fcd34d;font-weight:800;">{{ $totUSD['rec'] > 0 ? 'USD '.number_format($totUSD['rec'], 2) : '—' }}
+                        @if($totUSD['rec'] > 0)<span class="igv-note" style="color:#93c5fd;">(pagadas)</span>@endif
+                    </td>
                     <td></td>
-                    <td class="r" style="color:#fca5a5;">USD {{ number_format($totUSD['total'], 2) }}</td>
+                    <td class="r" style="color:#fff;font-weight:800;">USD {{ number_format($totUSD['total'], 2) }}</td>
                     <td></td>
                     <td class="r" style="color:#6ee7b7;">{{ $totUSD['abo'] > 0 ? 'USD '.number_format($totUSD['abo'], 2) : '—' }}</td>
                     <td></td>
