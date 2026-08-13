@@ -563,11 +563,8 @@
                         $esAnuladoHuerfano = ($factura->estado === 'ANULADO')
                             || in_array((int) $factura->id_factura, $orphanFacturaIds);
 
-                        $creditoInfo     = DB::table('credito')->where('id_factura', $factura->id_factura)->first();
-                        $creditoAsociado = DB::table('credito')
-                            ->where('serie_doc_modificado', $factura->serie)
-                            ->where('numero_doc_modificado', $factura->numero)
-                            ->first();
+                        $creditoInfo     = isset($creditosPorId[$factura->id_factura]) ? $creditosPorId[$factura->id_factura] : null;
+                        $creditoAsociado = $creditoAsociadoMap->get($factura->serie . '|' . $factura->numero) ?? null;
 
                         // Resaltado de última factura editada (desde session flash)
                         $isLastEdited = session('last_edited_factura_id') == $factura->id_factura;
@@ -655,7 +652,7 @@
                                 </div>
                             @elseif($creditoAsociado)
                                 <div style="font-size:10px;color:#7c3aed;font-weight:600;margin-top:3px;">
-                                    NC: {{ $creditoAsociado->id_factura ? DB::table('factura')->where('id_factura',$creditoAsociado->id_factura)->value('serie') : '—' }}
+                                    NC: {{ $ncSeriesMap[$creditoAsociado->id_factura] ?? '—' }}
                                     → {{ $factura->serie }}-{{ str_pad($factura->numero,8,'0',STR_PAD_LEFT) }}
                                 </div>
                             @endif

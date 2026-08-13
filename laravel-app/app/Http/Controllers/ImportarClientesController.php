@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
@@ -202,6 +203,10 @@ class ImportarClientesController extends Controller
                 'Error al procesar el archivo: ' . $e->getMessage()
             )->withInput();
         }
+
+        Cache::forget('facturas_clientes_todos');
+        Cache::forget('facturas_clientes_PERSONA JURIDICA');
+        Cache::forget('facturas_clientes_PERSONA NATURAL');
 
         return redirect()->route('clientes.index')->with('resumen_importacion', [
             'insertados'   => $insertados,

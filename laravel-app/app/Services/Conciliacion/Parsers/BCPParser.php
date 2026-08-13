@@ -7,41 +7,57 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class BCPParser implements IBankStatementParser
 {
-    private const COLUMNAS_OBLIGATORIAS = ['FECHA PROC', 'FECHA VALOR', 'DESCRIPCION', 'TIPO', 'CARGO/ABONO', 'SALDO'];
-
-    private const TIPOS_IGNORABLES = [
-        '0909', // ITF
-        '0101', // Comision mantenimiento
-        '4991', // Envio estado de cuenta
-        '4409', // Comision tarjeta
-        '4936', // Comision tarjeta
-    ];
+    /**
+     * Codigos UTC del BCP que se IGNORAN (no son pagos de clientes).
+     * 0909 = ITF, 4401 = transferencia CCE (cargos internos)
+     */
+    private const UTC_IGNORABLES = ['0909', '4401', '0101', '4991', '4409', '4936'];
 
     public function detectar(string $filePath): array
     {
         try {
             $spreadsheet = IOFactory::load($filePath);
             $sheet = $spreadsheet->getActiveSheet();
-            $firstRow = [];
-            foreach ($sheet->getRowIterator(1, 1) as $row) {
-                foreach ($row->getCellIterator() as $cell) {
-                    $firstRow[] = strtoupper(trim((string) $cell->getValue()));
+
+            // Leer metadata rows
+            $row1 = $this->getRowCells($sheet, 1);
+            $row2 = $this->getRowCells($sheet, 2);
+            $row3 = $this->getRowCells($sheet, 3);
+            $row5 = $this->getRowCells($sheet, 5);
+
+            // Normalize: remove accents for comparison
+            $row1Str = $this->normalizar(strtoupper(implode(' ', $row1)));
+            $row2Str = $this->normalizar(strtoupper(implode(' ', $row2)));
+            $row5Str = $this->normalizar(strtoupper(implode(' ', $row5)));
+
+            // Detectar BCP: Row 1 tiene "Cuenta", Row 2 tiene "Moneda", Row 5 tiene headers
+            $tieneCuenta = str_contains($row1Str, 'CUENTA');
+            $tieneMoneda = str_contains($row2Str, 'MONEDA');
+            $tieneFechaHeader = str_contains($row5Str, 'FECHA');
+            $tieneDescOp = str_contains($row5Str, 'DESCRIPCI') || str_contains($row5Str, 'OPERACI');
+            $tieneMonto = str_contains($row5Str, 'MONTO');
+            $tieneUTC = str_contains($row5Str, 'UTC');
+
+            if ($tieneCuenta && $tieneMoneda && $tieneFechaHeader && $tieneDescOp && $tieneMonto) {
+                $moneda = str_contains($row2Str, 'SOLES') ? 'PEN' : (str_contains($row2Str, 'DOLARES') ? 'USD' : 'PEN');
+
+                // Extract account number from row 1
+                $cuenta = '';
+                if (preg_match('/(\d{3}-\d{6,10}-\d-\d{2})/', $row1Str, $m)) {
+                    $cuenta = $m[1];
                 }
-            }
-            $headerStr = implode(' ', $firstRow);
 
-            $tieneFechaProc = str_contains($headerStr, 'FECHA PROC');
-            $tieneNumOp = str_contains($headerStr, 'NUM OP');
-            $tieneTipo = str_contains($headerStr, 'TIPO');
-
-            if ($tieneFechaProc && $tieneNumOp && $tieneTipo) {
-                $moneda = str_contains($headerStr, 'DOLARES') ? 'USD' : 'PEN';
-                return ['ok' => true, 'banco' => 'BCP', 'moneda' => $moneda];
+                return [
+                    'ok' => true,
+                    'banco' => 'BCP',
+                    'moneda' => $moneda,
+                    'cuenta' => $cuenta,
+                ];
             }
 
             return ['ok' => false, 'error' => 'ERR-007: No se detecto formato BCP.'];
         } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'ERR-002: No se pudo leer el archivo.'];
+            return ['ok' => false, 'error' => 'ERR-002: No se pudo leer el archivo: ' . $e->getMessage()];
         }
     }
 
@@ -50,30 +66,20 @@ class BCPParser implements IBankStatementParser
         try {
             $spreadsheet = IOFactory::load($filePath);
             $sheet = $spreadsheet->getActiveSheet();
-            $headers = [];
-            foreach ($sheet->getRowIterator(1, 1) as $row) {
-                foreach ($row->getCellIterator() as $cell) {
-                    $headers[] = strtoupper(trim((string) $cell->getValue()));
-                }
-            }
+            $row5 = $this->getRowCells($sheet, 5);
+            $headerStr = $this->normalizar(strtoupper(implode(' ', $row5)));
 
+            $requeridas = ['FECHA', 'DESCRIPCI', 'MONTO', 'SALDO'];
             $faltantes = [];
-            foreach (self::COLUMNAS_OBLIGATORIAS as $col) {
-                $encontrada = false;
-                foreach ($headers as $h) {
-                    if (str_contains($h, $col)) {
-                        $encontrada = true;
-                        break;
-                    }
-                }
-                if (! $encontrada) {
+            foreach ($requeridas as $col) {
+                if (!str_contains($headerStr, $col)) {
                     $faltantes[] = $col;
                 }
             }
 
             return empty($faltantes)
                 ? ['ok' => true]
-                : ['ok' => false, 'error' => 'ERR-004: Columnas faltantes: '.implode(', ', $faltantes)];
+                : ['ok' => false, 'error' => 'ERR-004: Columnas faltantes: ' . implode(', ', $faltantes)];
         } catch (\Throwable $e) {
             return ['ok' => false, 'error' => 'ERR-002: No se pudo validar el archivo.'];
         }
@@ -84,39 +90,61 @@ class BCPParser implements IBankStatementParser
         $spreadsheet = IOFactory::load($filePath);
         $sheet = $spreadsheet->getActiveSheet();
         $movimientos = [];
-        $isFirst = true;
+        $rowIndex = 0;
+
+        // Extract account number from row 1
+        $row1 = $this->getRowCells($sheet, 1);
+        $row1Str = implode(' ', $row1);
+        $cuenta = '';
+        if (preg_match('/(\d{3}-\d{6,10}-\d-\d{2})/', $row1Str, $m)) {
+            $cuenta = $m[1];
+        }
+
+        // Extract moneda from row 2
+        $row2 = $this->getRowCells($sheet, 2);
+        $row2Str = strtoupper(implode(' ', $row2));
+        $moneda = str_contains($row2Str, 'SOLES') ? 'PEN' : (str_contains($row2Str, 'DOLARES') ? 'USD' : 'PEN');
 
         foreach ($sheet->getRowIterator() as $row) {
-            if ($isFirst) {
-                $isFirst = false;
-                continue;
-            }
+            $rowIndex++;
+            if ($rowIndex <= 5) continue; // Skip metadata + headers
 
-            $cells = [];
-            foreach ($row->getCellIterator() as $cell) {
-                $cells[] = trim((string) $cell->getValue());
-            }
-
-            if (empty($cells[0]) && empty($cells[1])) {
-                continue;
-            }
+            $cells = $this->getRowCells($sheet, $rowIndex);
+            if (empty($cells[0]) && empty($cells[2])) continue; // Empty row
 
             $mov = new MovimientoEstandar();
-            $mov->fecha_proceso = $this->parseFecha($cells[0] ?? null);
-            $mov->fecha_operacion = $this->parseFecha($cells[1] ?? null);
-            $mov->descripcion = $cells[2] ?? '';
+            $mov->banco = 'BCP';
+            $mov->moneda = $moneda;
+            $mov->cuenta_bancaria = $cuenta;
+
+            // ── Mapeo de columnas del BCP real ──
+            // A(0): Fecha → fecha_operacion
+            // B(1): Fecha valuta → fecha_proceso
+            // C(2): Descripción operación → descripcion (contiene nombre del cliente!)
+            // D(3): Monto (signed: negativo=cargo, positivo=abono)
+            // E(4): Saldo
+            // F(5): Sucursal - agencia
+            // G(6): Operación - Número → numero_operacion
+            // H(7): Operación - Hora → hora
+            // I(8): Usuario
+            // J(9): UTC → codigo_interno_banco
+            // K(10): Referencia2 → referencia (factura numbers!)
+
+            $mov->fecha_operacion = $this->parseFecha($cells[0] ?? null);
+            $mov->fecha_proceso = $this->parseFecha($cells[1] ?? null);
+            $mov->descripcion = trim($cells[2] ?? '');
+            $mov->saldo = $this->parseMonto($cells[4] ?? '0');
             $mov->referencia = trim(
-                ($cells[3] ?? '').' '.($cells[4] ?? '').' '.($cells[5] ?? '')
+                ($cells[5] ?? '') . ' | ' . ($cells[10] ?? '')
             );
             $mov->numero_operacion = $cells[6] ?? '';
             $mov->hora = $cells[7] ?? null;
             $mov->codigo_interno_banco = $cells[9] ?? '';
 
-            // Importe y tipo — el signo viene como sufijo "-" en CARGO/ABONO
-            $cargoAbonoRaw = $cells[10] ?? '0';
-            $importe = $this->parseMonto($cargoAbonoRaw);
+            // ── Importe: ya viene con signo en columna D ──
+            $importe = $this->parseMonto($cells[3] ?? '0');
             $mov->importe = abs($importe);
-            $mov->tipo_movimiento = $importe >= 0 ? 'ABONO' : 'CARGO';
+            $mov->tipo_movimiento = $importe > 0 ? 'ABONO' : 'CARGO';
 
             if ($mov->tipo_movimiento === 'ABONO') {
                 $mov->abono = abs($importe);
@@ -126,11 +154,23 @@ class BCPParser implements IBankStatementParser
                 $mov->abono = 0;
             }
 
-            $mov->saldo = $this->parseMonto($cells[11] ?? '0');
-            $mov->banco = 'BCP';
+            // ── Clasificar ──
+            $utc = strtoupper($mov->codigo_interno_banco);
 
-            // Clasificar si es ignorable
-            $mov->es_ignorable = in_array($mov->codigo_interno_banco, self::TIPOS_IGNORABLES);
+            // Siempre ignorar ITF y CCE transfers
+            $mov->es_ignorable = in_array($utc, self::UTC_IGNORABLES);
+
+            // Detectar si es transferencia de tercero (potencial pago de cliente)
+            $descUpper = strtoupper($mov->descripcion);
+            $mov->es_transferencia_tercero =
+                $mov->tipo_movimiento === 'ABONO'
+                && !$mov->es_ignorable
+                && (
+                    str_contains($descUpper, 'TRAN.CTAS.TERC')
+                    || str_contains($descUpper, 'DE ')
+                    || str_contains($descUpper, 'TRANSFERENCIA')
+                    || in_array($utc, ['2401', '2701', '1018', '2014', '1001', '2003'])
+                );
 
             $movimientos[] = $mov;
         }
@@ -138,12 +178,39 @@ class BCPParser implements IBankStatementParser
         return $movimientos;
     }
 
+    // ── Helpers ────────────────────────────────────────────────────────────
+
+    private function normalizar(string $s): string
+    {
+        return strtr($s, [
+            'Á' => 'A', 'É' => 'E', 'Í' => 'I', 'Ó' => 'O', 'Ú' => 'U',
+            'á' => 'A', 'é' => 'E', 'í' => 'I', 'ó' => 'O', 'ú' => 'U',
+            'Ñ' => 'N', 'ñ' => 'N',
+        ]);
+    }
+
+    private function getRowCells($sheet, int $rowIndex): array
+    {
+        $cells = [];
+        $highestCol = $sheet->getHighestColumn();
+        $colIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($highestCol);
+        for ($col = 1; $col <= $colIndex; $col++) {
+            $cell = $sheet->getCell([$col, $rowIndex]);
+            $val = trim((string) $cell->getValue());
+            $cells[] = $val;
+        }
+        // Trim trailing empty cells
+        while (!empty($cells) && end($cells) === '') {
+            array_pop($cells);
+        }
+        return $cells;
+    }
+
     private function parseFecha(?string $v): ?string
     {
-        if (! $v || $v === '0') {
-            return null;
-        }
+        if (!$v || $v === '0' || $v === '') return null;
         try {
+            // BCP usa d/m/Y
             return \Carbon\Carbon::createFromFormat('d/m/Y', $v)->format('Y-m-d');
         } catch (\Throwable $e) {
             try {
@@ -157,14 +224,8 @@ class BCPParser implements IBankStatementParser
     private function parseMonto(string $v): float
     {
         $v = trim($v);
-        if ($v === '' || $v === '0') {
-            return 0.0;
-        }
-        // BCP usa formato con coma para miles y posible "-" al final para cargos
-        $esNegativo = str_ends_with($v, '-');
-        $v = rtrim($v, '-');
+        if ($v === '' || $v === '0') return 0.0;
         $v = str_replace(',', '', $v);
-        $monto = (float) filter_var($v, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
-        return $esNegativo ? -$monto : $monto;
+        return (float) filter_var($v, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
     }
 }

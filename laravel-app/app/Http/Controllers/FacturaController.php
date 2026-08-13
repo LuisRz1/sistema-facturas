@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Factura;
 use App\Models\PagoFactura;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -105,14 +106,33 @@ class FacturaController extends Controller
             ->get()
             ->keyBy('id_factura');
 
-        // Verificar facturas huérfanas en bloque (evita N+1 por crédito)
+        // Verificar facturas huérfanas en bloque — consulta dirigida (no carga TODAS las facturas)
         $orphanFacturaIds = [];
         if ($creditosPorId->isNotEmpty()) {
-            $existingPairs = DB::table('factura')
-                ->where('activo', 1)
-                ->get(['serie', 'numero'])
-                ->mapWithKeys(fn($r) => [$r->serie . '|' . $r->numero => true])
-                ->all();
+            $referencias = $creditosPorId->map(function ($c) {
+                return [$c->serie_doc_modificado, $c->numero_doc_modificado];
+            })->values();
+
+            $existingPairs = [];
+            foreach ($referencias->chunk(200) as $chunk) {
+                $q = DB::table('factura')->where('activo', 1);
+                $first = true;
+                foreach ($chunk as [$serie, $numero]) {
+                    if ($first) {
+                        $q->where(function ($sub) use ($serie, $numero) {
+                            $sub->where('serie', $serie)->where('numero', $numero);
+                        });
+                        $first = false;
+                    } else {
+                        $q->orWhere(function ($sub) use ($serie, $numero) {
+                            $sub->where('serie', $serie)->where('numero', $numero);
+                        });
+                    }
+                }
+                foreach ($q->get(['serie', 'numero']) as $r) {
+                    $existingPairs[$r->serie . '|' . $r->numero] = true;
+                }
+            }
 
             foreach ($creditosPorId as $idFactura => $credito) {
                 $key = $credito->serie_doc_modificado . '|' . $credito->numero_doc_modificado;
@@ -145,14 +165,34 @@ class FacturaController extends Controller
             return false;
         });
 
-        $clientes = DB::table('cliente')
-            ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
-                $q->where('tipo_cliente', $tipoClienteVista);
-            })
-            ->orderBy('razon_social')
-            ->get(['id_cliente', 'razon_social', 'ruc']);
-        $usuarios = DB::table('usuario')->whereNotNull('celular')->orderBy('nombre')
-            ->get(['id_usuario', 'nombre', 'apellido', 'celular', 'correo']);
+        // Pre-cargar créditos referenciados para el indicador "NC →" en la vista (evita N+1 por factura)
+        $todosCreditos = DB::table('credito')->where('activo', 1)->get();
+
+        $creditoAsociadoMap = $todosCreditos->keyBy(function ($c) {
+            return $c->serie_doc_modificado . '|' . $c->numero_doc_modificado;
+        });
+
+        $ncSeriesMap = [];
+        $ncIds = $todosCreditos->pluck('id_factura')->unique()->filter()->values();
+        if ($ncIds->isNotEmpty()) {
+            $ncSeriesMap = DB::table('factura')
+                ->whereIn('id_factura', $ncIds)
+                ->pluck('serie', 'id_factura')
+                ->all();
+        }
+
+        $clientes = Cache::remember('facturas_clientes_' . ($tipoClienteVista ?? 'todos'), 300, function () use ($tipoClienteVista) {
+            return DB::table('cliente')
+                ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
+                    $q->where('tipo_cliente', $tipoClienteVista);
+                })
+                ->orderBy('razon_social')
+                ->get(['id_cliente', 'razon_social', 'ruc']);
+        });
+        $usuarios = Cache::remember('facturas_usuarios_activos', 300, function () {
+            return DB::table('usuario')->whereNotNull('celular')->orderBy('nombre')
+                ->get(['id_usuario', 'nombre', 'apellido', 'celular', 'correo']);
+        });
 
         // Historial de importaciones para el acordeón
         $sincronizaciones = DB::table('sincronizacion_nubefact as sn')
@@ -173,6 +213,9 @@ class FacturaController extends Controller
             'facturas'            => $facturasCollection,
             'facturasParaTotales' => $facturasParaTotales,
             'orphanFacturaIds'    => $orphanFacturaIds,
+            'creditosPorId'       => $creditosPorId,
+            'creditoAsociadoMap'  => $creditoAsociadoMap,
+            'ncSeriesMap'         => $ncSeriesMap,
             'clientes'            => $clientes,
             'usuarios'            => $usuarios,
             'fechaDesde'          => $fechaDesde,

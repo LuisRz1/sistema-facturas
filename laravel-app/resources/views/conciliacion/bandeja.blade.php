@@ -23,9 +23,9 @@
         @keyframes rowIn    { from { opacity:0; transform:translateY(6px);   } to { opacity:1; transform:translateY(0); } }
         .page-header { animation: fadeDown .5s ease-out; }
         tbody tr { animation: rowIn .35s ease-out both; }
-        @for $i from 1 through 20 {
+        @for ($i = 1; $i <= 20; $i++)
             tbody tr:nth-child({{ $i }}) { animation-delay: {{ $i * 0.04 }}s; }
-        }
+        @endfor
 
         /* ── Page header ── */
         .page-title {

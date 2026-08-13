@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -336,6 +337,10 @@ class ImportarRetencionesController extends Controller
         if ($procesadas > 0 && !empty($fechasImportadas)) {
             $filtroDesde = min($fechasImportadas);
             $filtroHasta = max($fechasImportadas);
+
+            Cache::forget('facturas_clientes_todos');
+            Cache::forget('facturas_clientes_PERSONA JURIDICA');
+            Cache::forget('facturas_clientes_PERSONA NATURAL');
 
             return redirect()->route('facturas.index', [
                 'fecha_desde' => $filtroDesde,

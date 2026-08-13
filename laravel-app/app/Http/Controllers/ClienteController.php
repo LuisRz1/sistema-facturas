@@ -6,10 +6,18 @@ use App\Models\Cliente;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ClienteController extends Controller
 {
+    private function limpiarCacheClientes(): void
+    {
+        Cache::forget('facturas_clientes_todos');
+        Cache::forget('facturas_clientes_PERSONA JURIDICA');
+        Cache::forget('facturas_clientes_PERSONA NATURAL');
+    }
+
     public function index(): View
     {
         $clientes = Cliente::orderBy('razon_social')->get();
@@ -30,6 +38,8 @@ class ClienteController extends Controller
         $data['estado_contado'] = $this->calcularEstadoContacto($data); // columna correcta en BD
 
         Cliente::create($data);
+
+        $this->limpiarCacheClientes();
 
         return redirect()->route('clientes.index')
             ->with('success', 'Cliente registrado correctamente.');
@@ -58,6 +68,8 @@ class ClienteController extends Controller
                 ->withErrors(['general' => 'No se pudo actualizar el cliente. Por favor intenta de nuevo.']);
         }
 
+        $this->limpiarCacheClientes();
+
         return redirect()->route('clientes.index')
             ->with('success', 'Cliente actualizado correctamente.');
     }
@@ -81,6 +93,8 @@ class ClienteController extends Controller
         }
 
         $cliente->delete();
+
+        $this->limpiarCacheClientes();
 
         return redirect()->route('clientes.index')
             ->with('success', 'Cliente eliminado correctamente.');
