@@ -121,6 +121,14 @@
         .monto-pendiente-cell { color:#dc2626; font-weight:700; font-family:'DM Mono',monospace; font-size:12px; }
         .monto-pendiente-zero { color:#059669; font-family:'DM Mono',monospace; font-size:12px; }
 
+        .table-pagination { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 18px;border-top:1px solid #f3e7bc;background:#fffdf8; }
+        .table-pagination-info { font-size:12px;color:var(--text-muted); }
+        .table-pagination-controls { display:flex;align-items:center;gap:5px;flex-wrap:wrap; }
+        .page-link { min-width:34px;height:34px;padding:0 10px;border:1.5px solid var(--gold-b);border-radius:8px;background:#fff;color:var(--gold-xd);font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;text-decoration:none; }
+        .page-link:hover { border-color:var(--gold);background:var(--gold-l); }
+        .page-link.active { background:var(--gold);border-color:var(--gold);color:#1f2937; }
+        .page-link.disabled { opacity:.45;pointer-events:none; }
+
         .pago-section       { background:var(--gold-l); border-radius:10px; padding:18px; margin-bottom:16px; border:1px solid var(--gold-b); }
         .pago-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--gold-xd); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
         .calc-display { background:#fff; border:1.5px solid var(--gold-b); border-radius:8px; padding:14px; margin-top:12px; font-size:13px; }
@@ -466,7 +474,7 @@
             <span style="font-size:12px;color:var(--gold-xd);margin-left:6px;">
                 Mostrando del <strong>{{ \Carbon\Carbon::parse($fechaDesde)->format('d/m/Y') }}</strong>
                 al <strong>{{ \Carbon\Carbon::parse($fechaHasta)->format('d/m/Y') }}</strong>
-                &nbsp;·&nbsp; {{ $facturas->count() }} facturas
+                &nbsp;·&nbsp; {{ $facturas->total() }} facturas
             </span>
             <div style="display:flex;gap:6px;margin-left:auto;">
                 <button type="button" class="btn btn-ghost btn-sm" onclick="setRango('mes')">Este mes</button>
@@ -481,7 +489,7 @@
         <div class="card-header">
             <div>
                 <div class="card-title">Listado de Facturas</div>
-                <div class="card-desc">{{ $facturas->count() }} facturas en el período seleccionado</div>
+                <div class="card-desc">{{ $facturas->total() }} facturas en el período seleccionado</div>
             </div>
         </div>
 
@@ -514,6 +522,12 @@
                     <option value="">Todas las empresas</option>
                     @foreach($clientes as $c)
                         <option value="{{ $c->id_cliente }}">{{ $c->razon_social }}</option>
+                    @endforeach
+                </select>
+                <label for="perPageSelect" style="font-size:12px;color:var(--text-muted);margin-left:auto;">Mostrar:</label>
+                <select class="form-select" id="perPageSelect" name="per_page" form="frmFiltros" onchange="document.getElementById('frmFiltros').submit()" style="min-width:78px;">
+                    @foreach([10, 20, 50] as $size)
+                        <option value="{{ $size }}" @selected($perPage === $size)>{{ $size }}</option>
                     @endforeach
                 </select>
             </div>
@@ -757,6 +771,29 @@
                 </tbody>
             </table>
         </div>
+        @if($facturas->hasPages())
+            <nav class="table-pagination" aria-label="Paginación de facturas">
+                <div class="table-pagination-info">
+                    Mostrando <strong>{{ $facturas->firstItem() }}–{{ $facturas->lastItem() }}</strong>
+                    de <strong>{{ $facturas->total() }}</strong> facturas
+                </div>
+                <div class="table-pagination-controls">
+                    <a class="page-link {{ $facturas->onFirstPage() ? 'disabled' : '' }}" href="{{ $facturas->previousPageUrl() ?: '#' }}" aria-label="Página anterior">‹</a>
+                    @php
+                        $pageStart = max(1, $facturas->currentPage() - 2);
+                        $pageEnd = min($facturas->lastPage(), $facturas->currentPage() + 2);
+                    @endphp
+                    @foreach($facturas->getUrlRange($pageStart, $pageEnd) as $page => $url)
+                        <a class="page-link {{ $page === $facturas->currentPage() ? 'active' : '' }}" href="{{ $url }}">{{ $page }}</a>
+                    @endforeach
+                    <a class="page-link {{ $facturas->hasMorePages() ? '' : 'disabled' }}" href="{{ $facturas->nextPageUrl() ?: '#' }}" aria-label="Página siguiente">›</a>
+                </div>
+            </nav>
+        @elseif($facturas->total() > 0)
+            <div class="table-pagination">
+                <div class="table-pagination-info">Mostrando <strong>{{ $facturas->total() }}</strong> facturas</div>
+            </div>
+        @endif
     </div>
 
     {{-- ═══════════ HISTORIAL DE IMPORTACIONES ═══════════ --}}
@@ -1664,7 +1701,7 @@
                 if (cardDesc) {
                     cardDesc.textContent = hayFiltro
                         ? visibles + ' factura' + (visibles !== 1 ? 's' : '') + ' (filtrado)'
-                        : '{{ $facturas->count() }} facturas en el período seleccionado';
+                        : '{{ $facturas->total() }} facturas en el período seleccionado';
                 }
             }
 

@@ -21,6 +21,10 @@ class FacturaController extends Controller
     {
         $fechaDesde = $request->input('fecha_desde', now()->startOfMonth()->format('Y-m-d'));
         $fechaHasta = $request->input('fecha_hasta', now()->format('Y-m-d'));
+        $perPage = (int) $request->input('per_page', 10);
+        if (!in_array($perPage, [10, 20, 50], true)) {
+            $perPage = 10;
+        }
         $routeName = (string) optional($request->route())->getName();
 
         $tipoClienteVista = null;
@@ -51,7 +55,7 @@ class FacturaController extends Controller
             DB::raw('NULL as ruta_comprobante_pago'),
         ];
 
-        $query = DB::table('factura as f')
+        $baseQuery = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('usuario as u', 'u.id_usuario', '=', 'f.usuario_creacion')
             ->leftJoin('recaudacion as rec', 'rec.id_factura', '=', 'f.id_factura')
@@ -59,14 +63,28 @@ class FacturaController extends Controller
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
             ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
                 $q->where('c.tipo_cliente', $tipoClienteVista);
-            })
+            });
+
+        // Los totales usan una consulta liviana del período completo. La tabla,
+        // en cambio, solo carga la página solicitada y sus relaciones asociadas.
+        $facturasParaTotales = (clone $baseQuery)
+            ->select([
+                'f.id_factura', 'f.serie', 'f.numero', 'f.estado', 'f.moneda',
+                'f.importe_total', 'f.monto_pendiente',
+                'rec.total_recaudacion as monto_recaudacion',
+                'rec.fecha_recaudacion',
+            ])
+            ->get();
+
+        $facturas = (clone $baseQuery)
             ->select($selects)
             ->orderByDesc('f.fecha_emision')
             ->orderByDesc('f.numero')
-            ->get();
+            ->paginate($perPage)
+            ->withQueryString();
 
-        // Cargar notificaciones en bloque (evita N+1 de 2 queries por factura)
-        $allFacturaIds = $query->pluck('id_factura')->toArray();
+        // Cargar notificaciones únicamente para las facturas de la página actual.
+        $allFacturaIds = $facturas->getCollection()->pluck('id_factura')->toArray();
 
         $notifWaMap = DB::table('notificacion_factura')
             ->whereIn('id_factura', $allFacturaIds)
@@ -84,7 +102,7 @@ class FacturaController extends Controller
             ->groupBy('id_factura')
             ->map->first();
 
-        $facturasCollection = collect($query->map(function ($f) use ($notifWaMap, $notifCorreoMap) {
+        $facturasCollection = $facturas->getCollection()->map(function ($f) use ($notifWaMap, $notifCorreoMap) {
             return (object) array_merge((array) $f, [
                 'comprobante_url' => $this->resolveComprobanteUrl($f->ruta_comprobante_pago ?? null),
                 'cliente' => (object) [
@@ -97,9 +115,10 @@ class FacturaController extends Controller
                 'ultima_notif_wa'     => $notifWaMap->get($f->id_factura),
                 'ultima_notif_correo' => $notifCorreoMap->get($f->id_factura),
             ]);
-        }));
+        });
+        $facturas->setCollection($facturasCollection);
 
-        $facturaIds    = $allFacturaIds;
+        $facturaIds = $facturasParaTotales->pluck('id_factura')->all();
         $creditosPorId = DB::table('credito')
             ->whereIn('id_factura', $facturaIds)
             ->where('activo', 1)
@@ -143,7 +162,7 @@ class FacturaController extends Controller
         }
 
         // Pre-cargar créditos de facturas ANULADAS en bloque (evita N+1 en reject)
-        $anuladoIds = $facturasCollection->where('estado', 'ANULADO')->pluck('id_factura')->all();
+        $anuladoIds = $facturasParaTotales->where('estado', 'ANULADO')->pluck('id_factura')->all();
         $anuladosConCredito = [];
         if (!empty($anuladoIds)) {
             $anuladosConCredito = array_flip(
@@ -155,7 +174,7 @@ class FacturaController extends Controller
             );
         }
 
-        $facturasParaTotales = $facturasCollection->reject(function ($f) use ($orphanFacturaIds, $anuladosConCredito) {
+        $facturasParaTotales = $facturasParaTotales->reject(function ($f) use ($orphanFacturaIds, $anuladosConCredito) {
             if (in_array((int) $f->id_factura, $orphanFacturaIds)) {
                 return true;
             }
@@ -210,7 +229,7 @@ class FacturaController extends Controller
             ->get();
 
         return view('facturas.index', [
-            'facturas'            => $facturasCollection,
+            'facturas'            => $facturas,
             'facturasParaTotales' => $facturasParaTotales,
             'orphanFacturaIds'    => $orphanFacturaIds,
             'creditosPorId'       => $creditosPorId,
@@ -222,6 +241,7 @@ class FacturaController extends Controller
             'fechaHasta'          => $fechaHasta,
             'tipoClienteVista'    => $tipoClienteVista,
             'facturasRoute'       => $facturasRoute,
+            'perPage'             => $perPage,
             'sincronizaciones'    => $sincronizaciones,
         ]);
     }

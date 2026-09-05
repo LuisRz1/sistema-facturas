@@ -70,9 +70,13 @@ class NotificacionController extends Controller
         $contenido = $this->buildMensajeCobranza($factura);
         $asunto    = $contenido['asunto'];
         $mensaje   = $contenido['mensaje'];
+        $html      = $this->buildCorreoHtml($factura, false);
 
         try {
-            Mail::raw($mensaje, fn($m) => $m->to($factura->cliente->correo)->subject($asunto));
+            Mail::html($html, fn($m) => $m
+                ->from(config('mail.from.address'), config('mail.from.name'))
+                ->to($factura->cliente->correo)
+                ->subject($asunto));
 
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
@@ -173,9 +177,13 @@ class NotificacionController extends Controller
         }
 
         $mensaje .= "\nGracias por su confianza.\n\nAtentamente,\nSistema de Facturación";
+        $html = $this->buildCorreoHtml($factura, true, $fechaPago);
 
         try {
-            Mail::raw($mensaje, fn($m) => $m->to($factura->cliente->correo)->subject($asunto));
+            Mail::html($html, fn($m) => $m
+                ->from(config('mail.from.address'), config('mail.from.name'))
+                ->to($factura->cliente->correo)
+                ->subject($asunto));
 
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
@@ -203,7 +211,7 @@ class NotificacionController extends Controller
         $montoPendiente = $factura->monto_pendiente > 0 ? $factura->monto_pendiente : $factura->importe_total;
         $montoTxt = $factura->moneda . ' ' . number_format((float) $montoPendiente, 2);
 
-        $asunto = "Recordatorio de pago - Factura {$numero}";
+        $asunto = "Confirmación de Pago - Factura {$numero}";
         $estadoLinea = 'se encuentra pendiente de pago.';
         $accionLinea = 'Le solicitamos regularizar el pago dentro del plazo correspondiente.';
 
@@ -244,6 +252,24 @@ class NotificacionController extends Controller
             'asunto' => $asunto,
             'mensaje' => $mensaje,
         ];
+    }
+
+    private function buildCorreoHtml(Factura $factura, bool $pagada, ?string $fechaPago = null): string
+    {
+        $numero = $factura->serie . '-' . $factura->numero;
+        $monto = $pagada
+            ? (float) $factura->importe_total
+            : (float) ($factura->monto_pendiente > 0 ? $factura->monto_pendiente : $factura->importe_total);
+
+        return view('emails.factura-notificacion', [
+            'titulo' => $pagada ? 'Confirmación de Pago' : 'Recordatorio de Pago',
+            'numero' => $numero,
+            'fechaEtiqueta' => $pagada ? 'Fecha de pago' : 'Fecha de vencimiento',
+            'fecha' => $pagada ? ($fechaPago ?: 'Registrada') : ($factura->fecha_vencimiento ?: 'No registrada'),
+            'monto' => $factura->moneda . ' ' . number_format($monto, 2),
+            'estado' => $pagada ? 'PAGADA' : $factura->estado,
+            'pagada' => $pagada,
+        ])->render();
     }
 
     private function baseNotif(
