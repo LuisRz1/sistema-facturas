@@ -19,6 +19,10 @@ use App\Http\Controllers\ImportarClientesController;
 use App\Http\Controllers\CotizacionDocumentController;
 use App\Http\Controllers\SincronizacionController;
 
+// ── INFORMACIÓN PÚBLICA DE LA APLICACIÓN ────────────────────────────────
+Route::view('/informacion', 'legal.informacion')->name('informacion');
+Route::view('/politica-privacidad', 'legal.politica-privacidad')->name('politica-privacidad');
+
 
 // ── AUTENTICACIÓN ─────────────────────────────────────────────────────────
 Route::get('/login',  [AuthController::class, 'showLogin'])->name('login');
