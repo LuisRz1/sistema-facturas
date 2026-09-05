@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Factura;
 use App\Models\NotificacionFactura;
+use App\Services\EmailDeliveryService;
 use App\Services\WhatsAppGatewayService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 
 class NotificacionController extends Controller
@@ -54,7 +54,7 @@ class NotificacionController extends Controller
         );
     }
 
-    public function enviarCorreoManual(int $id): RedirectResponse
+    public function enviarCorreoManual(int $id, EmailDeliveryService $emailDelivery): RedirectResponse
     {
         $factura = Factura::with('cliente')->findOrFail($id);
 
@@ -73,10 +73,7 @@ class NotificacionController extends Controller
         $html      = $this->buildCorreoHtml($factura, false);
 
         try {
-            Mail::html($html, fn($m) => $m
-                ->from(config('mail.from.address'), config('mail.from.name'))
-                ->to($factura->cliente->correo)
-                ->subject($asunto));
+            $emailDelivery->sendHtml($factura->cliente->correo, $asunto, $html);
 
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
@@ -151,7 +148,7 @@ class NotificacionController extends Controller
         );
     }
 
-    public function enviarFacturaPagadaCorreo(int $id): RedirectResponse
+    public function enviarFacturaPagadaCorreo(int $id, EmailDeliveryService $emailDelivery): RedirectResponse
     {
         $factura = Factura::with('cliente')->findOrFail($id);
 
@@ -180,10 +177,7 @@ class NotificacionController extends Controller
         $html = $this->buildCorreoHtml($factura, true, $fechaPago);
 
         try {
-            Mail::html($html, fn($m) => $m
-                ->from(config('mail.from.address'), config('mail.from.name'))
-                ->to($factura->cliente->correo)
-                ->subject($asunto));
+            $emailDelivery->sendHtml($factura->cliente->correo, $asunto, $html);
 
             NotificacionFactura::create($this->baseNotif(
                 $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
