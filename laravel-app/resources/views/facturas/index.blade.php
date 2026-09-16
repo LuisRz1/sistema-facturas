@@ -497,31 +497,33 @@
             <div class="filter-row">
                 <div class="search-input-wrap">
                     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
-                    <input type="text" class="form-input" id="searchInput" placeholder="Buscar factura, cliente..." onkeyup="filtrarTabla()">
+                    <input type="text" class="form-input" id="searchInput" name="search" form="frmFiltros"
+                           value="{{ $searchFiltro ?? '' }}" placeholder="Buscar factura, cliente..."
+                           oninput="debounceFiltro()">
                 </div>
-                <select class="form-select" id="filterEstado" onchange="filtrarTabla()">
+                <select class="form-select" id="filterEstado" name="estado" form="frmFiltros" onchange="document.getElementById('frmFiltros').submit()">
                     <option value="">Todos los estados</option>
-                    <option value="PENDIENTE">Pendiente</option>
-                    <option value="VENCIDO">Vencido</option>
-                    <option value="PAGADA">Pagada</option>
-                    <option value="DIFERENCIA PENDIENTE">Diferencia Pendiente</option>
+                    <option value="PENDIENTE" @selected(($estadoFiltro ?? '') === 'PENDIENTE')>Pendiente</option>
+                    <option value="VENCIDO" @selected(($estadoFiltro ?? '') === 'VENCIDO')>Vencido</option>
+                    <option value="PAGADA" @selected(($estadoFiltro ?? '') === 'PAGADA')>Pagada</option>
+                    <option value="DIFERENCIA PENDIENTE" @selected(($estadoFiltro ?? '') === 'DIFERENCIA PENDIENTE')>Diferencia Pendiente</option>
                 </select>
-                <select class="form-select" id="filterMoneda" onchange="filtrarTabla()">
+                <select class="form-select" id="filterMoneda" name="moneda" form="frmFiltros" onchange="document.getElementById('frmFiltros').submit()">
                     <option value="">Todas las monedas</option>
-                    <option value="PEN">Soles (PEN)</option>
-                    <option value="USD">Dólares (USD)</option>
+                    <option value="PEN" @selected(($monedaFiltro ?? '') === 'PEN')>Soles (PEN)</option>
+                    <option value="USD" @selected(($monedaFiltro ?? '') === 'USD')>Dólares (USD)</option>
                 </select>
-                <select class="form-select" id="filterRecaudacion" onchange="filtrarTabla()" style="min-width:180px;">
+                <select class="form-select" id="filterRecaudacion" name="recaudacion" form="frmFiltros" onchange="document.getElementById('frmFiltros').submit()" style="min-width:180px;">
                     <option value="">Toda recaudación</option>
-                    <option value="DETRACCION">Detracción</option>
-                    <option value="AUTODETRACCION">Autodetracción</option>
-                    <option value="RETENCION">Retención</option>
-                    <option value="SIN">Sin recaudación</option>
+                    <option value="DETRACCION" @selected(($recaudacionFiltro ?? '') === 'DETRACCION')>Detracción</option>
+                    <option value="AUTODETRACCION" @selected(($recaudacionFiltro ?? '') === 'AUTODETRACCION')>Autodetracción</option>
+                    <option value="RETENCION" @selected(($recaudacionFiltro ?? '') === 'RETENCION')>Retención</option>
+                    <option value="SIN" @selected(($recaudacionFiltro ?? '') === 'SIN')>Sin recaudación</option>
                 </select>
-                <select class="form-select" id="filterEmpresa" onchange="filtrarTabla()" style="min-width:220px;">
+                <select class="form-select" id="filterEmpresa" name="id_cliente" form="frmFiltros" onchange="document.getElementById('frmFiltros').submit()" style="min-width:220px;">
                     <option value="">Todas las empresas</option>
                     @foreach($clientes as $c)
-                        <option value="{{ $c->id_cliente }}">{{ $c->razon_social }}</option>
+                        <option value="{{ $c->id_cliente }}" @selected((int) ($clienteFiltro ?? 0) === (int) $c->id_cliente)>{{ $c->razon_social }}</option>
                     @endforeach
                 </select>
                 <label for="perPageSelect" style="font-size:12px;color:var(--text-muted);margin-left:auto;">Mostrar:</label>
@@ -1678,31 +1680,12 @@
                 document.getElementById('frmFiltros').submit();
             }
 
-            function filtrarTabla() {
-                const search      = document.getElementById('searchInput').value.toLowerCase();
-                const estado      = document.getElementById('filterEstado').value;
-                const moneda      = document.getElementById('filterMoneda').value;
-                const empresa     = document.getElementById('filterEmpresa').value;
-                const recaudacion = document.getElementById('filterRecaudacion').value;
-                let visibles = 0;
-                document.querySelectorAll('#facturasBody tr[data-estado]').forEach(row => {
-                    const rowRec = row.dataset.recaudacion || 'SIN';
-                    const okRec  = !recaudacion || rowRec === recaudacion;
-                    const ok = (!search  || row.dataset.search.includes(search))
-                        && (!estado  || row.dataset.estado  === estado)
-                        && (!moneda  || row.dataset.moneda  === moneda)
-                        && (!empresa || row.dataset.cliente === empresa)
-                        && okRec;
-                    row.style.display = ok ? '' : 'none';
-                    if (ok) visibles++;
-                });
-                const hayFiltro = search || estado || moneda || empresa || recaudacion;
-                const cardDesc = document.querySelector('.card-desc');
-                if (cardDesc) {
-                    cardDesc.textContent = hayFiltro
-                        ? visibles + ' factura' + (visibles !== 1 ? 's' : '') + ' (filtrado)'
-                        : '{{ $facturas->total() }} facturas en el período seleccionado';
-                }
+            let filtroTimer = null;
+            // El filtro se aplica en el servidor sobre TODAS las páginas; se
+            // envía el formulario con un pequeño retardo al escribir.
+            function debounceFiltro() {
+                clearTimeout(filtroTimer);
+                filtroTimer = setTimeout(() => document.getElementById('frmFiltros').submit(), 450);
             }
 
             function generarPDFFiltros() {

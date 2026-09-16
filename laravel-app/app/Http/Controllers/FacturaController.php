@@ -58,6 +58,14 @@ class FacturaController extends Controller
             DB::raw('NULL as ruta_comprobante_pago'),
         ];
 
+        // Filtros del listado (server-side: aplican a todas las páginas).
+        $searchFiltro       = trim((string) $request->input('search', ''));
+        $estadoFiltro       = trim((string) $request->input('estado', ''));
+        $monedaFiltro       = trim((string) $request->input('moneda', ''));
+        $clienteFiltro      = (int) $request->input('id_cliente', 0);
+        $recaudacionFiltro  = trim((string) $request->input('recaudacion', ''));
+        $recaudacionesValidas = ['DETRACCION', 'AUTODETRACCION', 'RETENCION'];
+
         $baseQuery = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
             ->leftJoin('usuario as u', 'u.id_usuario', '=', 'f.usuario_creacion')
@@ -66,6 +74,28 @@ class FacturaController extends Controller
             ->whereBetween('f.fecha_emision', [$fechaDesde, $fechaHasta])
             ->when($tipoClienteVista, function ($q) use ($tipoClienteVista) {
                 $q->where('c.tipo_cliente', $tipoClienteVista);
+            })
+            ->when($searchFiltro !== '', function ($q) use ($searchFiltro) {
+                $termino = '%' . $searchFiltro . '%';
+                $q->where(function ($sub) use ($termino) {
+                    $sub->where('c.razon_social', 'like', $termino)
+                        ->orWhere('c.ruc', 'like', $termino)
+                        ->orWhere('f.serie', 'like', $termino)
+                        ->orWhere('f.glosa', 'like', $termino)
+                        ->orWhereRaw("CAST(f.numero AS CHAR) LIKE ?", [$termino])
+                        ->orWhereRaw("CONCAT(f.serie, '-', LPAD(f.numero, 8, '0')) LIKE ?", [$termino]);
+                });
+            })
+            ->when($estadoFiltro !== '', fn ($q) => $q->where('f.estado', $estadoFiltro))
+            ->when(in_array($monedaFiltro, ['PEN', 'USD'], true), fn ($q) => $q->where('f.moneda', $monedaFiltro))
+            ->when($clienteFiltro > 0, fn ($q) => $q->where('f.id_cliente', $clienteFiltro))
+            ->when($recaudacionFiltro === 'SIN', function ($q) {
+                $q->where(function ($sub) {
+                    $sub->whereNull('f.tipo_recaudacion')->orWhere('f.tipo_recaudacion', '');
+                });
+            })
+            ->when(in_array($recaudacionFiltro, $recaudacionesValidas, true), function ($q) use ($recaudacionFiltro) {
+                $q->where('f.tipo_recaudacion', $recaudacionFiltro);
             });
 
         // Los totales usan una consulta liviana del período completo. La tabla,
@@ -248,6 +278,11 @@ class FacturaController extends Controller
             'tipoClienteVista'    => $tipoClienteVista,
             'facturasRoute'       => $facturasRoute,
             'perPage'             => $perPage,
+            'searchFiltro'        => $searchFiltro,
+            'estadoFiltro'        => $estadoFiltro,
+            'monedaFiltro'        => $monedaFiltro,
+            'clienteFiltro'       => $clienteFiltro,
+            'recaudacionFiltro'   => $recaudacionFiltro,
             'sincronizaciones'    => $sincronizaciones,
         ]);
     }
