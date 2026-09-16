@@ -254,9 +254,13 @@
             try {
                 const res  = await fetch(ruta, { method:'POST', body });
                 const data = await res.json();
-                showSendResult(data.success, data.message || data.error || 'Error desconocido');
+                if (data.success) {
+                    CRC.feedback({ tipo: 'ok', titulo: 'Reporte enviado', mensaje: data.message || 'El reporte se envió correctamente.' });
+                } else {
+                    CRC.feedback({ tipo: 'error', titulo: 'No se pudo enviar', mensaje: data.message || data.error || 'Error desconocido' });
+                }
             } catch(err) {
-                showSendResult(false, 'Error de red: ' + err.message);
+                CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: err.message });
             } finally {
                 btnWA.disabled = btnMail.disabled = false;
             }

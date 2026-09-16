@@ -227,28 +227,22 @@
     </div>
 
     {{-- ═══════════════════ MODAL RESULTADOS ═══════════════════ --}}
-    <div class="modal-overlay" id="modalResultadosOverlay">
-        <div class="modal" style="max-width:800px;">
-            <div class="modal-header" style="background:linear-gradient(135deg,#f5c842 0%,#e8b820 100%);">
-                <h2 style="color:#000;">✓ Detracciones Procesadas</h2>
-                <p style="color:rgba(0,0,0,.65);" id="modalSubtitle">Se procesó el archivo correctamente</p>
-                <button onclick="cerrarModal()" style="position:absolute;right:20px;top:20px;background:none;border:none;cursor:pointer;font-size:24px;color:#000;opacity:.6;">×</button>
-            </div>
-            <div class="modal-body" style="min-height:0;max-height:calc(90vh - 200px);overflow-y:auto;padding:22px 28px;">
+    <x-modal id="modalResultadosOverlay" title="✓ Detracciones Procesadas" theme="gold" max-width="800px">
+        <x-slot:header>
+            <p id="modalSubtitle" style="color:rgba(0,0,0,.65);">Se procesó el archivo correctamente</p>
+        </x-slot:header>
 
-                {{-- KPIs --}}
-                <div class="resultado-grid" id="resKpis"></div>
+        {{-- KPIs --}}
+        <div class="resultado-grid" id="resKpis"></div>
 
-                {{-- Tabla de facturas validadas --}}
-                <div id="resTablaWrap"></div>
+        {{-- Tabla de facturas validadas --}}
+        <div id="resTablaWrap"></div>
 
-            </div>
-            <div class="modal-footer">
-                <button type="button" onclick="cerrarModal()" class="btn btn-ghost">Cerrar</button>
-                <a href="{{ route('facturas.index') }}" class="btn btn-primary">Ver Facturas →</a>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" onclick="cerrarModal()" class="btn btn-ghost">Cerrar</button>
+            <a href="{{ route('facturas.index') }}" class="btn btn-primary">Ver Facturas →</a>
+        </x-slot:footer>
+    </x-modal>
 
 @endsection
 
@@ -364,7 +358,7 @@
                 }
 
                 if (!data.success) {
-                    alert(' Error: ' + (data.error || 'Error desconocido'));
+                    CRC.feedback({ tipo: 'error', titulo: 'No se pudo procesar', mensaje: data.error || 'Error desconocido' });
                     document.getElementById('btnProcesar').disabled = false;
                     return;
                 }
@@ -376,7 +370,7 @@
             } catch (err) {
                 document.getElementById('loadingWrap').classList.remove('show');
                 document.getElementById('btnProcesar').style.display = '';
-                alert('Error de red: ' + err.message);
+                CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: err.message });
             }
         }
 

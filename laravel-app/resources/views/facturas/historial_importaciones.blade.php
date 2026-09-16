@@ -341,21 +341,26 @@
     }
 
     function desactivarSinc(id) {
-        if (!confirm('¿Desactivar esta importación?\nLas facturas de este lote dejarán de aparecer en la lista de Gestión de Facturas.')) return;
-        fetch('/facturas/sincronizaciones/' + id + '/desactivar', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': CSRF},
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                showToast('Importación desactivada — ' + data.total + ' factura(s) ocultada(s).');
-                setTimeout(() => location.reload(), 1200);
-            } else {
-                alert('Error: ' + (data.error ?? 'Error desconocido'));
-            }
-        })
-        .catch(() => alert('Error al comunicarse con el servidor.'));
+        CRC.confirm('¿Desactivar esta importación? Las facturas de este lote dejarán de aparecer en la lista de Gestión de Facturas.', () => {
+            fetch('/facturas/sincronizaciones/' + id + '/desactivar', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': CSRF},
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    CRC.feedback({
+                        tipo: 'ok',
+                        titulo: 'Importación desactivada',
+                        mensaje: `${data.total} factura(s) ocultada(s) correctamente.`,
+                        onClose: () => location.reload(),
+                    });
+                } else {
+                    CRC.feedback({ tipo: 'error', titulo: 'No se pudo desactivar', mensaje: data.error ?? 'Error desconocido' });
+                }
+            })
+            .catch(() => CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: 'No se pudo comunicar con el servidor.' }));
+        }, { titulo: 'Desactivar importación', textoOk: 'Desactivar' });
     }
 
     function activarSinc(id) {
@@ -366,19 +371,24 @@
         .then(r => r.json())
         .then(data => {
             if (data.success) {
-                showToast('Importación reactivada — ' + data.total + ' factura(s) visibles nuevamente.');
-                setTimeout(() => location.reload(), 1200);
-            } else if (data.conflictos) {
-                let msg = (data.error ?? 'Conflictos detectados') + '\n\n';
-                data.conflictos.forEach(c => {
-                    msg += '• ' + c.factura + ' → ya está en: ' + c.en_importacion + '\n';
+                CRC.feedback({
+                    tipo: 'ok',
+                    titulo: 'Importación reactivada',
+                    mensaje: `${data.total} factura(s) visibles nuevamente.`,
+                    onClose: () => location.reload(),
                 });
-                alert(msg);
+            } else if (data.conflictos) {
+                CRC.feedback({
+                    tipo: 'error',
+                    titulo: 'Conflictos detectados',
+                    mensaje: data.error ?? 'Algunas facturas ya pertenecen a otra importación activa.',
+                    detalles: data.conflictos.map(c => `${c.factura} → ya está en: ${c.en_importacion}`),
+                });
             } else {
-                alert('Error: ' + (data.error ?? 'Error desconocido'));
+                CRC.feedback({ tipo: 'error', titulo: 'No se pudo reactivar', mensaje: data.error ?? 'Error desconocido' });
             }
         })
-        .catch(() => alert('Error al comunicarse con el servidor.'));
+        .catch(() => CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: 'No se pudo comunicar con el servidor.' }));
     }
 </script>
 @endpush

@@ -1974,12 +1974,12 @@
                 const toCents = n => Math.round((Number(n) || 0) * 100);
                 const suma = detalles.reduce((acc, d) => acc + Number(d.monto), 0);
                 if (!detalles.length) {
-                    alert('Selecciona al menos una factura para el pago masivo.');
+                    CRC.feedback({ tipo: 'error', titulo: 'Sin facturas seleccionadas', mensaje: 'Selecciona al menos una factura para el pago masivo.' });
                     btn.disabled = false; btn.textContent = 'Guardar Pago Masivo';
                     return;
                 }
                 if (toCents(suma) !== toCents(montoTotal)) {
-                    alert('La suma de facturas seleccionadas debe coincidir con el monto total abonado.');
+                    CRC.feedback({ tipo: 'error', titulo: 'Montos no coinciden', mensaje: 'La suma de facturas seleccionadas debe coincidir con el monto total abonado.' });
                     btn.disabled = false; btn.textContent = 'Guardar Pago Masivo';
                     return;
                 }
@@ -2014,7 +2014,7 @@
                     showToastFactura(`✓ ${data.facturas_actualizadas || detalles.length} factura(s) actualizadas por pago masivo.`);
                     abrirResumenPagoMasivo(data.resumen || []);
                 } catch (e) {
-                    alert('Error: ' + e.message);
+                    CRC.feedback({ tipo: 'error', titulo: 'No se pudo registrar', mensaje: e.message });
                 } finally {
                     btn.disabled = false;
                     btn.textContent = 'Guardar Pago Masivo';
@@ -2228,20 +2228,23 @@
             }
 
             async function eliminarPagoItem(idPago) {
-                if (!confirm('¿Eliminar este abono? Se recalcularán los totales.')) return;
-                try {
-                    const res  = await fetch(`/facturas/${facturaActualId}/pagos/${idPago}`, {
-                        method : 'DELETE',
-                        headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
-                    });
-                    const data = await res.json();
-                    if (!data.success) throw new Error(data.message || 'No se pudo eliminar');
-                    const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
-                    if (data.monto_pendiente !== undefined) facturaMontoPendiente = parseFloat(data.monto_pendiente);
-                    actualizarResumenPago(data.monto_abonado, totalRec, calcularTotalCola());
-                    await cargarListaPagos(facturaActualId);
-                    showToastFactura('✓ Abono eliminado y totales recalculados.');
-                } catch (e) { alert('Error: ' + e.message); }
+                CRC.confirm('¿Eliminar este abono? Se recalcularán los totales.', async () => {
+                    try {
+                        const res  = await fetch(`/facturas/${facturaActualId}/pagos/${idPago}`, {
+                            method : 'DELETE',
+                            headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
+                        });
+                        const data = await res.json();
+                        if (!data.success) throw new Error(data.message || 'No se pudo eliminar');
+                        const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                        if (data.monto_pendiente !== undefined) facturaMontoPendiente = parseFloat(data.monto_pendiente);
+                        actualizarResumenPago(data.monto_abonado, totalRec, calcularTotalCola());
+                        await cargarListaPagos(facturaActualId);
+                        CRC.feedback({ tipo: 'ok', titulo: 'Abono eliminado', mensaje: 'Los totales se recalcularon correctamente.' });
+                    } catch (e) {
+                        CRC.feedback({ tipo: 'error', titulo: 'No se pudo eliminar', mensaje: e.message });
+                    }
+                }, { titulo: 'Eliminar abono', textoOk: 'Eliminar' });
             }
 
             function abrirEditarPago(idPago) {
@@ -2351,8 +2354,10 @@
                     if (data.monto_pendiente !== undefined) facturaMontoPendiente = parseFloat(data.monto_pendiente);
                     actualizarResumenPago(data.monto_abonado, totalRec, calcularTotalCola());
                     await cargarListaPagos(facturaActualId);
-                    showToastFactura('✓ Abono actualizado correctamente.');
-                } catch (e) { alert('Error: ' + e.message); }
+                    CRC.feedback({ tipo: 'ok', titulo: 'Abono actualizado', mensaje: 'El abono se actualizó correctamente.' });
+                } catch (e) {
+                    CRC.feedback({ tipo: 'error', titulo: 'No se pudo actualizar', mensaje: e.message });
+                }
                 finally { btn.disabled = false; }
             }
 
@@ -2586,23 +2591,27 @@
                     const soles = parseFloat(document.getElementById('pagoMontoSoles').value) || 0;
                     const tc    = parseFloat(document.getElementById('pagoTipoCambio').value) || 0;
                     if (soles > 0 && tc === 0) {
-                        alert('Debes indicar el Tipo de Cambio para calcular el equivalente en USD.');
+                        CRC.feedback({ tipo: 'error', titulo: 'Falta el tipo de cambio', mensaje: 'Debes indicar el Tipo de Cambio para calcular el equivalente en USD.' });
                         document.getElementById('pagoTipoCambio').focus();
                         return;
                     }
                 }
 
                 if (!colaPagos.length && !validarDet) {
-                    alert('Agrega al menos un abono o confirma la recaudación antes de guardar.'); return;
+                    CRC.feedback({ tipo: 'error', titulo: 'Nada por registrar', mensaje: 'Agrega al menos un abono o confirma la recaudación antes de guardar.' });
+                    return;
                 }
                 if (validarDet && !fechaRec) {
-                    alert('Debes indicar la Fecha de Depósito cuando confirmas la recaudación.');
+                    CRC.feedback({ tipo: 'error', titulo: 'Falta la fecha de depósito', mensaje: 'Debes indicar la Fecha de Depósito cuando confirmas la recaudación.' });
                     document.getElementById('pagoFechaRecaudacion').focus();
                     return;
                 }
                 if (colaPagos.length) {
                     const invalidas = colaPagos.filter(p => !(parseFloat(p.monto) > 0));
-                    if (invalidas.length) { alert('Todos los abonos deben tener un monto mayor a 0.'); return; }
+                    if (invalidas.length) {
+                        CRC.feedback({ tipo: 'error', titulo: 'Montos inválidos', mensaje: 'Todos los abonos deben tener un monto mayor a 0.' });
+                        return;
+                    }
                 }
 
                 const btn = document.getElementById('btnGuardarPago');
@@ -2642,7 +2651,7 @@
                             ultimoData = await res.json();
                             if (!ultimoData.success) throw new Error(ultimoData.message || 'Error al guardar pago');
                         } catch (e) {
-                            alert(`Error en abono ${i+1}: ${e.message}`);
+                            CRC.feedback({ tipo: 'error', titulo: `Error en abono ${i + 1}`, mensaje: e.message });
                             btn.disabled = false;
                             document.getElementById('btnGuardarPagoTxt').textContent = 'Guardar pagos';
                             return;
@@ -2668,16 +2677,22 @@
                         ultimoData = await res.json();
                         if (!ultimoData.success) throw new Error(ultimoData.message || 'Error al guardar');
                     } catch (e) {
-                        alert(`Error: ${e.message}`);
+                        CRC.feedback({ tipo: 'error', titulo: 'No se pudo guardar', mensaje: e.message });
                         btn.disabled = false;
                         document.getElementById('btnGuardarPagoTxt').textContent = 'Guardar pagos';
                         return;
                     }
                 }
 
-                showToastFactura(`✓ ${colaPagos.length > 0 ? colaPagos.length + ' abono(s) guardados' : 'Recaudación confirmada'} correctamente.`);
                 cerrarModalPago();
-                location.reload();
+                CRC.feedback({
+                    tipo: 'ok',
+                    titulo: 'Pago registrado',
+                    mensaje: colaPagos.length > 0
+                        ? `${colaPagos.length} abono(s) guardado(s) correctamente.`
+                        : 'La recaudación se confirmó correctamente.',
+                    onClose: () => location.reload(),
+                });
             }
 
             function showToastFactura(msg, ok = true) {
@@ -2862,13 +2877,17 @@
                     .then(data=>{
                         if(data.success){
                             cerrarModalEditar();
-                            showToastFactura(`✓ Factura ${data.factura_num||''} actualizada.`);
-                            setTimeout(() => location.reload(), 1200);
+                            CRC.feedback({
+                                tipo: 'ok',
+                                titulo: 'Factura actualizada',
+                                mensaje: `La factura ${data.factura_num || ''} se actualizó correctamente.`,
+                                onClose: () => location.reload(),
+                            });
                         } else {
-                            showToastFactura(data.message||'No se pudo guardar', false);
+                            CRC.feedback({ tipo: 'error', titulo: 'No se pudo guardar', mensaje: data.message || 'No se pudo guardar la factura.' });
                         }
                     })
-                    .catch(err=>showToastFactura('Error: '+err.message, false));
+                    .catch(err=>CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: err.message }));
             }
 
             // ── Modal Editar Cliente ──────────────────────────────────────────
@@ -2881,7 +2900,7 @@
                     document.getElementById('editCelular').value         = c.celular         || '';
                     document.getElementById('editCorreo').value          = c.correo          || '';
                     document.getElementById('editDireccionFiscal').value = c.direccion_fiscal || '';
-                }).catch(err=>alert('Error: '+err.message));
+                }).catch(err=>CRC.feedback({ tipo: 'error', titulo: 'Error al cargar', mensaje: err.message }));
             }
             function cerrarModalEditarCliente() { document.getElementById('modalEditarClienteOverlay').classList.remove('open'); }
 
@@ -2952,17 +2971,19 @@
                     const data = await res.json();
                     if (data.success) {
                         cerrarModalNuevaFactura();
-                        showToastFactura(data.message || 'Factura creada correctamente.', 'success');
-                        setTimeout(() => location.reload(), 900);
+                        CRC.feedback({
+                            tipo: 'ok',
+                            titulo: 'Factura creada',
+                            mensaje: data.message || 'La factura se creó correctamente.',
+                            onClose: () => location.reload(),
+                        });
                     } else {
-                        errEl.textContent = data.message || 'Error al crear la factura.';
-                        errEl.style.display = 'block';
+                        CRC.feedback({ tipo: 'error', titulo: 'No se pudo crear la factura', mensaje: data.message || 'Error al crear la factura.' });
                         btn.disabled = false;
                         btn.textContent = 'Crear Factura';
                     }
                 } catch(e) {
-                    errEl.textContent = 'Error de red. Intenta nuevamente.';
-                    errEl.style.display = 'block';
+                    CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: 'No se pudo conectar con el servidor. Intenta nuevamente.' });
                     btn.disabled = false;
                     btn.textContent = 'Crear Factura';
                 }
@@ -2982,8 +3003,20 @@
                     body:JSON.stringify(datos)
                 })
                     .then(r=>r.json())
-                    .then(data=>{ if(data.success){ cerrarModalEditarCliente(); location.reload(); } else alert('Error: '+(data.message||'')); })
-                    .catch(err=>alert('Error: '+err.message));
+                    .then(data=>{
+                        if (data.success) {
+                            cerrarModalEditarCliente();
+                            CRC.feedback({
+                                tipo: 'ok',
+                                titulo: 'Cliente actualizado',
+                                mensaje: 'Los datos del cliente se guardaron correctamente.',
+                                onClose: () => location.reload(),
+                            });
+                        } else {
+                            CRC.feedback({ tipo: 'error', titulo: 'No se pudo guardar', mensaje: data.message || 'No se pudo actualizar el cliente.' });
+                        }
+                    })
+                    .catch(err=>CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: err.message }));
             }
 
             ['modalPagoMasivoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay','modalVerPagosOverlay','modalNuevaFacturaOverlay'].forEach(id => {
@@ -3038,21 +3071,26 @@
             }
 
             function desactivarSinc(id) {
-                if (!confirm('¿Desactivar esta importación? Las facturas de este lote dejarán de aparecer en la lista.')) return;
-                fetch('/facturas/sincronizaciones/' + id + '/desactivar', {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': CSRF},
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        showToastFactura('Importación desactivada — ' + data.total + ' factura(s) ocultada(s).');
-                        setTimeout(() => location.reload(), 1200);
-                    } else {
-                        alert('Error: ' + (data.error ?? 'Error desconocido'));
-                    }
-                })
-                .catch(() => alert('Error al comunicarse con el servidor.'));
+                CRC.confirm('¿Desactivar esta importación? Las facturas de este lote dejarán de aparecer en la lista.', () => {
+                    fetch('/facturas/sincronizaciones/' + id + '/desactivar', {
+                        method: 'POST',
+                        headers: {'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN': CSRF},
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            CRC.feedback({
+                                tipo: 'ok',
+                                titulo: 'Importación desactivada',
+                                mensaje: `${data.total} factura(s) ocultada(s) correctamente.`,
+                                onClose: () => location.reload(),
+                            });
+                        } else {
+                            CRC.feedback({ tipo: 'error', titulo: 'No se pudo desactivar', mensaje: data.error ?? 'Error desconocido' });
+                        }
+                    })
+                    .catch(() => CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: 'No se pudo comunicar con el servidor.' }));
+                }, { titulo: 'Desactivar importación', textoOk: 'Desactivar' });
             }
 
             function activarSinc(id) {
@@ -3063,19 +3101,24 @@
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        showToastFactura('Importación reactivada — ' + data.total + ' factura(s) visibles nuevamente.');
-                        setTimeout(() => location.reload(), 1200);
-                    } else if (data.conflictos) {
-                        let msg = (data.error ?? 'Conflictos detectados') + '\n\n';
-                        data.conflictos.forEach(c => {
-                            msg += '• ' + c.factura + ' → ya está en: ' + c.en_importacion + '\n';
+                        CRC.feedback({
+                            tipo: 'ok',
+                            titulo: 'Importación reactivada',
+                            mensaje: `${data.total} factura(s) visibles nuevamente.`,
+                            onClose: () => location.reload(),
                         });
-                        alert(msg);
+                    } else if (data.conflictos) {
+                        CRC.feedback({
+                            tipo: 'error',
+                            titulo: 'Conflictos detectados',
+                            mensaje: data.error ?? 'Algunas facturas ya pertenecen a otra importación activa.',
+                            detalles: data.conflictos.map(c => `${c.factura} → ya está en: ${c.en_importacion}`),
+                        });
                     } else {
-                        alert('Error: ' + (data.error ?? 'Error desconocido'));
+                        CRC.feedback({ tipo: 'error', titulo: 'No se pudo reactivar', mensaje: data.error ?? 'Error desconocido' });
                     }
                 })
-                .catch(() => alert('Error al comunicarse con el servidor.'));
+                .catch(() => CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: 'No se pudo comunicar con el servidor.' }));
             }
 
             // Resaltar la importación recién creada si viene del redirect

@@ -634,13 +634,13 @@
     function validarYAsignarArchivo(file) {
         const ext = file.name.split('.').pop().toLowerCase();
         if (!allowedExtensions.includes(ext)) {
-            alert('Formato no permitido. Use archivos: .xlsx, .xls, .csv');
+            CRC.feedback({ tipo: 'error', titulo: 'Formato no permitido', mensaje: 'Use archivos: .xlsx, .xls, .csv' });
             return;
         }
 
         const maxSize = {{ $tamanoMaximoMB ?? 20 }} * 1024 * 1024;
         if (file.size > maxSize) {
-            alert('El archivo excede el tamaño máximo de {{ $tamanoMaximoMB ?? 20 }} MB.');
+            CRC.feedback({ tipo: 'error', titulo: 'Archivo demasiado grande', mensaje: 'El archivo excede el tamaño máximo de {{ $tamanoMaximoMB ?? 20 }} MB.' });
             return;
         }
 

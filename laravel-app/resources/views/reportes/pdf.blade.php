@@ -271,6 +271,7 @@
         col.col-pend   { width:8%; }
         col.col-est    { width:7%; }
     </style>
+    @include('partials.ui-styles')
 
 </head>
 <body>
@@ -308,6 +309,16 @@
     </div>
     <button class="btn-close" onclick="window.close()">Cerrar</button>
 
+    @php
+        $destinatarios = collect($usuariosDestino ?? [])->map(function ($u) {
+            return [
+                'id'      => (int) $u->id_usuario,
+                'nombre'  => trim(($u->nombre ?? '') . ' ' . ($u->apellido ?? '')),
+                'celular' => (string) ($u->celular ?? ''),
+                'correo'  => (string) ($u->correo ?? ''),
+            ];
+        })->values();
+    @endphp
     <div class="send-inline">
         <span class="send-inline-label">Enviar a:</span>
         <select id="selUsuario" onchange="onUsuarioChange()">
@@ -315,7 +326,8 @@
             @foreach($todosUsuarios as $u)
                 <option value="{{ $u->id_usuario }}"
                         data-celular="{{ $u->celular ?? '' }}"
-                        data-correo="{{ $u->correo ?? '' }}">
+                        data-correo="{{ $u->correo ?? '' }}"
+                        @selected($destinatarios->isNotEmpty() && $destinatarios->first()['id'] === (int) $u->id_usuario)>
                     {{ $u->nombre }} {{ $u->apellido }}{{ $u->celular ? ' · '.$u->celular : '' }}
                 </option>
             @endforeach
@@ -634,39 +646,88 @@
     // IDs de NCs huérfanas para exclusión en exportación Excel
     const ORPHAN_IDS     = {!! json_encode($orphanFacturaIds) !!};
 
+    const DESTINATARIOS = @json($destinatarios);
+
+    function destinosDisponibles() {
+        const sel = document.getElementById('selUsuario');
+        if (sel.value) {
+            const opt = sel.options[sel.selectedIndex];
+            return [{
+                id: sel.value,
+                nombre: opt?.textContent?.trim() || '',
+                celular: opt?.dataset?.celular || '',
+                correo:  opt?.dataset?.correo  || '',
+            }];
+        }
+        return DESTINATARIOS;
+    }
+
+    function actualizarBotones() {
+        const waOk   = destinosDisponibles().some(d => d.celular);
+        const mailOk = destinosDisponibles().some(d => d.correo);
+        document.getElementById('btnEnvWA').disabled   = !waOk;
+        document.getElementById('btnEnvMail').disabled = !mailOk;
+    }
+
     function onUsuarioChange() {
-        const sel    = document.getElementById('selUsuario');
-        const opt    = sel.options[sel.selectedIndex];
-        const cel    = opt?.dataset?.celular || '';
-        const correo = opt?.dataset?.correo  || '';
-        document.getElementById('btnEnvWA').disabled   = !(sel.value && cel);
-        document.getElementById('btnEnvMail').disabled = !(sel.value && correo);
+        actualizarBotones();
         document.getElementById('sendResultBar').className = 'send-result-bar';
         document.getElementById('sendResultBar').textContent = '';
     }
 
     async function enviarReporte(canal) {
-        const sel  = document.getElementById('selUsuario');
-        if (!sel.value) return;
+        const destinos = destinosDisponibles().filter(d => canal === 'whatsapp' ? d.celular : d.correo);
+        if (!destinos.length) return;
+
         const btnWA  = document.getElementById('btnEnvWA');
         const btnMail= document.getElementById('btnEnvMail');
         const result = document.getElementById('sendResultBar');
         btnWA.disabled = btnMail.disabled = true;
         result.className = 'send-result-bar';
-        result.textContent = 'Enviando…';
-        const body = new URLSearchParams({ usuario_id: sel.value, fecha_desde: FECHA_DESDE, fecha_hasta: FECHA_HASTA, tipo_reporte: TIPO_REPORTE, _token: CSRF });
-        if (ID_CLIENTE) body.append('id_cliente', ID_CLIENTE);
-        ESTADOS_FILTRO.forEach(e => body.append('estados[]', e));
-        try {
-            const res  = await fetch(canal === 'whatsapp' ? RUTA_WA : RUTA_MAIL, { method: 'POST', body });
-            const data = await res.json();
-            result.className   = 'send-result-bar ' + (data.success ? 'ok' : 'error');
-            result.textContent = (data.success ? '✓ ' : '✗ ') + (data.message || data.error || 'Error');
-        } catch(err) {
-            result.className   = 'send-result-bar error';
-            result.textContent = '✗ Error de red: ' + err.message;
-        } finally { onUsuarioChange(); }
+        result.textContent = destinos.length > 1 ? `Enviando a ${destinos.length} usuarios…` : 'Enviando…';
+
+        let okCount = 0;
+        const errores = [];
+        for (const d of destinos) {
+            const body = new URLSearchParams({ usuario_id: d.id, fecha_desde: FECHA_DESDE, fecha_hasta: FECHA_HASTA, tipo_reporte: TIPO_REPORTE, _token: CSRF });
+            if (ID_CLIENTE) body.append('id_cliente', ID_CLIENTE);
+            ESTADOS_FILTRO.forEach(e => body.append('estados[]', e));
+            try {
+                const res  = await fetch(canal === 'whatsapp' ? RUTA_WA : RUTA_MAIL, { method: 'POST', body });
+                const data = await res.json();
+                if (data.success) okCount++;
+                else errores.push(`${d.nombre || d.id}: ${data.message || data.error || 'Error'}`);
+            } catch (err) {
+                errores.push(`${d.nombre || d.id}: ${err.message}`);
+            }
+        }
+
+        result.className = 'send-result-bar';
+        result.textContent = '';
+
+        if (errores.length === 0) {
+            CRC.feedback({
+                tipo: 'ok',
+                titulo: 'Reporte enviado',
+                mensaje: okCount > 1
+                    ? `El reporte se envió a ${okCount} usuarios correctamente.`
+                    : 'El reporte se envió correctamente.',
+            });
+        } else {
+            CRC.feedback({
+                tipo: 'error',
+                titulo: okCount > 0 ? 'Envío parcial' : 'No se pudo enviar',
+                mensaje: okCount > 0
+                    ? `Se envió a ${okCount} destinatario(s), pero hubo errores.`
+                    : 'No se pudo enviar el reporte. Revisa los detalles.',
+                detalles: errores,
+            });
+        }
+
+        actualizarBotones();
     }
+
+    onUsuarioChange();
 
     function toggleExcelPanel(e) {
         e.stopPropagation();
@@ -687,5 +748,6 @@
 
     window.addEventListener('load', () => setTimeout(() => window.print(), 600));
 </script>
+@include('partials.ui-scripts')
 </body>
 </html>

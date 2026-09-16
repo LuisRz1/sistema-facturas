@@ -589,6 +589,59 @@
             background: #fafbfd;
         }
 
+        /* ── MODAL: variantes, cierre y accesibilidad (componente modal) ── */
+        .modal-header { position: relative; }
+        .modal-header .modal-titles { padding-right: 32px; }
+        .modal-close {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            font-size: 26px;
+            line-height: 1;
+            opacity: .7;
+            transition: opacity .15s;
+        }
+        .modal-close:hover { opacity: 1; }
+        .modal-header--gold { background: linear-gradient(135deg, #f5c842, #e0a800); color: #171204; }
+        .modal-header--gold p { color: #4a3c12; }
+        .modal-header--danger { background: linear-gradient(135deg, #b91c1c, #dc2626); color: #fff; }
+        .modal-header--danger p { color: #fecaca; }
+        .modal-header--plain { background: #fff; color: var(--text-primary); border-bottom: 1px solid var(--border); }
+        .modal-header--plain p { color: var(--text-muted); }
+
+        /* ── TOASTS globales ── */
+        .toast-stack {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 400;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+        .crc-toast {
+            background: #0f172a;
+            color: #fff;
+            padding: 12px 16px;
+            border-radius: 10px;
+            box-shadow: var(--shadow-lg);
+            font-size: 13px;
+            font-weight: 600;
+            max-width: 380px;
+            pointer-events: auto;
+            animation: crcToastIn .2s ease;
+        }
+        .crc-toast.ok { background: #065f46; }
+        .crc-toast.error { background: #991b1b; }
+        .crc-toast.info { background: #1e3a8a; }
+        @keyframes crcToastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
         .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
         .form-full { grid-column: 1 / -1; }
@@ -858,6 +911,8 @@
         @yield('content')
     </main>
 </div>
+
+@include('partials.ui-scripts')
 
 @stack('scripts')
 

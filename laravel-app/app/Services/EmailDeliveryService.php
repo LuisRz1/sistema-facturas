@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use RuntimeException;
@@ -35,19 +36,27 @@ class EmailDeliveryService
             throw new RuntimeException('Faltan las credenciales OAuth de Gmail API.');
         }
 
-        $tokenResponse = $this->http()
-            ->asForm()
-            ->post('https://oauth2.googleapis.com/token', [
-                'client_id' => $clientId,
-                'client_secret' => $clientSecret,
-                'refresh_token' => $refreshToken,
-                'grant_type' => 'refresh_token',
-            ])
-            ->throw();
+        $accessToken = (string) Cache::get('gmail_api_access_token', '');
 
-        $accessToken = (string) $tokenResponse->json('access_token');
         if ($accessToken === '') {
-            throw new RuntimeException('Google no devolvió un access token para Gmail API.');
+            $tokenResponse = $this->http()
+                ->asForm()
+                ->post('https://oauth2.googleapis.com/token', [
+                    'client_id' => $clientId,
+                    'client_secret' => $clientSecret,
+                    'refresh_token' => $refreshToken,
+                    'grant_type' => 'refresh_token',
+                ])
+                ->throw();
+
+            $accessToken = (string) $tokenResponse->json('access_token');
+            if ($accessToken === '') {
+                throw new RuntimeException('Google no devolvió un access token para Gmail API.');
+            }
+
+            // El access token de Google dura ~1 hora; se cachea 60 s menos.
+            $expiresIn = (int) $tokenResponse->json('expires_in', 3600);
+            Cache::put('gmail_api_access_token', $accessToken, now()->addSeconds(max($expiresIn - 60, 60)));
         }
 
         $fromAddress = (string) config('mail.from.address');

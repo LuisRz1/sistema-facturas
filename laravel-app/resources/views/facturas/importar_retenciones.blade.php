@@ -507,7 +507,7 @@
             };
 
             document.getElementById('frm').addEventListener('submit', function(e) {
-                if (!tieneArchivo) { e.preventDefault(); alert('Selecciona un archivo Excel.'); return; }
+                if (!tieneArchivo) { e.preventDefault(); CRC.feedback({ tipo: 'error', titulo: 'Falta el archivo', mensaje: 'Selecciona un archivo Excel.' }); return; }
                 var btn = document.getElementById('btnSub');
                 btn.disabled    = true;
                 btn.textContent = 'Procesando… por favor espera';

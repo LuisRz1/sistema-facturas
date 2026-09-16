@@ -383,9 +383,11 @@
         }
 
         // ── Cerrar sesión ────────────────────────────────────────────────────────────
-        async function logoutWA() {
-            if (!confirm('¿Cerrar la sesión de WhatsApp?\n\nNecesitarás escanear el QR nuevamente para volver a conectar.')) return;
+        function logoutWA() {
+            CRC.confirm('¿Cerrar la sesión de WhatsApp? Necesitarás escanear el QR nuevamente para volver a conectar.', ejecutarLogoutWA, { titulo: 'Cerrar sesión de WhatsApp', textoOk: 'Cerrar sesión' });
+        }
 
+        async function ejecutarLogoutWA() {
             const allBtns = document.querySelectorAll('#btnLogout, #btnLogoutQR');
             allBtns.forEach(b => { b.disabled = true; b.textContent = 'Cerrando sesión…'; });
 

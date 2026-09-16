@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Services\EmailDeliveryService;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -11,6 +12,8 @@ class EmailDeliveryServiceTest extends TestCase
 {
     public function test_it_sends_html_email_through_gmail_api(): void
     {
+        Cache::forget('gmail_api_access_token');
+
         config([
             'mail.default' => 'gmail-api',
             'mail.from.address' => 'sender@example.com',
