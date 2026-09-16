@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\EnviarCorreo;
 use App\Jobs\SubirYEnviarPdfWhatsApp;
+use App\Support\DocumentoPares;
 use App\Support\JobDispatch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,8 +21,11 @@ class ReporteController extends Controller
 {
     public function index()
     {
-        $clientes = DB::table('cliente')->orderBy('razon_social')
-            ->get(['id_cliente', 'razon_social', 'ruc', 'celular', 'correo']);
+        $clientes = Cache::remember('reportes_clientes_contacto', 300, function () {
+            return DB::table('cliente')->orderBy('razon_social')
+                ->get(['id_cliente', 'razon_social', 'ruc', 'celular', 'correo']);
+        });
+
         return view('reportes.index', compact('clientes'));
     }
 
@@ -46,14 +50,26 @@ class ReporteController extends Controller
             ->where('activo', 1)
             ->get();
 
+        if ($creditos->isEmpty()) {
+            return [];
+        }
+
+        $pares = $creditos
+            ->map(fn ($c) => [(string) $c->serie_doc_modificado, (int) $c->numero_doc_modificado])
+            ->unique(fn ($p) => $p[0] . '|' . $p[1])
+            ->values();
+
+        $existentes = [];
+        foreach ($pares->chunk(300) as $chunk) {
+            foreach (DocumentoPares::existentes($chunk->all()) as $r) {
+                $existentes[$r->serie . '|' . $r->numero] = true;
+            }
+        }
+
         $orphanIds = [];
         foreach ($creditos as $credito) {
-            $existe = DB::table('factura')
-                ->where('serie',  $credito->serie_doc_modificado)
-                ->where('numero', $credito->numero_doc_modificado)
-                ->where('activo', 1)
-                ->exists();
-            if (!$existe) {
+            $key = $credito->serie_doc_modificado . '|' . $credito->numero_doc_modificado;
+            if (!isset($existentes[$key])) {
                 $orphanIds[] = (int) $credito->id_factura;
             }
         }
@@ -151,19 +167,18 @@ class ReporteController extends Controller
             ->where('activo', 1)
             ->get(['id_factura', 'serie_doc_modificado', 'numero_doc_modificado']);
 
-        $creditosInversosQuery = DB::table('credito')
-            ->where('activo', 1)
-            ->select(['id_factura', 'serie_doc_modificado', 'numero_doc_modificado']);
+        $pares = $facturas
+            ->map(fn ($f) => [(string) $f->serie, (int) $f->numero])
+            ->unique(fn ($p) => $p[0] . '|' . $p[1])
+            ->values();
 
-        $facturas->each(function ($f) use ($creditosInversosQuery) {
-            $creditosInversosQuery->orWhere(function ($q) use ($f) {
-                $q->where('serie_doc_modificado', $f->serie)
-                    ->where('numero_doc_modificado', $f->numero);
-            });
-        });
+        $creditosInversos = collect();
+        foreach ($pares->chunk(300) as $chunk) {
+            $creditosInversos = $creditosInversos->merge(DocumentoPares::creditos($chunk->all()));
+        }
 
         $creditos = $creditosDirectos
-            ->merge($creditosInversosQuery->get())
+            ->merge($creditosInversos)
             ->unique(fn($c) => ((int) $c->id_factura) . '|' . $c->serie_doc_modificado . '|' . (int) $c->numero_doc_modificado)
             ->values();
 
@@ -768,19 +783,36 @@ class ReporteController extends Controller
         }
         uasort($clientes, fn($a, $b) => strcmp($a['razon_social'], $b['razon_social']));
 
-        $totalPen              = array_sum(array_column($clientes, 'deuda_pen'));
-        $totalUsd              = array_sum(array_column($clientes, 'deuda_usd'));
-        $totalSubtotalPen      = array_sum(array_column($clientes, 'subtotal_pen'));
-        $totalSubtotalUsd      = array_sum(array_column($clientes, 'subtotal_usd'));
-        $totalIgvPen           = array_sum(array_column($clientes, 'igv_pen'));
-        $totalIgvUsd           = array_sum(array_column($clientes, 'igv_usd'));
-        $totalRecaudacionPen   = array_sum(array_column($clientes, 'recaudacion_pen'));
-        $totalRecaudCobradaPen = array_sum(array_column($clientes, 'recaud_cobrada_pen'));
-        $totalRecaudacionUsd   = array_sum(array_column($clientes, 'recaudacion_usd'));
-        $totalAbonadoPen       = array_sum(array_column($clientes, 'abonado_pen'));
-        $totalAbonadoUsd       = array_sum(array_column($clientes, 'abonado_usd'));
-        $totalPendientePen     = array_sum(array_column($clientes, 'pendiente_pen'));
-        $totalPendienteUsd     = array_sum(array_column($clientes, 'pendiente_usd'));
+        // Acumulación en una sola pasada (antes: 13 recorridos con array_sum/array_column).
+        $totalPen              = 0.0;
+        $totalUsd              = 0.0;
+        $totalSubtotalPen      = 0.0;
+        $totalSubtotalUsd      = 0.0;
+        $totalIgvPen           = 0.0;
+        $totalIgvUsd           = 0.0;
+        $totalRecaudacionPen   = 0.0;
+        $totalRecaudCobradaPen = 0.0;
+        $totalRecaudacionUsd   = 0.0;
+        $totalAbonadoPen       = 0.0;
+        $totalAbonadoUsd       = 0.0;
+        $totalPendientePen     = 0.0;
+        $totalPendienteUsd     = 0.0;
+
+        foreach ($clientes as $c) {
+            $totalPen              += (float) ($c['deuda_pen'] ?? 0);
+            $totalUsd              += (float) ($c['deuda_usd'] ?? 0);
+            $totalSubtotalPen      += (float) ($c['subtotal_pen'] ?? 0);
+            $totalSubtotalUsd      += (float) ($c['subtotal_usd'] ?? 0);
+            $totalIgvPen           += (float) ($c['igv_pen'] ?? 0);
+            $totalIgvUsd           += (float) ($c['igv_usd'] ?? 0);
+            $totalRecaudacionPen   += (float) ($c['recaudacion_pen'] ?? 0);
+            $totalRecaudCobradaPen += (float) ($c['recaud_cobrada_pen'] ?? 0);
+            $totalRecaudacionUsd   += (float) ($c['recaudacion_usd'] ?? 0);
+            $totalAbonadoPen       += (float) ($c['abonado_pen'] ?? 0);
+            $totalAbonadoUsd       += (float) ($c['abonado_usd'] ?? 0);
+            $totalPendientePen     += (float) ($c['pendiente_pen'] ?? 0);
+            $totalPendienteUsd     += (float) ($c['pendiente_usd'] ?? 0);
+        }
 
         $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);

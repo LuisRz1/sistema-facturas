@@ -16,6 +16,7 @@ class ClienteController extends Controller
         Cache::forget('facturas_clientes_todos');
         Cache::forget('facturas_clientes_PERSONA JURIDICA');
         Cache::forget('facturas_clientes_PERSONA NATURAL');
+        Cache::forget('reportes_clientes_contacto');
     }
 
     public function index(): View

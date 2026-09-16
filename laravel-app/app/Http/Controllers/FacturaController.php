@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\EnviarWhatsApp;
 use App\Models\Factura;
 use App\Models\PagoFactura;
+use App\Support\DocumentoPares;
 use App\Support\JobDispatch;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\Cache;
@@ -127,30 +128,18 @@ class FacturaController extends Controller
             ->get()
             ->keyBy('id_factura');
 
-        // Verificar facturas huérfanas en bloque — consulta dirigida (no carga TODAS las facturas)
+        // Verificar facturas huérfanas en bloque con IN de tuplas (usa uq_factura_serie_numero).
         $orphanFacturaIds = [];
         if ($creditosPorId->isNotEmpty()) {
-            $referencias = $creditosPorId->map(function ($c) {
-                return [$c->serie_doc_modificado, $c->numero_doc_modificado];
-            })->values();
+            $referencias = $creditosPorId
+                ->map(fn ($c) => [(string) $c->serie_doc_modificado, (int) $c->numero_doc_modificado])
+                ->unique(fn ($p) => $p[0] . '|' . $p[1])
+                ->values();
 
             $existingPairs = [];
-            foreach ($referencias->chunk(200) as $chunk) {
-                $q = DB::table('factura')->where('activo', 1);
-                $first = true;
-                foreach ($chunk as [$serie, $numero]) {
-                    if ($first) {
-                        $q->where(function ($sub) use ($serie, $numero) {
-                            $sub->where('serie', $serie)->where('numero', $numero);
-                        });
-                        $first = false;
-                    } else {
-                        $q->orWhere(function ($sub) use ($serie, $numero) {
-                            $sub->where('serie', $serie)->where('numero', $numero);
-                        });
-                    }
-                }
-                foreach ($q->get(['serie', 'numero']) as $r) {
+            foreach ($referencias->chunk(300) as $chunk) {
+                $rows = $this->facturasExistentesPorPares($chunk->all());
+                foreach ($rows as $r) {
                     $existingPairs[$r->serie . '|' . $r->numero] = true;
                 }
             }
@@ -176,6 +165,37 @@ class FacturaController extends Controller
             );
         }
 
+        // Créditos relevantes para el indicador "NC →": del período + los que referencian sus documentos.
+        $periodoPares = $facturasParaTotales
+            ->map(fn ($f) => [(string) $f->serie, (int) $f->numero])
+            ->unique(fn ($p) => $p[0] . '|' . $p[1])
+            ->values();
+
+        $creditosAsociados = collect();
+        foreach ($periodoPares->chunk(300) as $chunk) {
+            $creditosAsociados = $creditosAsociados->merge(
+                $this->creditosPorPares($chunk->all())
+            );
+        }
+
+        $creditosRelevantes = $creditosPorId->values()
+            ->merge($creditosAsociados)
+            ->unique(fn ($c) => (int) $c->id_factura . '|' . $c->serie_doc_modificado . '|' . (int) $c->numero_doc_modificado)
+            ->values();
+
+        $creditoAsociadoMap = $creditosRelevantes->keyBy(function ($c) {
+            return $c->serie_doc_modificado . '|' . $c->numero_doc_modificado;
+        });
+
+        $ncSeriesMap = [];
+        $ncIds = $creditosRelevantes->pluck('id_factura')->unique()->filter()->values();
+        if ($ncIds->isNotEmpty()) {
+            $ncSeriesMap = DB::table('factura')
+                ->whereIn('id_factura', $ncIds)
+                ->pluck('serie', 'id_factura')
+                ->all();
+        }
+
         $facturasParaTotales = $facturasParaTotales->reject(function ($f) use ($orphanFacturaIds, $anuladosConCredito) {
             if (in_array((int) $f->id_factura, $orphanFacturaIds)) {
                 return true;
@@ -185,22 +205,6 @@ class FacturaController extends Controller
             }
             return false;
         });
-
-        // Pre-cargar créditos referenciados para el indicador "NC →" en la vista (evita N+1 por factura)
-        $todosCreditos = DB::table('credito')->where('activo', 1)->get();
-
-        $creditoAsociadoMap = $todosCreditos->keyBy(function ($c) {
-            return $c->serie_doc_modificado . '|' . $c->numero_doc_modificado;
-        });
-
-        $ncSeriesMap = [];
-        $ncIds = $todosCreditos->pluck('id_factura')->unique()->filter()->values();
-        if ($ncIds->isNotEmpty()) {
-            $ncSeriesMap = DB::table('factura')
-                ->whereIn('id_factura', $ncIds)
-                ->pluck('serie', 'id_factura')
-                ->all();
-        }
 
         $clientes = Cache::remember('facturas_clientes_' . ($tipoClienteVista ?? 'todos'), 300, function () use ($tipoClienteVista) {
             return DB::table('cliente')
@@ -1069,6 +1073,11 @@ class FacturaController extends Controller
         $tc = !empty($validated['celular']); $te = !empty($validated['correo']); $td = !empty($validated['direccion_fiscal']);
         $validated['estado_contado'] = ($tc&&$te&&$td)?'COMPLETO':(($tc||$te)?'INCOMPLETO':'SIN_DATOS');
         $cliente->update($validated);
+        Cache::forget('facturas_clientes_todos');
+        Cache::forget('facturas_clientes_PERSONA JURIDICA');
+        Cache::forget('facturas_clientes_PERSONA NATURAL');
+        Cache::forget('reportes_clientes_contacto');
+
         return response()->json(['success'=>true,'message'=>'Cliente actualizado correctamente','cliente'=>$cliente]);
     }
 
@@ -1149,5 +1158,26 @@ class FacturaController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Facturas activas que existen para los pares (serie, numero) indicados.
+     *
+     * @param array<int, array{0:string,1:int}> $pares
+     * @return array<int, object>
+     */
+    private function facturasExistentesPorPares(array $pares): array
+    {
+        return DocumentoPares::existentes($pares);
+    }
+
+    /**
+     * Créditos activos cuyo documento modificado coincide con los pares indicados.
+     *
+     * @param array<int, array{0:string,1:int}> $pares
+     */
+    private function creditosPorPares(array $pares): \Illuminate\Support\Collection
+    {
+        return DocumentoPares::creditos($pares);
     }
 }
