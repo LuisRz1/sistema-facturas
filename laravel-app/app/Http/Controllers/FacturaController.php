@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\EnviarWhatsApp;
 use App\Models\Factura;
 use App\Models\PagoFactura;
+use App\Support\JobDispatch;
 use Illuminate\View\View;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -379,7 +381,7 @@ class FacturaController extends Controller
      */
     public function procesarPago(Request $request, $id): JsonResponse
     {
-        $factura = Factura::findOrFail($id);
+        Factura::findOrFail($id);
 
         $validated = $request->validate([
             'monto_pagado'           => 'nullable|numeric|min:0',
@@ -399,21 +401,26 @@ class FacturaController extends Controller
             'monto_cambio'           => 'nullable|numeric|min:0',
         ]);
 
+        $montoPagado = round((float) ($validated['monto_pagado'] ?? 0), 2);
+
+        // Subir el comprobante a S3 ANTES de abrir la transacción: la subida puede
+        // tardar segundos y no debe retener el lock de la factura.
+        $rutaComprobante = null;
+        if ($montoPagado > 0 && $request->hasFile('comprobante')) {
+            $rutaComprobante = $request->file('comprobante')
+                ->store("facturas/comprobantes/{$id}", 's3');
+            if (!$rutaComprobante) {
+                return response()->json(['success' => false, 'message' => 'No se pudo subir el comprobante.'], 422);
+            }
+        }
+
         DB::beginTransaction();
         try {
-            $montoPagado = round((float) ($validated['monto_pagado'] ?? 0), 2);
+            /** @var Factura $factura */
+            $factura = Factura::whereKey($id)->lockForUpdate()->firstOrFail();
 
             // Insertar nuevo abono si el monto es mayor que cero
             if ($montoPagado > 0) {
-                $rutaComprobante = null;
-                if ($request->hasFile('comprobante')) {
-                    $rutaComprobante = $request->file('comprobante')
-                        ->store("facturas/comprobantes/{$id}", 's3');
-                    if (!$rutaComprobante) {
-                        throw new \RuntimeException('No se pudo subir el comprobante.');
-                    }
-                }
-
                 DB::table('pago_factura')->insert([
                     'id_factura'            => $id,
                     'monto_pagado'          => $montoPagado,
@@ -820,6 +827,19 @@ class FacturaController extends Controller
             ], 422);
         }
 
+        // Subir el comprobante a S3 ANTES de abrir la transacción (no retener locks).
+        $rutaComprobanteMasivo = null;
+        if ($request->hasFile('comprobante')) {
+            $tmpPath = $request->file('comprobante')->store('facturas/comprobantes/masivo', 's3');
+            if (!$tmpPath) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se pudo subir el comprobante del pago masivo.',
+                ], 422);
+            }
+            $rutaComprobanteMasivo = $tmpPath;
+        }
+
         DB::beginTransaction();
         try {
             $resumenCambios = [];
@@ -837,15 +857,6 @@ class FacturaController extends Controller
                 ->whereIn('id_factura', $ids->all())
                 ->get(['id_factura', 'total_recaudacion', 'fecha_recaudacion'])
                 ->keyBy('id_factura');
-
-            $rutaComprobanteMasivo = null;
-            if ($request->hasFile('comprobante')) {
-                $tmpPath = $request->file('comprobante')->store('facturas/comprobantes/masivo', 's3');
-                if (!$tmpPath) {
-                    throw new \RuntimeException('No se pudo subir el comprobante del pago masivo.');
-                }
-                $rutaComprobanteMasivo = $tmpPath;
-            }
 
             foreach ($detallesNorm as $d) {
                 /** @var Factura $factura */
@@ -1026,12 +1037,11 @@ class FacturaController extends Controller
         if ($total > 15) $mensaje .= "... y ".($total-15)." más\n";
         $mensaje .= "━━━━━━━━━━━━━━━\n*Total: {$total} | Deuda: S/ ".number_format($totalDeuda,2)."*";
 
-        $gateway   = app(\App\Services\WhatsAppGatewayService::class);
-        $resultado = $gateway->enviar($usuario->celular, $mensaje);
+        JobDispatch::send(EnviarWhatsApp::class, [$usuario->celular, $mensaje]);
 
         return response()->json([
-            'success' => $resultado['ok'],
-            'message' => $resultado['ok'] ? "Enviado a {$usuario->nombre}" : 'Error: '.($resultado['error']??''),
+            'success' => true,
+            'message' => "Envío programado a {$usuario->nombre}.",
         ]);
     }
 

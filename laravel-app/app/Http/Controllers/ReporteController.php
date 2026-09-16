@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\EnviarCorreo;
+use App\Jobs\SubirYEnviarPdfWhatsApp;
+use App\Support\JobDispatch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Collection;
-use App\Services\WhatsAppGatewayService;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -364,7 +366,7 @@ class ReporteController extends Controller
         ));
     }
 
-    public function enviarReporteWhatsApp(Request $request, WhatsAppGatewayService $gateway)
+    public function enviarReporteWhatsApp(Request $request)
     {
         $idCliente  = $request->input('id_cliente');
         $usuarioId  = $request->input('usuario_id');
@@ -403,6 +405,7 @@ class ReporteController extends Controller
         $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
 
         if ($tipoReporte === 'general') {
+            @set_time_limit(180);
             try {
                 $htmlReporte = $this->deudaGeneral($request)->render();
                 $htmlReporte = preg_replace('/<div class="no-print".*?<\/div>/s', '', $htmlReporte);
@@ -413,26 +416,29 @@ class ReporteController extends Controller
                 return response()->json(['success' => false, 'error' => 'No se pudo generar el PDF: ' . $e->getMessage()], 500);
             }
 
-            $cloudUrl = $this->subirPdfACloudinary($pdfContent, $estadoLabel, $periodoLabel);
-            if (!$cloudUrl) {
-                return response()->json(['success' => false, 'error' => 'No se pudo subir el PDF a Cloudinary.'], 500);
-            }
-
             $partes        = ['Reporte_Deuda_General'];
             $partes[]      = preg_replace('/[^A-Za-z0-9]/', '_', $estadoLabel);
             if ($fechaDesde) $partes[] = str_replace('-', '', $fechaDesde);
             if ($fechaHasta) $partes[] = 'al_' . str_replace('-', '', $fechaHasta);
             $nombreArchivo = implode('_', $partes) . '.pdf';
             $caption       = "*Reporte Deuda General — CRC S.A.C.*\n{$periodoLabel}\nEstado: {$estadoLabel}";
-            $resultado     = $gateway->enviarDocumento($celular, $cloudUrl, $nombreArchivo, $caption);
+
+            JobDispatch::send(SubirYEnviarPdfWhatsApp::class, [
+                $celular,
+                base64_encode($pdfContent),
+                $this->cloudinaryPublicId($estadoLabel),
+                'reportes_financieros',
+                $nombreArchivo,
+                $caption,
+            ]);
 
             return response()->json([
-                'success' => $resultado['ok'],
-                'message' => $resultado['ok']
-                    ? "PDF enviado por WhatsApp a {$nombre} ({$celular})"
-                    : 'No se pudo enviar: ' . ($resultado['error'] ?? 'Error'),
+                'success' => true,
+                'message' => "Envío programado por WhatsApp a {$nombre} ({$celular}).",
             ]);
         }
+
+        @set_time_limit(180);
 
         $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
             ->whereIn('f.estado', $estadosFiltro)
@@ -488,48 +494,33 @@ class ReporteController extends Controller
             return response()->json(['success' => false, 'error' => 'No se pudo generar el PDF: ' . $e->getMessage()], 500);
         }
 
-        $cloudUrl = $this->subirPdfACloudinary($pdfContent, $estadoLabel, $periodoLabel);
-        if (!$cloudUrl) {
-            return response()->json(['success' => false, 'error' => 'No se pudo subir el PDF a Cloudinary.'], 500);
-        }
-
         $partes        = ['Reporte'];
         $partes[]      = preg_replace('/[^A-Za-z0-9]/', '_', $estadoLabel);
         if ($fechaDesde) $partes[] = str_replace('-', '', $fechaDesde);
         if ($fechaHasta) $partes[] = 'al_' . str_replace('-', '', $fechaHasta);
         $nombreArchivo = implode('_', $partes) . '.pdf';
         $caption       = "*Reporte Financiero — CRC S.A.C.*\n{$periodoLabel}\n{$facturas->count()} facturas · Saldo: S/ " . number_format($resumen['saldo_cobrar'], 2);
-        $resultado     = $gateway->enviarDocumento($celular, $cloudUrl, $nombreArchivo, $caption);
+
+        JobDispatch::send(SubirYEnviarPdfWhatsApp::class, [
+            $celular,
+            base64_encode($pdfContent),
+            $this->cloudinaryPublicId($estadoLabel),
+            'reportes_financieros',
+            $nombreArchivo,
+            $caption,
+        ]);
 
         return response()->json([
-            'success' => $resultado['ok'],
-            'message' => $resultado['ok']
-                ? "PDF enviado por WhatsApp a {$nombre} ({$celular})"
-                : 'No se pudo enviar: ' . ($resultado['error'] ?? 'Error'),
+            'success' => true,
+            'message' => "Envío programado por WhatsApp a {$nombre} ({$celular}).",
         ]);
     }
 
-    private function subirPdfACloudinary(string $pdfContent, string $estadoLabel, string $periodo): ?string
+    private function cloudinaryPublicId(string $estadoLabel): string
     {
-        $cloudName    = env('CLOUDINARY_CLOUD_NAME', 'dq3rban3m');
-        $uploadPreset = env('CLOUDINARY_UPLOAD_PRESET', 'ml_default');
-        $slug         = preg_replace('/[^a-z0-9_\-]/', '_', strtolower($estadoLabel));
-        $publicId     = 'reporte_' . $slug . '_' . now()->format('Ymd_His');
-        try {
-            $response = \Illuminate\Support\Facades\Http::attach('file', $pdfContent, $publicId . '.pdf')
-                ->post("https://api.cloudinary.com/v1_1/{$cloudName}/raw/upload", [
-                    'upload_preset' => $uploadPreset,
-                    'folder'        => 'reportes_financieros',
-                    'public_id'     => $publicId,
-                    'resource_type' => 'raw',
-                ]);
-            if ($response->successful()) {
-                return str_replace('/raw/upload/', '/raw/upload/fl_attachment/', $response->json('secure_url'));
-            }
-            return null;
-        } catch (\Throwable $e) {
-            return null;
-        }
+        $slug = preg_replace('/[^a-z0-9_\-]/', '_', strtolower($estadoLabel));
+
+        return 'reporte_' . $slug . '_' . now()->format('Ymd_His');
     }
 
     public function enviarReporteCorreo(Request $request)
@@ -568,21 +559,22 @@ class ReporteController extends Controller
         $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
 
         if ($tipoReporte === 'general') {
+            @set_time_limit(180);
             $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
             $htmlReporte  = $this->deudaGeneral($request)->render();
             $htmlReporte  = preg_replace('/<div class="no-print".*?<\/div>/s', '', $htmlReporte);
             $htmlReporte  = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $htmlReporte);
             $asunto       = "Reporte Deuda General — {$periodoLabel}";
 
-            try {
-                Mail::send([], [], function ($mail) use ($correo, $asunto, $htmlReporte) {
-                    $mail->to($correo)->subject($asunto)->html($htmlReporte);
-                });
-                return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
-            } catch (\Exception $e) {
-                return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
-            }
+            JobDispatch::send(EnviarCorreo::class, [$correo, $asunto, $htmlReporte]);
+
+            return response()->json([
+                'success' => true,
+                'message' => "Envío de correo programado a {$correo}.",
+            ]);
         }
+
+        @set_time_limit(180);
 
         $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
             ->whereIn('f.estado', $estadosFiltro)
@@ -632,14 +624,12 @@ class ReporteController extends Controller
         $htmlReporte = preg_replace('/<div class="no-print".*?<\/div>/s', '', $htmlReporte);
         $asunto      = "Reporte Financiero — {$clienteNombre} — {$periodoLabel}";
 
-        try {
-            Mail::send([], [], function ($mail) use ($correo, $asunto, $htmlReporte) {
-                $mail->to($correo)->subject($asunto)->html($htmlReporte);
-            });
-            return response()->json(['success' => true, 'message' => "Reporte enviado por correo a {$correo}"]);
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'No se pudo enviar el correo: ' . $e->getMessage()]);
-        }
+        JobDispatch::send(EnviarCorreo::class, [$correo, $asunto, $htmlReporte]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Envío de correo programado a {$correo}.",
+        ]);
     }
 
     private function queryFacturas($idCliente, $estado, $fechaDesde = null, $fechaHasta = null)

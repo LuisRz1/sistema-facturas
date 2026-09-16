@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Envío de notificaciones tras la respuesta
+    |--------------------------------------------------------------------------
+    |
+    | true  -> los jobs de correo/WhatsApp corren después de responder (no
+    |          requiere worker de cola).
+    | false -> se encolan en la conexión configurada (requiere queue:work).
+    |
+    */
+
+    'after_response' => (bool) env('QUEUE_AFTER_RESPONSE', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Queue Connections
     |--------------------------------------------------------------------------
     |

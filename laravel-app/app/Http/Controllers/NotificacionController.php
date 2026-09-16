@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\EnviarCorreo;
+use App\Jobs\EnviarWhatsApp;
+use App\Jobs\EnviarWhatsAppDocumento;
 use App\Models\Factura;
 use App\Models\NotificacionFactura;
-use App\Services\EmailDeliveryService;
-use App\Services\WhatsAppGatewayService;
+use App\Support\JobDispatch;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;
 
@@ -16,7 +18,7 @@ class NotificacionController extends Controller
 
     // ─── COBRANZA: FACTURAS PENDIENTES ───────────────────────────────────────
 
-    public function enviarWhatsAppManual(int $id, WhatsAppGatewayService $gateway): RedirectResponse
+    public function enviarWhatsAppManual(int $id): RedirectResponse
     {
         $factura = Factura::with('cliente')->findOrFail($id);
 
@@ -35,26 +37,24 @@ class NotificacionController extends Controller
         }
 
         $contenido = $this->buildMensajeCobranza($factura);
-        $mensaje   = $contenido['mensaje'];
 
-        $resultado = $gateway->enviar($factura->cliente->celular, $mensaje);
-
-        NotificacionFactura::create($this->baseNotif(
+        $notif = NotificacionFactura::create($this->baseNotif(
             $factura->id_factura, 'WHATSAPP', 'COBRANZA', 'DEUDA_INICIAL',
-            $factura->cliente->celular, null, $mensaje,
-            $resultado['ok'] ? 'ENVIADO' : 'ERROR',
-            $resultado['ok'] ? 'Envío manual por botón' : 'Error al enviar WhatsApp',
-            $resultado['ok'] ? now() : null,
-            $resultado['ok'] ? json_encode($resultado['data'], JSON_UNESCAPED_UNICODE) : $resultado['error']
+            $factura->cliente->celular, null, $contenido['mensaje'],
+            'PROGRAMADO', 'Envío programado', null, null
         ));
 
-        return back()->with(
-            $resultado['ok'] ? 'success' : 'error',
-            $resultado['ok'] ? 'WhatsApp enviado correctamente.' : 'No se pudo enviar el WhatsApp.'
-        );
+        JobDispatch::send(EnviarWhatsApp::class, [
+            $factura->cliente->celular,
+            $contenido['mensaje'],
+            null,
+            $notif->id_notificacion,
+        ]);
+
+        return back()->with('success', 'Envío de WhatsApp programado correctamente.');
     }
 
-    public function enviarCorreoManual(int $id, EmailDeliveryService $emailDelivery): RedirectResponse
+    public function enviarCorreoManual(int $id): RedirectResponse
     {
         $factura = Factura::with('cliente')->findOrFail($id);
 
@@ -68,33 +68,27 @@ class NotificacionController extends Controller
         }
 
         $contenido = $this->buildMensajeCobranza($factura);
-        $asunto    = $contenido['asunto'];
-        $mensaje   = $contenido['mensaje'];
         $html      = $this->buildCorreoHtml($factura, false);
 
-        try {
-            $emailDelivery->sendHtml($factura->cliente->correo, $asunto, $html);
+        $notif = NotificacionFactura::create($this->baseNotif(
+            $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
+            $factura->cliente->correo, $contenido['asunto'], $contenido['mensaje'],
+            'PROGRAMADO', 'Envío programado', null, null
+        ));
 
-            NotificacionFactura::create($this->baseNotif(
-                $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
-                $factura->cliente->correo, $asunto, $mensaje, 'ENVIADO',
-                'Envío manual por botón', now(), 'Correo enviado correctamente'
-            ));
+        JobDispatch::send(EnviarCorreo::class, [
+            $factura->cliente->correo,
+            $contenido['asunto'],
+            $html,
+            $notif->id_notificacion,
+        ]);
 
-            return back()->with('success', 'Correo enviado correctamente.');
-        } catch (\Exception $e) {
-            NotificacionFactura::create($this->baseNotif(
-                $factura->id_factura, 'CORREO', 'COBRANZA', 'DEUDA_INICIAL',
-                $factura->cliente->correo, $asunto, $mensaje, 'ERROR',
-                'Error al enviar correo', null, $e->getMessage()
-            ));
-            return back()->with('error', 'No se pudo enviar el correo.');
-        }
+        return back()->with('success', 'Envío de correo programado correctamente.');
     }
 
     // ─── ENVÍO DE FACTURA PAGADA ──────────────────────────────────────────────
 
-    public function enviarFacturaPagadaWhatsApp(int $id, WhatsAppGatewayService $gateway): RedirectResponse
+    public function enviarFacturaPagadaWhatsApp(int $id): RedirectResponse
     {
         $factura = Factura::with('cliente')->findOrFail($id);
 
@@ -118,37 +112,31 @@ class NotificacionController extends Controller
             . "Atentamente,\nSistema de Facturación";
 
         $mediaUrl = $this->resolveComprobanteUrl($factura->ruta_comprobante_pago ?: null);
+        $isPdf    = $mediaUrl && preg_match('/\.pdf(\?|$)/i', $mediaUrl);
 
-        $isPdf = $mediaUrl && preg_match('/\.pdf(\?|$)/i', $mediaUrl);
-        if ($isPdf) {
-            $fileName = 'Comprobante_' . $factura->serie . '-' . str_pad((string) $factura->numero, 8, '0', STR_PAD_LEFT) . '.pdf';
-            $resultado = $gateway->enviarDocumento($factura->cliente->celular, $mediaUrl, $fileName, $mensaje);
-        } else {
-            $resultado = $gateway->enviar($factura->cliente->celular, $mensaje, $mediaUrl);
-        }
-
-        $observacion = $resultado['ok']
-            ? ($mediaUrl ? 'Enviado con imagen del comprobante' : 'Enviado sin imagen')
-            : 'Error al enviar WhatsApp';
-
-        NotificacionFactura::create($this->baseNotif(
+        $notif = NotificacionFactura::create($this->baseNotif(
             $factura->id_factura, 'WHATSAPP', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
             $factura->cliente->celular, null, $mensaje,
-            $resultado['ok'] ? 'ENVIADO' : 'ERROR',
-            $observacion,
-            $resultado['ok'] ? now() : null,
-            $resultado['ok'] ? json_encode($resultado['data'], JSON_UNESCAPED_UNICODE) : $resultado['error']
+            'PROGRAMADO',
+            $mediaUrl ? 'Envío programado con comprobante' : 'Envío programado sin comprobante',
+            null, null
         ));
 
-        return back()->with(
-            $resultado['ok'] ? 'success' : 'error',
-            $resultado['ok']
-                ? ($mediaUrl ? 'Comprobante enviado vía WhatsApp con imagen.' : 'Mensaje enviado (sin imagen).')
-                : 'No se pudo enviar el WhatsApp.'
-        );
+        if ($isPdf) {
+            $fileName = 'Comprobante_' . $factura->serie . '-' . str_pad((string) $factura->numero, 8, '0', STR_PAD_LEFT) . '.pdf';
+            JobDispatch::send(EnviarWhatsAppDocumento::class, [
+                $factura->cliente->celular, $mediaUrl, $fileName, $mensaje, $notif->id_notificacion,
+            ]);
+        } else {
+            JobDispatch::send(EnviarWhatsApp::class, [
+                $factura->cliente->celular, $mensaje, $mediaUrl, $notif->id_notificacion,
+            ]);
+        }
+
+        return back()->with('success', 'Envío de comprobante por WhatsApp programado correctamente.');
     }
 
-    public function enviarFacturaPagadaCorreo(int $id, EmailDeliveryService $emailDelivery): RedirectResponse
+    public function enviarFacturaPagadaCorreo(int $id): RedirectResponse
     {
         $factura = Factura::with('cliente')->findOrFail($id);
 
@@ -176,24 +164,20 @@ class NotificacionController extends Controller
         $mensaje .= "\nGracias por su confianza.\n\nAtentamente,\nSistema de Facturación";
         $html = $this->buildCorreoHtml($factura, true, $fechaPago);
 
-        try {
-            $emailDelivery->sendHtml($factura->cliente->correo, $asunto, $html);
+        $notif = NotificacionFactura::create($this->baseNotif(
+            $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
+            $factura->cliente->correo, $asunto, $mensaje,
+            'PROGRAMADO', 'Envío programado', null, null
+        ));
 
-            NotificacionFactura::create($this->baseNotif(
-                $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
-                $factura->cliente->correo, $asunto, $mensaje, 'ENVIADO',
-                'Confirmación de pago', now()
-            ));
+        JobDispatch::send(EnviarCorreo::class, [
+            $factura->cliente->correo,
+            $asunto,
+            $html,
+            $notif->id_notificacion,
+        ]);
 
-            return back()->with('success', 'Confirmación de pago enviada por correo.');
-        } catch (\Exception $e) {
-            NotificacionFactura::create($this->baseNotif(
-                $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
-                $factura->cliente->correo, $asunto, $mensaje, 'ERROR',
-                'Error al enviar correo', null, $e->getMessage()
-            ));
-            return back()->with('error', 'No se pudo enviar el correo.');
-        }
+        return back()->with('success', 'Envío de confirmación de pago programado correctamente.');
     }
 
     // ─── HELPER PRIVADO ───────────────────────────────────────────────────────

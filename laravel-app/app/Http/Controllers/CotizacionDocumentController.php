@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\EnviarWhatsAppDocumento;
+use App\Support\JobDispatch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -112,7 +114,7 @@ class CotizacionDocumentController extends Controller
 
     private function getWhatsAppWorkerBaseUrl(): string
     {
-        $raw = (string) env('WHATSAPP_GATEWAY_URL', 'https://whastapp-production.up.railway.app');
+        $raw = (string) config('services.whatsapp.gateway_url', 'https://whastapp-production.up.railway.app');
         $url = rtrim($raw, '/');
 
         if (str_ends_with($url, '/send-message')) {
@@ -768,16 +770,16 @@ class CotizacionDocumentController extends Controller
             return response()->json(['success' => false, 'error' => 'No se pudo subir el PDF a la nube.'], 500);
         }
 
-        $gateway  = app(\App\Services\WhatsAppGatewayService::class);
         $caption  = "*{$nombreItemWa}*\nVal. {$cotizacion->numero_valorizacion} — {$cotizacion->obra}";
         $filename = $this->buildPartesDiariosFilename($cotizacion, 'pdf');
-        $resultado = $gateway->enviarDocumento($cotizacion->celular, $cloudUrl, $filename, $caption);
+
+        JobDispatch::send(EnviarWhatsAppDocumento::class, [
+            $cotizacion->celular, $cloudUrl, $filename, $caption,
+        ]);
 
         return response()->json([
-            'success' => $resultado['ok'],
-            'message' => $resultado['ok']
-                ? "✓ PDF enviado a {$cotizacion->razon_social} ({$cotizacion->celular})"
-                : '✗ Error: ' . ($resultado['error'] ?? 'Sin respuesta del gateway'),
+            'success' => true,
+            'message' => "✓ Envío programado a {$cotizacion->razon_social} ({$cotizacion->celular})",
         ]);
     }
 
@@ -875,16 +877,16 @@ class CotizacionDocumentController extends Controller
                     return response()->json(['success' => false, 'error' => 'No se pudo subir el PDF de GRR a la nube.'], 500);
                 }
 
-                $gateway  = app(\App\Services\WhatsAppGatewayService::class);
                 $caption  = "*GRRs Combinados*\nVal. {$cotizacion->numero_valorizacion} — {$cotizacion->obra}";
                 $filename = 'GRR_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $cotizacion->numero_valorizacion) . '.pdf';
-                $resultado = $gateway->enviarDocumento($cotizacion->celular, $cloudUrl, $filename, $caption);
+
+                JobDispatch::send(EnviarWhatsAppDocumento::class, [
+                    $cotizacion->celular, $cloudUrl, $filename, $caption,
+                ]);
 
                 return response()->json([
-                    'success' => $resultado['ok'],
-                    'message' => $resultado['ok']
-                        ? "✓ PDF GRR enviado a {$cotizacion->razon_social} ({$cotizacion->celular})"
-                        : '✗ Error: ' . ($resultado['error'] ?? 'Sin respuesta del gateway'),
+                    'success' => true,
+                    'message' => "✓ Envío programado a {$cotizacion->razon_social} ({$cotizacion->celular})",
                 ]);
             }
 
@@ -910,16 +912,16 @@ class CotizacionDocumentController extends Controller
             return response()->json(['success' => false, 'error' => 'No se pudo subir el PDF de GRR a la nube.'], 500);
         }
 
-        $gateway  = app(\App\Services\WhatsAppGatewayService::class);
         $caption  = "*GRRs Combinados*\nVal. {$cotizacion->numero_valorizacion} — {$cotizacion->obra}";
         $filename = 'GRR_' . preg_replace('/[^A-Za-z0-9_\-]/', '_', $cotizacion->numero_valorizacion) . '.pdf';
-        $resultado = $gateway->enviarDocumento($cotizacion->celular, $cloudUrl, $filename, $caption);
+
+        JobDispatch::send(EnviarWhatsAppDocumento::class, [
+            $cotizacion->celular, $cloudUrl, $filename, $caption,
+        ]);
 
         return response()->json([
-            'success' => $resultado['ok'],
-            'message' => $resultado['ok']
-                ? "✓ PDF GRR enviado a {$cotizacion->razon_social} ({$cotizacion->celular})"
-                : '✗ Error: ' . ($resultado['error'] ?? 'Sin respuesta del gateway'),
+            'success' => true,
+            'message' => "✓ Envío programado a {$cotizacion->razon_social} ({$cotizacion->celular})",
         ]);
     }
 
@@ -927,25 +929,8 @@ class CotizacionDocumentController extends Controller
 
     private function subirPdfACloudinary(string $pdfContent, string $slug): ?string
     {
-        $cloudName    = env('CLOUDINARY_CLOUD_NAME', 'dq3rban3m');
-        $uploadPreset = env('CLOUDINARY_UPLOAD_PRESET', 'ml_default');
-        $publicId     = $slug . '_' . now()->format('Ymd_His');
+        $publicId = $slug . '_' . now()->format('Ymd_His');
 
-        try {
-            $response = Http::attach('file', $pdfContent, $publicId . '.pdf')
-                ->post("https://api.cloudinary.com/v1_1/{$cloudName}/raw/upload", [
-                    'upload_preset' => $uploadPreset,
-                    'folder'        => 'cotizaciones_docs',
-                    'public_id'     => $publicId,
-                    'resource_type' => 'raw',
-                ]);
-
-            if ($response->successful()) {
-                return str_replace('/raw/upload/', '/raw/upload/fl_attachment/', $response->json('secure_url'));
-            }
-            return null;
-        } catch (\Throwable $e) {
-            return null;
-        }
+        return app(\App\Services\CloudinaryService::class)->subirRaw($pdfContent, $publicId, 'cotizaciones_docs');
     }
 }
