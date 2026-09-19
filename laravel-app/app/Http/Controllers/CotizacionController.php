@@ -74,7 +74,7 @@ class CotizacionController extends Controller
             ->join('cliente as cl', 'cl.id_cliente', '=', 'c.id_cliente')
             ->where('c.activo', 1)
             ->select([
-                'c.id_cotizacion', 'c.tipo_cotizacion', 'c.numero_valorizacion',
+                'c.id_cotizacion', 'c.tipo_cotizacion', 'c.numero_valorizacion', 'c.orden_compra',
                 'c.obra', 'c.periodo_inicio', 'c.periodo_fin',
                 'c.base_sin_igv', 'c.total_igv', 'c.total',
                 'c.fecha_creacion',
@@ -89,6 +89,7 @@ class CotizacionController extends Controller
         if ($search)  $query->where(function ($q) use ($search) {
             $q->where('c.obra', 'like', "%{$search}%")
                 ->orWhere('c.numero_valorizacion', 'like', "%{$search}%")
+                ->orWhere('c.orden_compra', 'like', "%{$search}%")
                 ->orWhere('cl.razon_social', 'like', "%{$search}%");
         });
 
@@ -124,6 +125,7 @@ class CotizacionController extends Controller
             'id_maquinaria'     => 'nullable|required_if:tipo_cotizacion,MAQUINARIA|integer|exists:maquinaria,id_maquinaria',
             'id_agregado'       => 'nullable|required_if:tipo_cotizacion,AGREGADO|integer|exists:agregado,id_agregado',
             'numero_valorizacion' => 'required|string|max:20',
+            'orden_compra'      => 'nullable|string|max:100',
             'obra'              => 'required|string|max:250',
             'periodo_inicio'    => 'required|date',
             'periodo_fin'       => 'required|date|after_or_equal:periodo_inicio',
@@ -135,6 +137,7 @@ class CotizacionController extends Controller
             'id_agregado'         => $validated['tipo_cotizacion'] === 'AGREGADO'   ? ($validated['id_agregado'] ?? null) : null,
             'tipo_cotizacion'     => $validated['tipo_cotizacion'],
             'numero_valorizacion' => $validated['numero_valorizacion'],
+            'orden_compra'       => $validated['orden_compra'] ?? null,
             'obra'                => $validated['obra'],
             'periodo_inicio'      => $validated['periodo_inicio'],
             'periodo_fin'         => $validated['periodo_fin'],
@@ -192,6 +195,7 @@ class CotizacionController extends Controller
             'id_maquinaria'       => 'nullable|required_if:tipo_cotizacion,MAQUINARIA|integer|exists:maquinaria,id_maquinaria',
             'id_agregado'         => 'nullable|required_if:tipo_cotizacion,AGREGADO|integer|exists:agregado,id_agregado',
             'numero_valorizacion' => 'required|string|max:20',
+            'orden_compra'      => 'nullable|string|max:100',
             'obra'                => 'required|string|max:250',
             'periodo_inicio'      => 'required|date',
             'periodo_fin'         => 'required|date|after_or_equal:periodo_inicio',
@@ -203,6 +207,7 @@ class CotizacionController extends Controller
             'id_agregado'         => $validated['tipo_cotizacion'] === 'AGREGADO'   ? ($validated['id_agregado'] ?? null) : null,
             'tipo_cotizacion'     => $validated['tipo_cotizacion'],
             'numero_valorizacion' => $validated['numero_valorizacion'],
+            'orden_compra'       => $validated['orden_compra'] ?? null,
             'obra'                => $validated['obra'],
             'periodo_inicio'      => $validated['periodo_inicio'],
             'periodo_fin'         => $validated['periodo_fin'],
@@ -302,6 +307,7 @@ class CotizacionController extends Controller
             'precio_hora'    => 'required|numeric|min:0',
             'cobrar_fila'    => 'nullable|in:0,1',
             'n_parte_diario' => 'nullable|string|max:50',
+            'numero_factura' => 'nullable|string|max:50',
             'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
         ]);
 
@@ -331,6 +337,7 @@ class CotizacionController extends Controller
             'precio_hora'      => $v['precio_hora'],
             'total_fila'       => $totalFila,
             'n_parte_diario'   => $v['n_parte_diario'] ?? null,
+            'numero_factura'   => $v['numero_factura'] ?? null,
             'activo'           => 1,
             'fecha_creacion'   => now(),
         ];
@@ -378,6 +385,7 @@ class CotizacionController extends Controller
             'precio_m3'      => 'required|numeric|min:0',
             'cobrar_fila'    => 'nullable|in:0,1',
             'n_parte_diario' => 'nullable|string|max:50',
+            'numero_factura' => 'nullable|string|max:50',
             'grr'            => 'nullable|string|max:50',
             'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
             'archivo_grr'         => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:20480',
@@ -411,6 +419,7 @@ class CotizacionController extends Controller
             'precio_m3'        => $v['precio_m3'],
             'total_fila'       => $totalFila,
             'n_parte_diario'   => $v['n_parte_diario'] ?? null,
+            'numero_factura'   => $v['numero_factura'] ?? null,
             'grr'              => $v['grr'] ?? null,
             'activo'           => 1,
             'fecha_creacion'   => now(),
@@ -473,6 +482,7 @@ class CotizacionController extends Controller
                 'precio_hora'    => 'required|numeric',
                 'cobrar_fila'    => 'nullable|in:0,1',
                 'n_parte_diario' => 'nullable|string|max:50',
+                'numero_factura' => 'nullable|string|max:50',
                 'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
             ]);
 
@@ -518,6 +528,7 @@ class CotizacionController extends Controller
                 'precio_m3'      => 'required|numeric',
                 'cobrar_fila'    => 'nullable|in:0,1',
                 'n_parte_diario' => 'nullable|string|max:50',
+                'numero_factura' => 'nullable|string|max:50',
                 'grr'            => 'nullable|string|max:50',
                 'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
                 'archivo_grr'         => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:20480',

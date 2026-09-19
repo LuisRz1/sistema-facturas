@@ -195,6 +195,7 @@ class CotizacionExportController extends Controller
                 ->where(function ($q) use ($search) {
                     $q->where('cotizacion.obra', 'like', "%{$search}%")
                         ->orWhere('cotizacion.numero_valorizacion', 'like', "%{$search}%")
+                        ->orWhere('cotizacion.orden_compra', 'like', "%{$search}%")
                         ->orWhere('cl.razon_social', 'like', "%{$search}%");
                 });
         }
@@ -233,15 +234,15 @@ class CotizacionExportController extends Controller
         if ($esMaquinaria) {
             $colDefs = [
                 'B'=>8,'C'=>16,'D'=>22,'E'=>12,'F'=>14,'G'=>22,
-                'H'=>6,'I'=>22,'J'=>13,'K'=>12,'L'=>12,'M'=>14,
+                'H'=>6,'I'=>22,'J'=>13,'K'=>12,'L'=>12,'M'=>14,'N'=>18,
             ];
-            $lastCol = 'M';
+            $lastCol = 'N';
         } else {
             $colDefs = [
                 'B'=>8,'C'=>18,'D'=>26,'E'=>12,'F'=>14,'G'=>22,
-                'H'=>6,'I'=>22,'J'=>14,'K'=>12,
+                'H'=>6,'I'=>22,'J'=>14,'K'=>12,'L'=>18,
             ];
-            $lastCol = 'K';
+            $lastCol = 'L';
         }
         foreach ($colDefs as $col => $w) {
             $sheet->getColumnDimension($col)->setWidth($w);
@@ -325,6 +326,10 @@ class CotizacionExportController extends Controller
         $sheet->getStyle('B8')->getFont()->setBold(true)->setUnderline(true);
         $sheet->mergeCells('C8:E8');
         $sheet->setCellValue('C8', strtoupper($cotizacion->obra));
+        $sheet->setCellValue('F8', 'ORDEN DE COMPRA:');
+        $sheet->getStyle('F8')->getFont()->setBold(true)->setUnderline(true);
+        $sheet->mergeCells("G8:{$lastCol}8");
+        $sheet->setCellValueExplicit('G8', (string) ($cotizacion->orden_compra ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
 
         // ── Row 10: Company title ─────────────────────────────────────────
         $sheet->mergeCells("B10:{$lastCol}10");
@@ -351,11 +356,11 @@ class CotizacionExportController extends Controller
         // ── Row 12: Column headers ────────────────────────────────────────
         $hdrRow = 12;
         if ($esMaquinaria) {
-            $headers = ['FECHA','CHOFER','CISTERNA/VOLQUETE/MAQUINARIA','PLACA/DESCRIPCION','OBRA','N° PARTE DIARIO','HI','HT','HORAS TRABAJADAS','HORAS MINIMAS','PRECIO','TOTAL'];
-            $cols    = ['B','C','D','E','F','G','H','I','J','K','L','M'];
+            $headers = ['FECHA','CHOFER','CISTERNA/VOLQUETE/MAQUINARIA','PLACA/DESCRIPCION','OBRA','N° PARTE DIARIO','HI','HT','HORAS TRABAJADAS','HORAS MINIMAS','PRECIO','TOTAL','FACTURA'];
+            $cols    = ['B','C','D','E','F','G','H','I','J','K','L','M','N'];
         } else {
-            $headers = ['FECHA','CHOFER','DETALLE','PLACA','OBRA','N° PARTE DIARIO','M3','PRECIO','TOTAL','GRR'];
-            $cols    = ['B','C','D','E','F','G','H','I','J','K'];
+            $headers = ['FECHA','CHOFER','DETALLE','PLACA','OBRA','N° PARTE DIARIO','M3','PRECIO','TOTAL','GRR','FACTURA'];
+            $cols    = ['B','C','D','E','F','G','H','I','J','K','L'];
         }
 
         foreach ($headers as $i => $h) {
@@ -391,6 +396,7 @@ class CotizacionExportController extends Controller
                     (int)   $f->hora_minima,
                     (float) $f->precio_hora,
                     (float) $f->total_fila,
+                    (string) ($f->numero_factura ?? ''),
                 ];
                 // Numeric cols alignment right
                 $numCols = ['H','I','J','K','L','M'];
@@ -406,12 +412,17 @@ class CotizacionExportController extends Controller
                     (float) $f->precio_m3,
                     (float) $f->total_fila,
                     strtoupper($f->grr ?? ''),
+                    (string) ($f->numero_factura ?? ''),
                 ];
                 $numCols = ['H','I','J'];
             }
 
             foreach ($vals as $i => $val) {
-                $sheet->setCellValue($cols[$i] . $r, $val);
+                if ($i === count($vals) - 1) {
+                    $sheet->setCellValueExplicit($cols[$i] . $r, $val, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                } else {
+                    $sheet->setCellValue($cols[$i] . $r, $val);
+                }
             }
 
             foreach ($numCols as $nc) {

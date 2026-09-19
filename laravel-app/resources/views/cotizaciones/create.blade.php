@@ -149,6 +149,13 @@
                 </div>
 
                 <div class="form-group" style="margin-bottom:16px;">
+                    <label class="form-label">Orden de compra</label>
+                    <input type="text" name="orden_compra" class="form-input"
+                           value="{{ old('orden_compra') }}" placeholder="Ej: OC-2026-001" maxlength="100">
+                    @error('orden_compra')<p style="color:#dc2626;font-size:11px;margin-top:4px;">{{ $message }}</p>@enderror
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px;">
                     <label class="form-label">Nombre de la Obra *</label>
                     <input type="text" name="obra" class="form-input"
                            value="{{ old('obra') }}"

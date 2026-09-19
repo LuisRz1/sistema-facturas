@@ -26,7 +26,9 @@
         .tipo-pill{padding:4px 14px;border-radius:20px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;}
         .pill-maq{background:#fef3c7;color:#92400e;}
         .pill-agr{background:#d1fae5;color:#065f46;}
-        .cot-header-info{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid var(--gold-b);}
+        .cot-header-info{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;border-top:1px solid var(--gold-b);}
+        @media (max-width:1000px){.cot-header-info{grid-template-columns:repeat(3,minmax(0,1fr));}}
+        @media (max-width:600px){.cot-header-info{grid-template-columns:repeat(2,minmax(0,1fr));}}
         .cot-info-cell{padding:14px 20px;border-right:1px solid var(--gold-b);}
         .cot-info-cell:last-child{border-right:none;}
         .cot-info-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);font-weight:700;margin-bottom:4px;}
@@ -191,6 +193,10 @@
                 <div class="cot-info-val">{{ $cotizacion->obra }}</div>
             </div>
             <div class="cot-info-cell">
+                <div class="cot-info-lbl">Orden de compra</div>
+                <div class="cot-info-val">{{ $cotizacion->orden_compra ?: '—' }}</div>
+            </div>
+            <div class="cot-info-cell">
                 <div class="cot-info-lbl">Período inicio</div>
                 <div class="cot-info-val">{{ \Carbon\Carbon::parse($cotizacion->periodo_inicio)->format('d/m/Y') }}</div>
             </div>
@@ -281,6 +287,7 @@
                         <th>Placa</th>
                         <th>Obra</th>
                         <th>N° Parte</th>
+                        <th>Factura</th>
                         <th>Img.</th>
                         <th class="r">HI</th>
                         <th class="r">HT</th>
@@ -293,6 +300,7 @@
                         <th>Placa</th>
                         <th>Obra</th>
                         <th>N° Parte</th>
+                        <th>Factura</th>
                         <th>Img.</th>
                         <th class="r">M³</th>
                         <th class="r">Precio/M³</th>
@@ -314,6 +322,7 @@
                             <td class="mono">{{ $f->placa ?? '—' }}</td>
                             <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;">{{ $f->obra_maquina ?? '—' }}</td>
                             <td style="font-size:11px;font-weight:600;">{{ $f->n_parte_diario ?? '—' }}</td>
+                            <td class="mono">{{ $f->numero_factura ?: '—' }}</td>
                             {{-- Botón imagen parte diario --}}
                             <td>
                                 @if($f->ruta_parte_diario ?? null)
@@ -339,6 +348,7 @@
                             <td class="mono">{{ $f->placa ?? '—' }}</td>
                             <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;">{{ $f->obra_agregado ?? '—' }}</td>
                             <td style="font-size:11px;font-weight:600;">{{ $f->n_parte_diario ?? '—' }}</td>
+                            <td class="mono">{{ $f->numero_factura ?: '—' }}</td>
                             {{-- Botón imagen parte diario --}}
                             <td>
                                 @if($f->ruta_parte_diario ?? null)
@@ -379,17 +389,17 @@
                         </td>
                     </tr>
                 @empty
-                    <tr id="emptyRow"><td colspan="{{ $esMaquinaria ? 15 : 15 }}" style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px;">
+                    <tr id="emptyRow"><td colspan="{{ $esMaquinaria ? 16 : 15 }}" style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px;">
                             Sin filas. Usa el formulario de abajo para agregar la primera.
                         </td></tr>
                 @endforelse
                 @if($filas->count() > 0)
                     <tr class="sum-row" id="sumRow">
-                        <td colspan="{{ $esMaquinaria ? 13 : 11 }}" style="text-align:right;font-size:12px;letter-spacing:.4px;text-transform:uppercase;">TOTAL</td>
+                        <td colspan="{{ $esMaquinaria ? 14 : 11 }}" style="text-align:right;font-size:12px;letter-spacing:.4px;text-transform:uppercase;">TOTAL</td>
                         <td class="r" style="font-size:14px;color:var(--gold-d);" id="sumTotalFila">
                             {{ number_format($filas->sum('total_fila'),2) }}
                         </td>
-                        <td></td>
+                        <td @if(!$esMaquinaria) colspan="3" @endif></td>
                     </tr>
                 @endif
                 </tbody>
@@ -484,6 +494,10 @@
                                 <input type="text" class="row-input" id="rNParte" name="n_parte_diario" placeholder="33594">
                             </div>
                             <div>
+                                <div class="row-input-lbl">Factura</div>
+                                <input type="text" class="row-input" id="rFactura" name="numero_factura" placeholder="FF01-00001234" maxlength="50">
+                            </div>
+                            <div>
                                 <div class="row-input-lbl">Imagen Parte Diario</div>
                                 <div style="display:flex;align-items:center;gap:8px;">
                                     <button type="button" class="file-btn" id="btnImgParte" onclick="document.getElementById('inputImgParte').click()">
@@ -546,7 +560,7 @@
                                 <input type="number" class="row-input calculated" id="rTotal" step="0.01" readonly placeholder="0.00">
                             </div>
                         </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;">
+                        <div style="display:grid;grid-template-columns:repeat(6,minmax(100px,1fr)) auto;gap:8px;align-items:end;">
                             <div>
                                 <div class="row-input-lbl">Cobro de fila</div>
                                 <div style="display:flex;align-items:center;gap:12px;height:36px;padding:0 10px;border:1.5px solid var(--gold-b);border-radius:8px;background:#fff;">
@@ -561,6 +575,10 @@
                             <div>
                                 <div class="row-input-lbl">N° Parte Diario</div>
                                 <input type="text" class="row-input" id="rNParte" name="n_parte_diario" placeholder="33594">
+                            </div>
+                            <div>
+                                <div class="row-input-lbl">Factura</div>
+                                <input type="text" class="row-input" id="rFactura" name="numero_factura" placeholder="FF01-00001234" maxlength="50">
                             </div>
                             <div>
                                 <div class="row-input-lbl">N° GRR</div>
@@ -682,6 +700,11 @@
                         <label class="form-label">Obra *</label>
                         <input type="text" name="obra" class="form-input" id="editHeaderObra" value="{{ $cotizacion->obra }}">
                     </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label class="form-label">Orden de compra</label>
+                        <input type="text" name="orden_compra" class="form-input" id="editHeaderOrdenCompra"
+                               value="{{ $cotizacion->orden_compra }}" maxlength="100">
+                    </div>
                     <div class="field-row cols2">
                         <div class="form-group">
                             <label class="form-label">Período Inicio *</label>
@@ -789,6 +812,12 @@
 
 @push('scripts')
     <script>
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[char]);
+        }
+
         function showToast(msg, ok = true) {
             const t = document.getElementById('toast');
             document.getElementById('toastTxt').textContent = msg;
@@ -1020,6 +1049,7 @@
             const idx   = document.querySelectorAll('#rowTbody tr[data-id]').length + 1;
             const sumRow = document.getElementById('sumRow');
             if (sumRow) sumRow.remove();
+            ROWS_DATA.push(row);
             tbody.insertAdjacentHTML('beforeend', buildRowHtml(row, idx));
             updateSumRow();
             document.getElementById('filaCountDesc').textContent = `${idx} fila(s) registradas`;
@@ -1042,6 +1072,7 @@
                     <td class="mono">${row.placa||'—'}</td>
                     <td style="font-size:11px;">${row.obra_maquina||'—'}</td>
                     <td style="font-size:11px;font-weight:600;">${row.n_parte_diario||'—'}</td>
+                    <td class="mono">${escapeHtml(row.numero_factura || '—')}</td>
                     <td>${imgBtn}</td>
                     <td class="r">${Number(row.hora_inicio).toFixed(1)}</td>
                     <td class="r">${Number(row.hora_fin).toFixed(1)}</td>
@@ -1073,6 +1104,7 @@
                     <td class="mono">${row.placa||'—'}</td>
                     <td style="font-size:11px;">${row.obra_agregado||'—'}</td>
                     <td style="font-size:11px;font-weight:600;">${row.n_parte_diario||'—'}</td>
+                    <td class="mono">${escapeHtml(row.numero_factura || '—')}</td>
                     <td>${imgBtn}</td>
                     <td class="r">${Number(row.m3).toFixed(2)}</td>
                     <td class="r">${Number(row.precio_m3).toFixed(2)}</td>
@@ -1091,13 +1123,13 @@
             const tbody  = document.getElementById('rowTbody');
             const totals = [...document.querySelectorAll('#rowTbody tr[data-id] .total-fila-cell')]
                 .reduce((s, td) => s + (parseFloat(td.textContent) || 0), 0);
-            const colSpan = ES_MAQUINARIA ? 13 : 11;
+            const colSpan = ES_MAQUINARIA ? 14 : 11;
             document.getElementById('sumRow')?.remove();
             tbody.insertAdjacentHTML('beforeend', `
                 <tr class="sum-row" id="sumRow">
                     <td colspan="${colSpan}" style="text-align:right;font-size:12px;letter-spacing:.4px;text-transform:uppercase;">TOTAL</td>
                     <td class="r" style="font-size:14px;color:var(--gold-d);" id="sumTotalFila">${totals.toFixed(2)}</td>
-                    <td></td>
+                    <td colspan="${ES_MAQUINARIA ? 1 : 3}"></td>
                 </tr>`);
         }
 
@@ -1112,6 +1144,7 @@
             if (ES_MAQUINARIA) {
                 ['rHI','rHT','rHTrab','rTotal'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
                 document.getElementById('rNParte').value = '';
+                document.getElementById('rFactura').value = '';
                 const cobrarSi = document.querySelector('#addRowForm input[name="cobrar_fila"][value="1"]');
                 if (cobrarSi) cobrarSi.checked = true;
                 const img = document.getElementById('inputImgParte');
@@ -1119,7 +1152,7 @@
                 const btn = document.getElementById('btnImgParte');
                 if (btn) { btn.textContent = 'Adjuntar'; btn.classList.remove('uploaded'); }
             } else {
-                ['rM3','rTotal','rNParte','rGRR'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+                ['rM3','rTotal','rNParte','rFactura','rGRR'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
                 const cobrarSi = document.querySelector('#addRowForm input[name="cobrar_fila"][value="1"]');
                 if (cobrarSi) cobrarSi.checked = true;
                 ['inputImgParte','inputPdfGrr'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
@@ -1147,6 +1180,8 @@
             document.getElementById('modalDelFila').classList.remove('open');
             if (data.success) {
                 document.querySelector(`#rowTbody tr[data-id="${deleteRowId}"]`)?.remove();
+                const dataIndex = ROWS_DATA.findIndex(r => r.id_cotizacion_maqu == deleteRowId || r.id_cotizacion_agr == deleteRowId);
+                if (dataIndex !== -1) ROWS_DATA.splice(dataIndex, 1);
                 actualizarTotales(data.totales);
                 document.querySelectorAll('#rowTbody tr[data-id]').forEach((r, i) => {
                     const cell = r.querySelectorAll('td')[0];
@@ -1207,6 +1242,7 @@
                         </div>
                     </div>
                     <div class="form-group"><label class="form-label">N° Parte Diario</label><input type="text" name="n_parte_diario" class="form-input" value="${r.n_parte_diario||''}"></div>
+                    <div class="form-group"><label class="form-label">Factura</label><input type="text" name="numero_factura" class="form-input" maxlength="50" value="${escapeHtml(r.numero_factura || '')}"></div>
                     <div class="form-group">
                         <label class="form-label">Imagen Parte Diario</label>
                         <input type="file" name="imagen_parte_diario" class="form-input" accept="image/*" style="height:auto;padding:6px 10px;">
@@ -1243,6 +1279,7 @@
                         </div>
                     </div>
                     <div class="form-group"><label class="form-label">N° Parte Diario</label><input type="text" name="n_parte_diario" class="form-input" value="${r.n_parte_diario||''}"></div>
+                    <div class="form-group"><label class="form-label">Factura</label><input type="text" name="numero_factura" class="form-input" maxlength="50" value="${escapeHtml(r.numero_factura || '')}"></div>
                     <div class="form-group"><label class="form-label">N° GRR</label><input type="text" name="grr" class="form-input" value="${r.grr||''}"></div>
                     <div class="form-group">
                         <label class="form-label">Imagen Parte</label>

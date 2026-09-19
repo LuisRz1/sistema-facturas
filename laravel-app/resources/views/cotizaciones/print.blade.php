@@ -163,6 +163,8 @@
 
         <span class="meta-label">Obra:</span>
         <span class="meta-val" style="grid-column:span 3;">{{ strtoupper($cotizacion->obra) }}</span>
+        <span class="meta-label">Orden de compra:</span>
+        <span class="meta-val" style="grid-column:span 3;">{{ $cotizacion->orden_compra ?: '—' }}</span>
     </div>
 
     {{-- ── SECTION TITLE ── --}}
@@ -184,6 +186,7 @@
                 <th>PLACA/DESCRIPCIÓN</th>
                 <th class="l">OBRA</th>
                 <th>N° PARTE DIARIO</th>
+                <th>FACTURA</th>
                 <th class="r">HI</th>
                 <th class="r">HT</th>
                 <th class="r">HORAS TRABAJADAS</th>
@@ -201,6 +204,7 @@
                     <td class="c mono">{{ $f->placa ?? '' }}</td>
                     <td>{{ strtoupper($f->obra_maquina ?? $cotizacion->obra) }}</td>
                     <td class="c">{{ $f->n_parte_diario ?? '' }}</td>
+                    <td class="c mono">{{ $f->numero_factura ?? '' }}</td>
                     <td class="r">{{ number_format($f->hora_inicio, 1) }}</td>
                     <td class="r">{{ number_format($f->hora_fin, 1) }}</td>
                     <td class="r">{{ number_format($f->horas_trabajadas, 2) }}</td>
@@ -210,7 +214,7 @@
                 </tr>
             @endforeach
             <tr class="total-row">
-                <td colspan="8" style="text-align:right;letter-spacing:1px;">TOTAL</td>
+                <td colspan="9" style="text-align:right;letter-spacing:1px;">TOTAL</td>
                 <td class="r">{{ number_format($filas->sum('horas_trabajadas'), 2) }}</td>
                 <td></td>
                 <td></td>
@@ -229,6 +233,7 @@
                 <th>PLACA</th>
                 <th class="l">OBRA</th>
                 <th>N° PARTE DIARIO</th>
+                <th>FACTURA</th>
                 <th class="r">M3</th>
                 <th class="r">PRECIO</th>
                 <th class="r">TOTAL</th>
@@ -244,6 +249,7 @@
                     <td class="c mono">{{ $f->placa ?? '' }}</td>
                     <td>{{ strtoupper($f->obra_agregado ?? $cotizacion->obra) }}</td>
                     <td class="c">{{ $f->n_parte_diario ?? '' }}</td>
+                    <td class="c mono">{{ $f->numero_factura ?? '' }}</td>
                     <td class="r">{{ number_format($f->m3, 0) }}</td>
                     <td class="r">{{ number_format($f->precio_m3, 0) }}</td>
                     <td class="r" style="font-weight:700;">{{ number_format($f->total_fila, 2) }}</td>
@@ -251,7 +257,7 @@
                 </tr>
             @endforeach
             <tr class="total-row">
-                <td colspan="6" style="text-align:right;letter-spacing:1px;">TOTAL</td>
+                <td colspan="7" style="text-align:right;letter-spacing:1px;">TOTAL</td>
                 <td class="r">{{ number_format($filas->sum('m3'), 0) }}</td>
                 <td></td>
                 <td class="r">S/ {{ number_format($cotizacion->total, 2) }}</td>

@@ -149,6 +149,7 @@
                 <tr>
                     <th>Tipo</th>
                     <th>Valorización</th>
+                    <th>Orden de compra</th>
                     <th>Empresa</th>
                     <th>Obra</th>
                     <th>Período</th>
@@ -170,6 +171,7 @@
                         <td style="font-family:'DM Mono',monospace;font-weight:700;font-size:12px;color:var(--gold-m);">
                             {{ $cot->numero_valorizacion }}
                         </td>
+                        <td style="font-family:'DM Mono',monospace;font-size:12px;">{{ $cot->orden_compra ?: '—' }}</td>
                         <td>
                             <div style="font-weight:600;font-size:13px;">{{ $cot->razon_social }}</div>
                             <div style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace;">{{ $cot->ruc }}</div>
@@ -210,7 +212,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="9">
+                    <tr><td colspan="10">
                             <div class="empty-state">
                                 <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                 <p style="font-weight:600;font-size:15px;color:var(--text-primary);margin-top:10px;">Sin valorizaciones registradas</p>
