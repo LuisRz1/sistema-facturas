@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Conciliacion;
 use App\Http\Controllers\Controller;
 use App\Models\Extorno;
 use App\Models\MovimientoBancario;
+use App\Services\SaldoFacturaService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,6 +13,10 @@ use Illuminate\Support\Facades\DB;
 
 class ConciliacionExtornoController extends Controller
 {
+    public function __construct(private readonly SaldoFacturaService $saldoFactura)
+    {
+    }
+
     /** Monto a partir del cual se requiere aprobación de un administrador */
     private const UMBRAL_APROBACION = 5000.00;
 
@@ -255,12 +260,24 @@ class ConciliacionExtornoController extends Controller
                     $estadoOriginal = 'VENCIDO';
                 }
 
+                $recaudacion = DB::table('recaudacion')->where('id_factura', $factura->id_factura)->first();
+                $montoPendiente = $this->saldoFactura->calcular(
+                    importeTotal: (float) $factura->importe_total,
+                    totalRecaudacion: (float) ($recaudacion->total_recaudacion ?? 0),
+                    fechaRecaudacion: $recaudacion->fecha_recaudacion ?? null,
+                    moneda: (string) $factura->moneda,
+                    montoCambio: $factura->monto_cambio === null ? null : (float) $factura->monto_cambio,
+                    tipoRecaudacion: $factura->tipo_recaudacion,
+                    estado: $estadoOriginal,
+                    recaudacionActiva: (bool) ($recaudacion->activo ?? true),
+                );
+
                 DB::table('factura')
                     ->where('id_factura', $factura->id_factura)
                     ->update([
                         'estado'              => $estadoOriginal,
                         'monto_abonado'       => 0,
-                        'monto_pendiente'     => $factura->importe_total,
+                        'monto_pendiente'     => $montoPendiente,
                         'id_movimiento'       => null,
                         'estado_conciliacion' => null,
                         'fecha_actualizacion' => $now,

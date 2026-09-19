@@ -27,7 +27,7 @@
 
 ## Invariantes funcionales
 
-- `factura.monto_pendiente` es la fuente de verdad del saldo. No recalcularlo desde el total si ya existen abonos, recaudaciones, detracciones, extornos o diferencias.
+- `factura.monto_pendiente` se calcula de forma centralizada: `importe_total - pagos_directos - recaudación_confirmada`. Una recaudación solo descuenta si está activa y tiene `fecha_recaudacion`; en USD se convierte con `monto_cambio`. Las notas de crédito conservan su saldo negativo y los anulados quedan en cero.
 - Los estados pendientes usados por facturación son `PENDIENTE`, `VENCIDO` y `DIFERENCIA PENDIENTE`; revisar cuidadosamente cualquier ampliación porque dashboard y reportes replican esta lógica.
 - La lista de facturas pagina 10 por defecto y solo admite 10, 20 o 50 filas. Los filtros deben conservarse al cambiar de página.
 - En Railway Hobby el correo de producción usa Gmail API por HTTPS: `MAIL_MAILER=gmail-api`. No volver a SMTP como solución de producción sin comprobar antes las restricciones de red del plan.
@@ -54,6 +54,7 @@ composer test
 npm run build
 php artisan route:list
 php artisan migrate:status
+php artisan facturas:normalizar-pendientes
 composer audit
 npm audit --omit=dev
 ```
@@ -70,6 +71,7 @@ npm start
 - Para cambios de correo, comprobar el camino alternativo y el camino `gmail-api`, los errores de renovación OAuth y una entrega real a una cuenta de prueba autorizada.
 - Para cambios de facturas, probar filtros, totales, tamaños 10/20/50, navegación entre páginas y preservación de query string.
 - Para pagos/conciliación, probar pago total, parcial, excedente, extorno, moneda y ejecución repetida/idempotencia.
+- Para normalizar saldos históricos, ejecutar primero `php artisan facturas:normalizar-pendientes`; solo después de revisar su resumen usar `--apply`. El comando genera un respaldo JSON en el disco de almacenamiento configurado antes de actualizar las filas.
 
 ## Criterio de terminado
 

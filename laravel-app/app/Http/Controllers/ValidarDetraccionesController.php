@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Services\SaldoFacturaService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use Carbon\Carbon;
@@ -16,6 +17,10 @@ use Carbon\Carbon;
  */
 class ValidarDetraccionesController extends Controller
 {
+    public function __construct(private readonly SaldoFacturaService $saldoFactura)
+    {
+    }
+
     /** Columnas que DEBEN existir en la fila de encabezados del Excel */
     private const COLS_REQUERIDAS = [
         'fecha_pago'       => 'Fecha Pago',
@@ -143,9 +148,19 @@ class ValidarDetraccionesController extends Controller
                 $importeTotal     = (float)($factura->importe_total ?? 0);
                 $recExistente     = DB::table('recaudacion')->where('id_factura',$factura->id_factura)->first();
                 $totalRecaudacion = $monto > 0 ? $monto : (float)($recExistente->total_recaudacion ?? 0);
-                // Al validar la detraccion, fecha_recaudacion SE ESTABLECE → recIsPaid = true
-                // → pendiente = importe_total - abonado (la parte SUNAT queda confirmada)
-                $montoPendiente   = max(0, $importeTotal - $montoAbonado);
+                // Al validar, la fecha confirma que la detracción representa un
+                // pago dentro del importe total, no una deuda adicional.
+                $montoPendiente = $this->saldoFactura->calcular(
+                    importeTotal: $importeTotal,
+                    montoAbonado: $montoAbonado,
+                    totalRecaudacion: $totalRecaudacion,
+                    fechaRecaudacion: $fechaPago,
+                    moneda: (string) $factura->moneda,
+                    montoCambio: $factura->monto_cambio === null ? null : (float) $factura->monto_cambio,
+                    tipoRecaudacion: 'DETRACCION',
+                    estado: $factura->estado,
+                    recaudacionActiva: (bool) ($recExistente->activo ?? true),
+                );
 
                 if ($montoPendiente <= 0) {
                     $nuevoEstado = 'PAGADA';

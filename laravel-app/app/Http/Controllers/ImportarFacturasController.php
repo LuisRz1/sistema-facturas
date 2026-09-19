@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Services\SaldoFacturaService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use Carbon\Carbon;
@@ -24,6 +25,10 @@ use Carbon\Carbon;
  */
 class ImportarFacturasController extends Controller
 {
+    public function __construct(private readonly SaldoFacturaService $saldoFactura)
+    {
+    }
+
     public function index()
     {
         return view('facturas.importar');
@@ -237,23 +242,16 @@ class ImportarFacturasController extends Controller
                     $estadoFinal = 'ANULADO';
                 }
 
-                if ($estadoFinal === 'ANULADO') {
-                    $montoPendiente = 0;
-                } elseif ($tipoRecaudacionFila === 'AUTODETRACCION' || $montoRecaudacion <= 0) {
-                    // Sin recaudacion o autodetraccion: pendiente = importe_total
-                    $montoPendiente = $importeTotal;
-                } else {
-                    // DETRACCION/RETENCION no confirmada aún: pendiente = total + recaudacion_en_moneda
-                    if ($moneda === 'USD' && $montoCambioFila > 0) {
-                        $recEnMoneda = round($montoRecaudacion / $montoCambioFila, 2);
-                    } elseif ($moneda === 'USD') {
-                        // No hay TC disponible, conservar solo importe_total
-                        $recEnMoneda = 0;
-                    } else {
-                        $recEnMoneda = $montoRecaudacion;
-                    }
-                    $montoPendiente = $importeTotal + $recEnMoneda;
-                }
+                // La recaudación importada aún no está confirmada, por lo que
+                // forma parte del importe total pero no modifica el saldo.
+                $montoPendiente = $this->saldoFactura->calcular(
+                    importeTotal: $importeTotal,
+                    totalRecaudacion: $montoRecaudacion,
+                    moneda: $moneda,
+                    montoCambio: $montoCambioFila > 0 ? $montoCambioFila : null,
+                    tipoRecaudacion: $tipoRecaudacionFila,
+                    estado: $estadoFinal,
+                );
 
                 $tipoOperacion = trim((string)($f['I'] ?? '')); // TIPO DE OPERACIÓN
 

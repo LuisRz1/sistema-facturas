@@ -6,11 +6,16 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Services\SaldoFacturaService;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Carbon\Carbon;
 
 class ImportarRetencionesController extends Controller
 {
+    public function __construct(private readonly SaldoFacturaService $saldoFactura)
+    {
+    }
+
     public function index()
     {
         return view('facturas.importar_retenciones');
@@ -258,7 +263,15 @@ class ImportarRetencionesController extends Controller
                     ]
                 );
 
-                $montoPendiente = max(0, $importeFactura - (float)$factura->monto_abonado - $totalRetencion);
+                $montoPendiente = $this->saldoFactura->calcular(
+                    importeTotal: $importeFactura,
+                    montoAbonado: (float) $factura->monto_abonado,
+                    totalRecaudacion: $totalRetencion,
+                    fechaRecaudacion: $fechaRecaudacion,
+                    moneda: (string) ($factura->moneda ?? 'PEN'),
+                    montoCambio: $factura->monto_cambio === null ? null : (float) $factura->monto_cambio,
+                    tipoRecaudacion: 'RETENCION',
+                );
                 $estadoNuevo = $this->calcularEstadoRetencion(
                     factura: $factura,
                     montoPendiente: $montoPendiente,
@@ -382,7 +395,13 @@ class ImportarRetencionesController extends Controller
         }
 
         $importeTotal = $importeExcel > 0 ? $importeExcel : max(0, $totalRetencion);
-        $montoPendiente = max(0, $importeTotal - $totalRetencion);
+        // La retención se registra después de crear la factura. Hasta que tenga
+        // fecha de confirmación el saldo inicial es el importe total.
+        $montoPendiente = $this->saldoFactura->calcular(
+            importeTotal: $importeTotal,
+            totalRecaudacion: $totalRetencion,
+            tipoRecaudacion: 'RETENCION',
+        );
 
         $idFactura = DB::table('factura')->insertGetId([
             'serie'             => $serie,
@@ -415,10 +434,7 @@ class ImportarRetencionesController extends Controller
         float $totalRetencion,
         ?string $fechaRecaudacion
     ): string {
-        // Basta con que haya monto de retención para considerar la factura como retenida.
-        // No requerir fechaRecaudacion: si el Excel no tiene la fecha o no se parseó,
-        // la factura sigue estando retenida y debe reflejarse como DIFERENCIA PENDIENTE.
-        if ($totalRetencion > 0) {
+        if ($totalRetencion > 0 && !empty($fechaRecaudacion)) {
             return $montoPendiente <= 0 ? 'PAGADA' : 'DIFERENCIA PENDIENTE';
         }
 
