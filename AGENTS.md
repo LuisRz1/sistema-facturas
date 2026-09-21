@@ -33,13 +33,18 @@
 - En Railway Hobby el correo de producción usa Gmail API por HTTPS: `MAIL_MAILER=gmail-api`. No volver a SMTP como solución de producción sin comprobar antes las restricciones de red del plan.
 - El remitente debe coincidir con la cuenta autorizada por OAuth. Las credenciales esperadas se leen desde `config/services.php` y variables de entorno; nunca se incrustan en el código.
 - Los comprobantes persistentes usan almacenamiento S3 compatible. No depender del disco efímero del contenedor.
+- Las valorizaciones nuevas de maquinaria requieren una OC numerada con horas autorizadas; su archivo inicial puede adjuntarse después. Toda OC adicional requiere PDF o imagen. `cotizacion.orden_compra` se conserva como referencia heredada; las OCs con cupo viven en `cotizacion_orden_compra`.
+- En maquinaria, horas facturables por fila = `max(horas_trabajadas, hora_minima)` si `es_facturable` y no es ajuste de horómetro. El cupo conjunto es la suma de OCs. `maquinaria_cotizacion_oc` conserva la distribución por OC; el excedente puede quedar sin asignar y se recalcula al agregar/editar órdenes o filas.
+- HES es opcional por valorización (`usa_hes`), tanto para maquinaria como agregados. Una fila facturable admite un solo `id_hes`; las no facturables no consumen OC ni requieren HES. El HES puede agrupar fechas no consecutivas y se documenta en S3.
+- Los saltos positivos de horómetro pueden completarse con una fila de ajuste no facturable; los solapamientos solo se advierten. Las escrituras de OCs, HES y filas deben bloquear la cabecera en una transacción.
 - El worker de WhatsApp no tiene volumen persistente en Railway; un reinicio puede requerir volver a vincular la sesión. Sus endpoints tampoco tienen autenticación propia en el código actual, por lo que no se deben ampliar ni exponer sin protección.
 
 ## Base de datos
 
 - Motor desplegado: MySQL 9.4 con volumen persistente de 5 GB.
 - Conviven tablas heredadas en singular y en español (`factura`, `cliente`, `usuario`, etc.) con tablas estándar de Laravel (`users`, `jobs`, `cache`, `sessions`). No renombrarlas por convención sin una migración y plan de compatibilidad.
-- Solo hay 10 migraciones versionadas, mientras que la base observada contiene 34 tablas. Antes de alterar el esquema, comparar `Schema`/`INFORMATION_SCHEMA`, modelos y SQL existente.
+- La base histórica contiene más tablas que las reconstruibles desde las migraciones versionadas. Antes de alterar el esquema, comparar `Schema`/`INFORMATION_SCHEMA`, modelos y SQL existente.
+- La migración aditiva `2026_09_19_010000_add_oc_hes_to_cotizaciones` agrega indicadores, referencias HES y tablas de OC, HES y asignaciones. No inferir horas históricas del texto `orden_compra`: las valorizaciones anteriores siguen sin control hasta registrar su primera OC con cupo.
 - Existen dos identidades: `App\Models\Usuario` sobre `usuario`, usada por la autenticación del sistema, y `App\Models\User` sobre `users`. No intercambiarlas accidentalmente.
 - La cola usa la base de datos. En producción no hay un proceso worker dedicado documentado; cualquier cambio que despache jobs debe incluir estrategia de ejecución y supervisión.
 
@@ -71,6 +76,8 @@ npm start
 - Para cambios de correo, comprobar el camino alternativo y el camino `gmail-api`, los errores de renovación OAuth y una entrega real a una cuenta de prueba autorizada.
 - Para cambios de facturas, probar filtros, totales, tamaños 10/20/50, navegación entre páginas y preservación de query string.
 - Para pagos/conciliación, probar pago total, parcial, excedente, extorno, moneda y ejecución repetida/idempotencia.
+- Para valorizaciones, probar cupo conjunto y reparto de una fila entre OCs, horas sin OC y regularización, HES en ambos tipos, fila no facturable, exportaciones y advertencias de horómetro. En este equipo `pdo_sqlite` se activa para la suite aislada con `php -d extension=php_pdo_sqlite.dll -d extension=php_sqlite3.dll vendor/phpunit/phpunit/phpunit --filter=Valorizacion`.
+- Antes de migrar Railway, confirmar conexión y commit objetivo, generar un respaldo verificable de producción y usar `migrate --pretend`. La migración aplicada en MySQL local no implica que producción esté migrada.
 - Para normalizar saldos históricos, ejecutar primero `php artisan facturas:normalizar-pendientes`; solo después de revisar su resumen usar `--apply`. El comando genera un respaldo JSON en el disco de almacenamiento configurado antes de actualizar las filas.
 
 ## Criterio de terminado
