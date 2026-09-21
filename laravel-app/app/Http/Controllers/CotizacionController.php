@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\ValorizacionOcService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -74,7 +75,7 @@ class CotizacionController extends Controller
             ->join('cliente as cl', 'cl.id_cliente', '=', 'c.id_cliente')
             ->where('c.activo', 1)
             ->select([
-                'c.id_cotizacion', 'c.tipo_cotizacion', 'c.numero_valorizacion', 'c.orden_compra',
+                'c.id_cotizacion', 'c.tipo_cotizacion', 'c.numero_valorizacion', 'c.orden_compra', 'c.control_oc_activo',
                 'c.obra', 'c.periodo_inicio', 'c.periodo_fin',
                 'c.base_sin_igv', 'c.total_igv', 'c.total',
                 'c.fecha_creacion',
@@ -90,10 +91,23 @@ class CotizacionController extends Controller
             $q->where('c.obra', 'like', "%{$search}%")
                 ->orWhere('c.numero_valorizacion', 'like', "%{$search}%")
                 ->orWhere('c.orden_compra', 'like', "%{$search}%")
+                ->orWhereExists(function ($sub) use ($search) {
+                    $sub->selectRaw('1')->from('cotizacion_orden_compra as oc')
+                        ->whereColumn('oc.id_cotizacion', 'c.id_cotizacion')
+                        ->where('oc.numero', 'like', "%{$search}%");
+                })
                 ->orWhere('cl.razon_social', 'like', "%{$search}%");
         });
 
         $cotizaciones = $query->get();
+        $ordenesPorCotizacion = $cotizaciones->isEmpty() ? collect() : DB::table('cotizacion_orden_compra')
+            ->whereIn('id_cotizacion', $cotizaciones->pluck('id_cotizacion'))
+            ->orderBy('id_orden_compra')->get()->groupBy('id_cotizacion');
+        $cotizaciones->each(function ($cot) use ($ordenesPorCotizacion) {
+            $cot->orden_compra_mostrar = $cot->control_oc_activo
+                ? $ordenesPorCotizacion->get($cot->id_cotizacion, collect())->pluck('numero')->implode(' · ')
+                : $cot->orden_compra;
+        });
 
         $clientes = DB::table('cliente')->where('activo', 1)
             ->orderBy('razon_social')->get(['id_cliente', 'razon_social']);
@@ -125,19 +139,27 @@ class CotizacionController extends Controller
             'id_maquinaria'     => 'nullable|required_if:tipo_cotizacion,MAQUINARIA|integer|exists:maquinaria,id_maquinaria',
             'id_agregado'       => 'nullable|required_if:tipo_cotizacion,AGREGADO|integer|exists:agregado,id_agregado',
             'numero_valorizacion' => 'required|string|max:20',
-            'orden_compra'      => 'nullable|string|max:100',
+            'orden_compra'      => 'nullable|required_if:tipo_cotizacion,MAQUINARIA|string|max:100',
+            'horas_oc'          => 'nullable|required_if:tipo_cotizacion,MAQUINARIA|numeric|gt:0',
+            'archivo_oc'        => 'nullable|file|mimes:pdf,jpg,jpeg,png,webp|max:20480',
+            'usa_hes'           => 'nullable|boolean',
             'obra'              => 'required|string|max:250',
             'periodo_inicio'    => 'required|date',
             'periodo_fin'       => 'required|date|after_or_equal:periodo_inicio',
         ]);
 
-        $id = DB::table('cotizacion')->insertGetId([
+        $rutaOc = $this->uploadToS3($request, 'archivo_oc', 'cotizaciones/ordenes');
+        try {
+            $id = DB::transaction(function () use ($validated, $rutaOc) {
+                $id = DB::table('cotizacion')->insertGetId([
             'id_cliente'          => $validated['id_cliente'],
             'id_maquinaria'       => $validated['tipo_cotizacion'] === 'MAQUINARIA' ? ($validated['id_maquinaria'] ?? null) : null,
             'id_agregado'         => $validated['tipo_cotizacion'] === 'AGREGADO'   ? ($validated['id_agregado'] ?? null) : null,
             'tipo_cotizacion'     => $validated['tipo_cotizacion'],
             'numero_valorizacion' => $validated['numero_valorizacion'],
             'orden_compra'       => $validated['orden_compra'] ?? null,
+            'control_oc_activo'  => $validated['tipo_cotizacion'] === 'MAQUINARIA',
+            'usa_hes'            => (bool) ($validated['usa_hes'] ?? false),
             'obra'                => $validated['obra'],
             'periodo_inicio'      => $validated['periodo_inicio'],
             'periodo_fin'         => $validated['periodo_fin'],
@@ -146,7 +168,22 @@ class CotizacionController extends Controller
             'total'               => 0,
             'activo'              => 1,
             'fecha_creacion'      => now(),
-        ]);
+                ]);
+                if ($validated['tipo_cotizacion'] === 'MAQUINARIA') {
+                    DB::table('cotizacion_orden_compra')->insert([
+                        'id_cotizacion' => $id,
+                        'numero' => $validated['orden_compra'],
+                        'horas_autorizadas' => $validated['horas_oc'],
+                        'ruta_documento' => $rutaOc,
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+                return $id;
+            });
+        } catch (\Throwable $e) {
+            if ($rutaOc) Storage::disk('s3')->delete($rutaOc);
+            throw $e;
+        }
 
         return redirect()->route('cotizaciones.show', $id)
             ->with('success', 'Cotización creada. Ahora agrega las filas.');
@@ -171,6 +208,9 @@ class CotizacionController extends Controller
         if (!$cotizacion) abort(404);
 
         $filas = $this->getFilas($cotizacion);
+        $ocResumen = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
+            ? app(ValorizacionOcService::class)->resumen($id) : null;
+        $hesList = DB::table('cotizacion_hes')->where('id_cotizacion', $id)->orderBy('id_hes')->get();
 
         $clientes    = DB::table('cliente')->where('activo', 1)->orderBy('razon_social')
             ->get(['id_cliente', 'razon_social', 'ruc']);
@@ -179,7 +219,7 @@ class CotizacionController extends Controller
         $choferes    = DB::table('chofer')->where('activo', 1)->orderBy('nombres')->get();
 
         return view('cotizaciones.show', compact(
-            'cotizacion', 'filas', 'clientes', 'maquinarias', 'agregados', 'choferes'
+            'cotizacion', 'filas', 'clientes', 'maquinarias', 'agregados', 'choferes', 'ocResumen', 'hesList'
         ));
     }
 
@@ -196,11 +236,25 @@ class CotizacionController extends Controller
             'id_agregado'         => 'nullable|required_if:tipo_cotizacion,AGREGADO|integer|exists:agregado,id_agregado',
             'numero_valorizacion' => 'required|string|max:20',
             'orden_compra'      => 'nullable|string|max:100',
+            'usa_hes'           => 'nullable|boolean',
             'obra'                => 'required|string|max:250',
             'periodo_inicio'      => 'required|date',
             'periodo_fin'         => 'required|date|after_or_equal:periodo_inicio',
         ]);
 
+        $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $id)->where('activo', 1)->first();
+        abort_unless($cotizacion, 404);
+        if ($cotizacion->tipo_cotizacion !== $validated['tipo_cotizacion']) {
+            return response()->json(['success' => false, 'message' => 'No se puede cambiar el tipo de una valorización existente.'], 422);
+        }
+        if ($cotizacion->control_oc_activo && $validated['orden_compra'] !== $cotizacion->orden_compra) {
+            return response()->json(['success' => false, 'message' => 'Edita cada orden de compra desde el panel de OCs.'], 422);
+        }
+        $usaHes = (bool) ($validated['usa_hes'] ?? $cotizacion->usa_hes);
+        $tablaFilas = $cotizacion->tipo_cotizacion === 'MAQUINARIA' ? 'maquinaria_cotizacion' : 'agregado_cotizacion';
+        if (!$usaHes && $cotizacion->usa_hes && DB::table($tablaFilas)->where('id_cotizacion', $id)->whereNotNull('id_hes')->exists()) {
+            return response()->json(['success' => false, 'message' => 'Desasigna primero todas las filas HES.'], 422);
+        }
         DB::table('cotizacion')->where('id_cotizacion', $id)->update([
             'id_cliente'          => $validated['id_cliente'],
             'id_maquinaria'       => $validated['tipo_cotizacion'] === 'MAQUINARIA' ? ($validated['id_maquinaria'] ?? null) : null,
@@ -208,6 +262,7 @@ class CotizacionController extends Controller
             'tipo_cotizacion'     => $validated['tipo_cotizacion'],
             'numero_valorizacion' => $validated['numero_valorizacion'],
             'orden_compra'       => $validated['orden_compra'] ?? null,
+            'usa_hes'            => $usaHes,
             'obra'                => $validated['obra'],
             'periodo_inicio'      => $validated['periodo_inicio'],
             'periodo_fin'         => $validated['periodo_fin'],
@@ -259,8 +314,10 @@ class CotizacionController extends Controller
         if (!$cotizacion) abort(404);
 
         $filas = $this->getFilas($cotizacion);
+        $ocResumen = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
+            ? app(ValorizacionOcService::class)->resumen($id) : null;
 
-        return view('cotizaciones.print', compact('cotizacion', 'filas'));
+        return view('cotizaciones.print', compact('cotizacion', 'filas', 'ocResumen'));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -282,7 +339,7 @@ class CotizacionController extends Controller
     public function storeRow(Request $request, int $idCotizacion)
     {
         $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $idCotizacion)->first();
-        if (!$cotizacion) return response()->json(['error' => 'Cotización no encontrada'], 404);
+        if (!$cotizacion || !$cotizacion->activo) return response()->json(['error' => 'Cotización no encontrada'], 404);
 
         if ($cotizacion->tipo_cotizacion === 'MAQUINARIA') {
             return $this->storeMaquinariaRow($request, $cotizacion);
@@ -306,6 +363,10 @@ class CotizacionController extends Controller
             'hora_minima'    => 'required|numeric|min:0',
             'precio_hora'    => 'required|numeric|min:0',
             'cobrar_fila'    => 'nullable|in:0,1',
+            'completar_salto' => 'nullable|boolean',
+            'nueva_oc_numero' => ['nullable', 'required_with:nueva_oc_horas,nueva_oc_archivo', 'string', 'max:100', \Illuminate\Validation\Rule::unique('cotizacion_orden_compra', 'numero')->where('id_cotizacion', $cotizacion->id_cotizacion)],
+            'nueva_oc_horas' => 'nullable|required_with:nueva_oc_numero,nueva_oc_archivo|numeric|gt:0',
+            'nueva_oc_archivo' => 'nullable|required_with:nueva_oc_numero,nueva_oc_horas|file|mimes:pdf,jpg,jpeg,png,webp|max:20480',
             'n_parte_diario' => 'nullable|string|max:50',
             'numero_factura' => 'nullable|string|max:50',
             'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
@@ -313,7 +374,8 @@ class CotizacionController extends Controller
 
         $horasTrabajadas = round($v['hora_fin'] - $v['hora_inicio'], 2);
         $horasEfectivas  = max($horasTrabajadas, (float) $v['hora_minima']);
-        $debeCobrar      = (($v['cobrar_fila'] ?? '1') === '1');
+        $esAjuste        = false;
+        $debeCobrar      = (($v['cobrar_fila'] ?? '1') === '1') && !$esAjuste;
         $totalFila       = $debeCobrar ? round($horasEfectivas * $v['precio_hora'], 2) : 0;
 
         // ── Subir imagen parte diario a S3 ─────────────────────────────────
@@ -322,6 +384,7 @@ class CotizacionController extends Controller
             'imagen_parte_diario',
             "cotizaciones/partes/{$cotizacion->id_cotizacion}"
         );
+        $rutaNuevaOc = $this->uploadToS3($request, 'nueva_oc_archivo', "cotizaciones/ordenes/{$cotizacion->id_cotizacion}");
 
         $insertData = [
             'id_cotizacion'    => $cotizacion->id_cotizacion,
@@ -336,6 +399,8 @@ class CotizacionController extends Controller
             'horas_trabajadas' => $horasTrabajadas,
             'precio_hora'      => $v['precio_hora'],
             'total_fila'       => $totalFila,
+            'es_facturable'    => $debeCobrar,
+            'es_ajuste_horometro' => $esAjuste,
             'n_parte_diario'   => $v['n_parte_diario'] ?? null,
             'numero_factura'   => $v['numero_factura'] ?? null,
             'activo'           => 1,
@@ -346,9 +411,60 @@ class CotizacionController extends Controller
             $insertData[$parteDiarioColumn] = $rutaParteDiario;
         }
 
-        $rowId = DB::table('maquinaria_cotizacion')->insertGetId($insertData);
-
-        $this->recalcularTotales($cotizacion->id_cotizacion);
+        try {
+            $rowId = DB::transaction(function () use ($cotizacion, $insertData, $v, $rutaNuevaOc) {
+                DB::table('cotizacion')->where('id_cotizacion', $cotizacion->id_cotizacion)->lockForUpdate()->first();
+                if (!empty($v['nueva_oc_numero'])) {
+                    if (!$cotizacion->control_oc_activo || !$rutaNuevaOc) {
+                        throw \Illuminate\Validation\ValidationException::withMessages(['nueva_oc_archivo' => 'La OC adicional requiere un documento.']);
+                    }
+                    DB::table('cotizacion_orden_compra')->insert([
+                        'id_cotizacion' => $cotizacion->id_cotizacion,
+                        'numero' => $v['nueva_oc_numero'], 'horas_autorizadas' => $v['nueva_oc_horas'],
+                        'ruta_documento' => $rutaNuevaOc, 'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+                if (!empty($v['completar_salto'])) {
+                    $anterior = DB::table('maquinaria_cotizacion')
+                        ->where('id_cotizacion', $cotizacion->id_cotizacion)
+                        ->where('id_maquinaria', $v['id_maquinaria'])->where('activo', 1)
+                        ->where(function ($q) use ($v) {
+                            $q->where('fecha', '<', $v['fecha'])
+                                ->orWhere(function ($same) use ($v) {
+                                    $same->where('fecha', $v['fecha'])->where('hora_inicio', '<', $v['hora_inicio']);
+                                });
+                        })
+                        ->orderByDesc('fecha')->orderByDesc('hora_fin')->first();
+                    if ($anterior && (float)$v['hora_inicio'] > (float)$anterior->hora_fin + 0.05) {
+                        $ajuste = $insertData;
+                        $ajuste['hora_inicio'] = $anterior->hora_fin;
+                        $ajuste['hora_fin'] = $v['hora_inicio'];
+                        $ajuste['horas_trabajadas'] = round((float)$v['hora_inicio'] - (float)$anterior->hora_fin, 2);
+                        $ajuste['hora_minima'] = 0;
+                        $ajuste['precio_hora'] = 0;
+                        $ajuste['total_fila'] = 0;
+                        $ajuste['es_facturable'] = false;
+                        $ajuste['es_ajuste_horometro'] = true;
+                        $ajuste['n_parte_diario'] = null;
+                        $ajuste['numero_factura'] = null;
+                        if ($this->getParteDiarioColumn('maquinaria_cotizacion')) {
+                            $ajuste[$this->getParteDiarioColumn('maquinaria_cotizacion')] = null;
+                        }
+                        DB::table('maquinaria_cotizacion')->insert($ajuste);
+                    }
+                }
+                $rowId = DB::table('maquinaria_cotizacion')->insertGetId($insertData);
+                if ($cotizacion->control_oc_activo) {
+                    app(ValorizacionOcService::class)->recalcular($cotizacion->id_cotizacion);
+                }
+                $this->recalcularTotales($cotizacion->id_cotizacion);
+                return $rowId;
+            });
+        } catch (\Throwable $e) {
+            if ($rutaParteDiario) Storage::disk('s3')->delete($rutaParteDiario);
+            if ($rutaNuevaOc) Storage::disk('s3')->delete($rutaNuevaOc);
+            throw $e;
+        }
 
         $row = DB::table('maquinaria_cotizacion as mc')
             ->join('chofer as ch', 'ch.id_chofer', '=', 'mc.id_chofer')
@@ -418,6 +534,7 @@ class CotizacionController extends Controller
             'm3'               => $v['m3'],
             'precio_m3'        => $v['precio_m3'],
             'total_fila'       => $totalFila,
+            'es_facturable'    => $debeCobrar,
             'n_parte_diario'   => $v['n_parte_diario'] ?? null,
             'numero_factura'   => $v['numero_factura'] ?? null,
             'grr'              => $v['grr'] ?? null,
@@ -432,9 +549,12 @@ class CotizacionController extends Controller
             $insertData[$parteDiarioColumn] = $rutaParteDiario;
         }
 
-        $rowId = DB::table('agregado_cotizacion')->insertGetId($insertData);
-
-        $this->recalcularTotales($cotizacion->id_cotizacion);
+        $rowId = DB::transaction(function () use ($cotizacion, $insertData) {
+            DB::table('cotizacion')->where('id_cotizacion', $cotizacion->id_cotizacion)->lockForUpdate()->first();
+            $rowId = DB::table('agregado_cotizacion')->insertGetId($insertData);
+            $this->recalcularTotales($cotizacion->id_cotizacion);
+            return $rowId;
+        });
 
         $row = DB::table('agregado_cotizacion as ac')
             ->join('chofer as ch', 'ch.id_chofer', '=', 'ac.id_chofer')
@@ -465,7 +585,12 @@ class CotizacionController extends Controller
     public function updateRow(Request $request, int $idCotizacion, int $rowId)
     {
         $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $idCotizacion)->first();
-        if (!$cotizacion) return response()->json(['error' => 'No encontrado'], 404);
+        if (!$cotizacion || !$cotizacion->activo) return response()->json(['error' => 'No encontrado'], 404);
+
+        $table = $cotizacion->tipo_cotizacion === 'MAQUINARIA' ? 'maquinaria_cotizacion' : 'agregado_cotizacion';
+        $pk = $cotizacion->tipo_cotizacion === 'MAQUINARIA' ? 'id_cotizacion_maqu' : 'id_cotizacion_agr';
+        $currentRow = DB::table($table)->where($pk, $rowId)->where('id_cotizacion', $idCotizacion)->where('activo', 1)->first();
+        abort_unless($currentRow, 404);
 
         if ($cotizacion->tipo_cotizacion === 'MAQUINARIA') {
             $parteDiarioColumn = $this->getParteDiarioColumn('maquinaria_cotizacion');
@@ -481,6 +606,10 @@ class CotizacionController extends Controller
                 'hora_minima'    => 'required|numeric',
                 'precio_hora'    => 'required|numeric',
                 'cobrar_fila'    => 'nullable|in:0,1',
+                'completar_salto' => 'nullable|boolean',
+                'nueva_oc_numero' => ['nullable', 'required_with:nueva_oc_horas,nueva_oc_archivo', 'string', 'max:100', \Illuminate\Validation\Rule::unique('cotizacion_orden_compra', 'numero')->where('id_cotizacion', $idCotizacion)],
+                'nueva_oc_horas' => 'nullable|required_with:nueva_oc_numero,nueva_oc_archivo|numeric|gt:0',
+                'nueva_oc_archivo' => 'nullable|required_with:nueva_oc_numero,nueva_oc_horas|file|mimes:pdf,jpg,jpeg,png,webp|max:20480',
                 'n_parte_diario' => 'nullable|string|max:50',
                 'numero_factura' => 'nullable|string|max:50',
                 'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
@@ -488,14 +617,17 @@ class CotizacionController extends Controller
 
             $horasTrabajadas = round($v['hora_fin'] - $v['hora_inicio'], 2);
             $horasEfectivas  = max($horasTrabajadas, (float) $v['hora_minima']);
-            $debeCobrar      = (($v['cobrar_fila'] ?? '1') === '1');
+            $debeCobrar      = (($v['cobrar_fila'] ?? '1') === '1') && !$currentRow->es_ajuste_horometro;
             $totalFila       = $debeCobrar ? round($horasEfectivas * $v['precio_hora'], 2) : 0;
+            $rutaNuevaOc = $this->uploadToS3($request, 'nueva_oc_archivo', "cotizaciones/ordenes/{$idCotizacion}");
 
             $updateData = array_merge($v, [
                 'horas_trabajadas'    => $horasTrabajadas,
                 'total_fila'          => $totalFila,
+                'es_facturable'       => $debeCobrar,
                 'fecha_actualizacion' => now(),
             ]);
+            if (!$debeCobrar) $updateData['id_hes'] = null;
 
             // Subir nueva imagen parte diario a S3 si viene en la request
             if ($request->hasFile('imagen_parte_diario')) {
@@ -509,11 +641,55 @@ class CotizacionController extends Controller
             }
 
             // Quitar la clave del archivo del array de actualización (no es columna)
-            unset($updateData['imagen_parte_diario'], $updateData['cobrar_fila']);
+            unset($updateData['imagen_parte_diario'], $updateData['cobrar_fila'], $updateData['completar_salto'], $updateData['nueva_oc_numero'], $updateData['nueva_oc_horas'], $updateData['nueva_oc_archivo']);
 
-            DB::table('maquinaria_cotizacion')
-                ->where('id_cotizacion_maqu', $rowId)
-                ->update($updateData);
+            try {
+                DB::transaction(function () use ($idCotizacion, $rowId, $updateData, $cotizacion, $v, $rutaNuevaOc) {
+                    DB::table('cotizacion')->where('id_cotizacion', $idCotizacion)->lockForUpdate()->first();
+                    abort_unless(DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $rowId)
+                        ->where('id_cotizacion', $idCotizacion)->where('activo', 1)->lockForUpdate()->first(), 404);
+                    if (!empty($v['nueva_oc_numero'])) {
+                        if (!$cotizacion->control_oc_activo || !$rutaNuevaOc) {
+                            throw \Illuminate\Validation\ValidationException::withMessages(['nueva_oc_archivo' => 'La OC adicional requiere un documento.']);
+                        }
+                        DB::table('cotizacion_orden_compra')->insert([
+                            'id_cotizacion' => $idCotizacion, 'numero' => $v['nueva_oc_numero'],
+                            'horas_autorizadas' => $v['nueva_oc_horas'], 'ruta_documento' => $rutaNuevaOc,
+                            'created_at' => now(), 'updated_at' => now(),
+                        ]);
+                    }
+                    if (!empty($v['completar_salto'])) {
+                        $anterior = DB::table('maquinaria_cotizacion')
+                            ->where('id_cotizacion', $idCotizacion)->where('id_maquinaria', $v['id_maquinaria'])
+                            ->where('id_cotizacion_maqu', '<>', $rowId)->where('activo', 1)
+                            ->where(function ($q) use ($v) {
+                                $q->where('fecha', '<', $v['fecha'])
+                                    ->orWhere(function ($same) use ($v) {
+                                        $same->where('fecha', $v['fecha'])->where('hora_inicio', '<', $v['hora_inicio']);
+                                    });
+                            })
+                            ->orderByDesc('fecha')->orderByDesc('hora_fin')->first();
+                        if ($anterior && (float)$v['hora_inicio'] > (float)$anterior->hora_fin + 0.05) {
+                            DB::table('maquinaria_cotizacion')->insert([
+                                'id_cotizacion' => $idCotizacion, 'id_chofer' => $v['id_chofer'],
+                                'id_maquinaria' => $v['id_maquinaria'], 'fecha' => $v['fecha'],
+                                'placa' => $v['placa'] ?? null, 'obra_maquina' => $v['obra_maquina'] ?? $cotizacion->obra,
+                                'hora_inicio' => $anterior->hora_fin, 'hora_fin' => $v['hora_inicio'],
+                                'hora_minima' => 0, 'horas_trabajadas' => round((float)$v['hora_inicio'] - (float)$anterior->hora_fin, 2),
+                                'precio_hora' => 0, 'total_fila' => 0, 'es_facturable' => false,
+                                'es_ajuste_horometro' => true, 'activo' => 1, 'fecha_creacion' => now(),
+                            ]);
+                        }
+                    }
+                    DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $rowId)
+                        ->where('id_cotizacion', $idCotizacion)->where('activo', 1)->update($updateData);
+                    if ($cotizacion->control_oc_activo) app(ValorizacionOcService::class)->recalcular($idCotizacion);
+                    $this->recalcularTotales($idCotizacion);
+                });
+            } catch (\Throwable $e) {
+                if ($rutaNuevaOc) Storage::disk('s3')->delete($rutaNuevaOc);
+                throw $e;
+            }
 
         } else {
             $parteDiarioColumn = $this->getParteDiarioColumn('agregado_cotizacion');
@@ -538,8 +714,10 @@ class CotizacionController extends Controller
             $totalFila  = $debeCobrar ? round($v['m3'] * $v['precio_m3'], 2) : 0;
             $updateData = array_merge($v, [
                 'total_fila'          => $totalFila,
+                'es_facturable'       => $debeCobrar,
                 'fecha_actualizacion' => now(),
             ]);
+            if (!$debeCobrar) $updateData['id_hes'] = null;
 
             if ($request->hasFile('archivo_grr')) {
                 if ($this->tableHasColumn('agregado_cotizacion', 'ruta_grr')) {
@@ -563,12 +741,15 @@ class CotizacionController extends Controller
             // Quitar claves de archivos del array
             unset($updateData['imagen_parte_diario'], $updateData['archivo_grr'], $updateData['cobrar_fila']);
 
-            DB::table('agregado_cotizacion')
-                ->where('id_cotizacion_agr', $rowId)
-                ->update($updateData);
+            DB::transaction(function () use ($idCotizacion, $rowId, $updateData) {
+                DB::table('cotizacion')->where('id_cotizacion', $idCotizacion)->lockForUpdate()->first();
+                $updated = DB::table('agregado_cotizacion')->where('id_cotizacion_agr', $rowId)
+                    ->where('id_cotizacion', $idCotizacion)->where('activo', 1)->update($updateData);
+                abort_unless($updated, 404);
+                $this->recalcularTotales($idCotizacion);
+            });
         }
 
-        $this->recalcularTotales($idCotizacion);
         $totales = $this->getTotales($idCotizacion);
 
         return response()->json(['success' => true, 'totales' => $totales]);
@@ -577,17 +758,21 @@ class CotizacionController extends Controller
     public function destroyRow(int $idCotizacion, int $rowId)
     {
         $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $idCotizacion)->first();
-        if (!$cotizacion) return response()->json(['error' => 'No encontrado'], 404);
+        if (!$cotizacion || !$cotizacion->activo) return response()->json(['error' => 'No encontrado'], 404);
 
         $table  = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
             ? 'maquinaria_cotizacion' : 'agregado_cotizacion';
         $pkCol  = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
             ? 'id_cotizacion_maqu' : 'id_cotizacion_agr';
 
-        DB::table($table)->where($pkCol, $rowId)
-            ->update(['activo' => 0, 'fecha_actualizacion' => now()]);
-
-        $this->recalcularTotales($idCotizacion);
+        DB::transaction(function () use ($idCotizacion, $rowId, $table, $pkCol, $cotizacion) {
+            DB::table('cotizacion')->where('id_cotizacion', $idCotizacion)->lockForUpdate()->first();
+            $changed = DB::table($table)->where($pkCol, $rowId)->where('id_cotizacion', $idCotizacion)
+                ->where('activo', 1)->update(['activo' => 0, 'id_hes' => null, 'fecha_actualizacion' => now()]);
+            abort_unless($changed, 404);
+            if ($cotizacion->control_oc_activo) app(ValorizacionOcService::class)->recalcular($idCotizacion);
+            $this->recalcularTotales($idCotizacion);
+        });
         $totales = $this->getTotales($idCotizacion);
 
         return response()->json(['success' => true, 'totales' => $totales]);
@@ -603,12 +788,13 @@ class CotizacionController extends Controller
             $parteDiarioColumn = $this->getParteDiarioColumn('maquinaria_cotizacion');
 
             $query = DB::table('maquinaria_cotizacion as mc')
+                ->leftJoin('cotizacion_hes as hes', 'hes.id_hes', '=', 'mc.id_hes')
                 ->join('chofer as ch', 'ch.id_chofer', '=', 'mc.id_chofer')
                 ->join('maquinaria as m', 'm.id_maquinaria', '=', 'mc.id_maquinaria')
                 ->where('mc.id_cotizacion', $cotizacion->id_cotizacion)
                 ->where('mc.activo', 1)
                 ->select(
-                    'mc.*',
+                    'mc.*', 'hes.codigo as codigo_hes',
                     DB::raw("TRIM(CONCAT(ch.nombres,' ',COALESCE(ch.apellido_paterno,''),' ',COALESCE(ch.apellido_materno,''))) as chofer_nombre"),
                     DB::raw("CONCAT(m.nombre, CASE WHEN m.numero_maquina IS NOT NULL AND m.numero_maquina != '' THEN CONCAT(' — ', m.numero_maquina) ELSE '' END) as maquinaria_nombre"),
                     DB::raw("'MAQUINARIA' as _tipo"),
@@ -624,22 +810,24 @@ class CotizacionController extends Controller
             $filas = $query->get();
 
             // Adjuntar URLs públicas de S3
-            return $filas->map(function ($fila) {
+            $filas = $filas->map(function ($fila) {
                 if (isset($fila->ruta_parte_diario) && $fila->ruta_parte_diario !== '') {
                     $fila->url_parte_diario = $this->resolveS3FileUrl($fila->ruta_parte_diario);
                 }
                 return $fila;
             });
+            return app(ValorizacionOcService::class)->detallarFilas($filas, (bool) $cotizacion->control_oc_activo);
         } else {
             $parteDiarioColumn = $this->getParteDiarioColumn('agregado_cotizacion');
 
             $query = DB::table('agregado_cotizacion as ac')
+                ->leftJoin('cotizacion_hes as hes', 'hes.id_hes', '=', 'ac.id_hes')
                 ->join('chofer as ch', 'ch.id_chofer', '=', 'ac.id_chofer')
                 ->join('agregado as a', 'a.id_agregado', '=', 'ac.id_agregado')
                 ->where('ac.id_cotizacion', $cotizacion->id_cotizacion)
                 ->where('ac.activo', 1)
                 ->select(
-                    'ac.*',
+                    'ac.*', 'hes.codigo as codigo_hes',
                     DB::raw("TRIM(CONCAT(ch.nombres,' ',COALESCE(ch.apellido_paterno,''),' ',COALESCE(ch.apellido_materno,''))) as chofer_nombre"),
                     DB::raw("CONCAT(a.nombre, CASE WHEN a.numero_agregado IS NOT NULL AND a.numero_agregado != '' THEN CONCAT(' (', a.numero_agregado, ')') ELSE '' END) as agregado_nombre"),
                     DB::raw("'AGREGADO' as _tipo"),

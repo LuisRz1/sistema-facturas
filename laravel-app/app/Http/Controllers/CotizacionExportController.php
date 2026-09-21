@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\ValorizacionOcService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -56,12 +57,13 @@ class CotizacionExportController extends Controller
 
         $filas = $this->getFilas($cotizacion);
         $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
+        $ocResumen = $esMaquinaria ? app(ValorizacionOcService::class)->resumen($id) : null;
 
         $forPdf = true;
         $logoDataUri = $this->getLogoDataUri();
         $logoPath = $this->getLogoFilePath();
 
-        $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria', 'forPdf', 'logoDataUri', 'logoPath'))->render();
+        $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria', 'forPdf', 'logoDataUri', 'logoPath', 'ocResumen'))->render();
         $html = preg_replace('/<div class="no-print".*?<\/div>/s', '', $html);
         $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
 
@@ -95,11 +97,12 @@ class CotizacionExportController extends Controller
 
             $filas = $this->getFilas($cotizacion);
             $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
+            $ocResumen = $esMaquinaria ? app(ValorizacionOcService::class)->resumen((int)$id) : null;
             $forPdf = true;
             $logoDataUri = $this->getLogoDataUri();
             $logoPath = $this->getLogoFilePath();
 
-            $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria', 'forPdf', 'logoDataUri', 'logoPath'))->render();
+            $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria', 'forPdf', 'logoDataUri', 'logoPath', 'ocResumen'))->render();
             $html = preg_replace('/<div class="no-print".*?<\/div>/s', '', $html);
             $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
 
@@ -196,6 +199,11 @@ class CotizacionExportController extends Controller
                     $q->where('cotizacion.obra', 'like', "%{$search}%")
                         ->orWhere('cotizacion.numero_valorizacion', 'like', "%{$search}%")
                         ->orWhere('cotizacion.orden_compra', 'like', "%{$search}%")
+                        ->orWhereExists(function ($sub) use ($search) {
+                            $sub->selectRaw('1')->from('cotizacion_orden_compra as oc')
+                                ->whereColumn('oc.id_cotizacion', 'cotizacion.id_cotizacion')
+                                ->where('oc.numero', 'like', "%{$search}%");
+                        })
                         ->orWhere('cl.razon_social', 'like', "%{$search}%");
                 });
         }
@@ -210,6 +218,8 @@ class CotizacionExportController extends Controller
         \Illuminate\Support\Collection $filas
     ): void {
         $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
+        $controlOc = $esMaquinaria && (bool) $cotizacion->control_oc_activo;
+        $usaHes = (bool) $cotizacion->usa_hes;
         $itemNombre   = $esMaquinaria
             ? trim((string)($cotizacion->maquinaria_nombre ?? ''))
             : trim((string)($cotizacion->agregado_nombre ?? ''));
@@ -236,13 +246,16 @@ class CotizacionExportController extends Controller
                 'B'=>8,'C'=>16,'D'=>22,'E'=>12,'F'=>14,'G'=>22,
                 'H'=>6,'I'=>22,'J'=>13,'K'=>12,'L'=>12,'M'=>14,'N'=>18,
             ];
-            $lastCol = 'N';
+            if ($controlOc) $colDefs['O'] = 26;
+            if ($usaHes) $colDefs[$controlOc ? 'P' : 'O'] = 20;
+            $lastCol = $usaHes ? ($controlOc ? 'P' : 'O') : ($controlOc ? 'O' : 'N');
         } else {
             $colDefs = [
                 'B'=>8,'C'=>18,'D'=>26,'E'=>12,'F'=>14,'G'=>22,
                 'H'=>6,'I'=>22,'J'=>14,'K'=>12,'L'=>18,
             ];
-            $lastCol = 'L';
+            if ($usaHes) $colDefs['M'] = 20;
+            $lastCol = $usaHes ? 'M' : 'L';
         }
         foreach ($colDefs as $col => $w) {
             $sheet->getColumnDimension($col)->setWidth($w);
@@ -329,7 +342,11 @@ class CotizacionExportController extends Controller
         $sheet->setCellValue('F8', 'ORDEN DE COMPRA:');
         $sheet->getStyle('F8')->getFont()->setBold(true)->setUnderline(true);
         $sheet->mergeCells("G8:{$lastCol}8");
-        $sheet->setCellValueExplicit('G8', (string) ($cotizacion->orden_compra ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $numerosOc = $controlOc
+            ? DB::table('cotizacion_orden_compra')->where('id_cotizacion', $cotizacion->id_cotizacion)
+                ->orderBy('id_orden_compra')->get()->map(fn($oc) => $oc->numero . ' (' . $oc->horas_autorizadas . ' h)')->implode(' · ')
+            : (string) ($cotizacion->orden_compra ?? '');
+        $sheet->setCellValueExplicit('G8', $numerosOc, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
 
         // ── Row 10: Company title ─────────────────────────────────────────
         $sheet->mergeCells("B10:{$lastCol}10");
@@ -358,9 +375,12 @@ class CotizacionExportController extends Controller
         if ($esMaquinaria) {
             $headers = ['FECHA','CHOFER','CISTERNA/VOLQUETE/MAQUINARIA','PLACA/DESCRIPCION','OBRA','N° PARTE DIARIO','HI','HT','HORAS TRABAJADAS','HORAS MINIMAS','PRECIO','TOTAL','FACTURA'];
             $cols    = ['B','C','D','E','F','G','H','I','J','K','L','M','N'];
+            if ($controlOc) { $headers[] = 'OC / HORAS'; $cols[] = 'O'; }
+            if ($usaHes) { $headers[] = 'HES'; $cols[] = $controlOc ? 'P' : 'O'; }
         } else {
             $headers = ['FECHA','CHOFER','DETALLE','PLACA','OBRA','N° PARTE DIARIO','M3','PRECIO','TOTAL','GRR','FACTURA'];
             $cols    = ['B','C','D','E','F','G','H','I','J','K','L'];
+            if ($usaHes) { $headers[] = 'HES'; $cols[] = 'M'; }
         }
 
         foreach ($headers as $i => $h) {
@@ -398,6 +418,9 @@ class CotizacionExportController extends Controller
                     (float) $f->total_fila,
                     (string) ($f->numero_factura ?? ''),
                 ];
+                if ($controlOc) $vals[] = $f->oc_asignaciones->map(fn($a) => $a->numero . ': ' . $a->horas_asignadas . ' h')->implode(' · ')
+                    . ($f->horas_sin_oc > 0 ? ' · SIN OC: ' . $f->horas_sin_oc . ' h' : '');
+                if ($usaHes) $vals[] = (string) ($f->codigo_hes ?? '');
                 // Numeric cols alignment right
                 $numCols = ['H','I','J','K','L','M'];
             } else {
@@ -414,11 +437,12 @@ class CotizacionExportController extends Controller
                     strtoupper($f->grr ?? ''),
                     (string) ($f->numero_factura ?? ''),
                 ];
+                if ($usaHes) $vals[] = (string) ($f->codigo_hes ?? '');
                 $numCols = ['H','I','J'];
             }
 
             foreach ($vals as $i => $val) {
-                if ($i === count($vals) - 1) {
+                if (in_array($cols[$i], $esMaquinaria ? ['N','O','P'] : ['L','M'], true)) {
                     $sheet->setCellValueExplicit($cols[$i] . $r, $val, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
                 } else {
                     $sheet->setCellValue($cols[$i] . $r, $val);
@@ -500,6 +524,20 @@ class CotizacionExportController extends Controller
         $sheet->getStyle("{$numCol}{$s3}")->getFont()->setBold(true);
         $sheet->getStyle("{$numCol}{$s3}")->getFill()
             ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFFC0');
+
+        if ($controlOc) {
+            $ordenes = app(ValorizacionOcService::class)->resumen((int)$cotizacion->id_cotizacion);
+            $filaOc = $s3 + 2;
+            foreach ($ordenes['ordenes'] as $oc) {
+                $sheet->setCellValue("B{$filaOc}", 'OC ' . $oc->numero);
+                $sheet->setCellValue("C{$filaOc}", 'Autorizadas: ' . $oc->horas_autorizadas . ' h');
+                $sheet->setCellValue("D{$filaOc}", 'Consumidas: ' . $oc->horas_consumidas . ' h');
+                $filaOc++;
+            }
+            if ($ordenes['horas_sin_oc'] > 0) {
+                $sheet->setCellValue("B{$filaOc}", 'SIN OC: ' . $ordenes['horas_sin_oc'] . ' h');
+            }
+        }
 
         // Repite el bloque superior al imprimir o guardar el archivo.
         $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 12);
@@ -624,21 +662,24 @@ class CotizacionExportController extends Controller
     private function getFilas(object $cotizacion): \Illuminate\Support\Collection
     {
         if ($cotizacion->tipo_cotizacion === 'MAQUINARIA') {
-            return DB::table('maquinaria_cotizacion as mc')
+            $filas = DB::table('maquinaria_cotizacion as mc')
+                ->leftJoin('cotizacion_hes as hes', 'hes.id_hes', '=', 'mc.id_hes')
                 ->join('chofer as ch', 'ch.id_chofer', '=', 'mc.id_chofer')
                 ->join('maquinaria as m', 'm.id_maquinaria', '=', 'mc.id_maquinaria')
                 ->where('mc.id_cotizacion', $cotizacion->id_cotizacion)
                 ->where('mc.activo', 1)
-                ->select('mc.*', 'ch.nombres as chofer_nombre', 'm.nombre as maquinaria_nombre')
+                ->select('mc.*', 'hes.codigo as codigo_hes', 'ch.nombres as chofer_nombre', 'm.nombre as maquinaria_nombre')
                 ->orderBy('mc.fecha')->orderBy('mc.hora_inicio')
                 ->get();
+            return app(ValorizacionOcService::class)->detallarFilas($filas, (bool)$cotizacion->control_oc_activo);
         }
         return DB::table('agregado_cotizacion as ac')
+            ->leftJoin('cotizacion_hes as hes', 'hes.id_hes', '=', 'ac.id_hes')
             ->join('chofer as ch', 'ch.id_chofer', '=', 'ac.id_chofer')
             ->join('agregado as a', 'a.id_agregado', '=', 'ac.id_agregado')
             ->where('ac.id_cotizacion', $cotizacion->id_cotizacion)
             ->where('ac.activo', 1)
-            ->select('ac.*', 'ch.nombres as chofer_nombre', 'a.nombre as agregado_nombre')
+            ->select('ac.*', 'hes.codigo as codigo_hes', 'ch.nombres as chofer_nombre', 'a.nombre as agregado_nombre')
             ->orderBy('ac.fecha')
             ->get();
     }

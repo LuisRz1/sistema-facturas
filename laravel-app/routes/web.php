@@ -12,6 +12,7 @@ use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\ValidarDetraccionesController;
 use App\Http\Controllers\ImportarRetencionesController;
 use App\Http\Controllers\CotizacionController;
+use App\Http\Controllers\CotizacionControlController;
 use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\CotizacionExportController;
 use App\Http\Controllers\Configuracioncontroller;
@@ -173,6 +174,19 @@ Route::middleware('auth')->group(function () {
         [CotizacionController::class, 'destroy'])->whereNumber('id')->name('cotizaciones.destroy');
     Route::get('/cotizaciones/{id}/print',
         [CotizacionController::class, 'print'])->whereNumber('id')->name('cotizaciones.print');
+
+    Route::post('/cotizaciones/{id}/ordenes', [CotizacionControlController::class, 'storeOc'])
+        ->whereNumber('id')->name('cotizaciones.ordenes.store');
+    Route::post('/cotizaciones/{id}/ordenes/{ocId}', [CotizacionControlController::class, 'updateOc'])
+        ->whereNumber('id')->whereNumber('ocId')->name('cotizaciones.ordenes.update');
+    Route::get('/cotizaciones/{id}/ordenes/{ocId}/documento', [CotizacionControlController::class, 'documentoOc'])
+        ->whereNumber('id')->whereNumber('ocId')->name('cotizaciones.ordenes.documento');
+    Route::post('/cotizaciones/{id}/hes', [CotizacionControlController::class, 'assignHes'])
+        ->whereNumber('id')->name('cotizaciones.hes.assign');
+    Route::delete('/cotizaciones/{id}/rows/{rowId}/hes', [CotizacionControlController::class, 'unassignHes'])
+        ->whereNumber('id')->whereNumber('rowId')->name('cotizaciones.hes.unassign');
+    Route::get('/cotizaciones/{id}/hes/{hesId}/documento', [CotizacionControlController::class, 'documentoHes'])
+        ->whereNumber('id')->whereNumber('hesId')->name('cotizaciones.hes.documento');
 
     // Rows AJAX
     Route::post('/cotizaciones/{id}/rows',
