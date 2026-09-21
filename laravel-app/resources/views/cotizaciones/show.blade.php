@@ -9,6 +9,8 @@
     // Contar archivos adjuntos
     $totalPartes = $filas->filter(fn($f) => !empty($f->ruta_parte_diario))->count();
     $totalGRRs   = $filas->filter(fn($f) => !empty($f->ruta_grr))->count();
+    $usaHes = (bool) $cotizacion->usa_hes;
+    $controlOc = $esMaquinaria && (bool) $cotizacion->control_oc_activo;
 @endphp
 
 @push('styles')
@@ -98,6 +100,18 @@
         .new-row{animation:rowFadeIn .35s ease-out;}
 
         .sum-row td{background:#f8fafc;font-weight:800;border-top:2px solid var(--gold-b) !important;}
+        .row-table tbody tr.hes-pendiente{background:#fff1f2;}
+        .row-table tbody tr.hes-pendiente:hover{background:#ffe4e6;}
+        .row-table tbody tr.oc-pendiente:not(.hes-pendiente){background:#fffbeb;}
+        .control-card{background:#fff;border:1px solid var(--gold-b);border-radius:12px;padding:16px 20px;margin-bottom:16px;}
+        .control-card h3{font-size:13px;margin-bottom:10px;color:#0f172a;}
+        .control-list{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+        .control-chip{background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:9px 12px;font-size:12px;}
+        .control-chip strong{display:block;color:#0f172a;}
+        .control-warning{color:#b45309;font-weight:800;}
+        .control-modal .modal{transform:translateY(16px) scale(.97);transition:transform .28s cubic-bezier(.16,1,.3,1),opacity .28s ease;opacity:0;}
+        .control-modal.open .modal{transform:translateY(0) scale(1);opacity:1;}
+        @media(prefers-reduced-motion:reduce){.control-modal,.control-modal .modal{transition:none!important;}}
 
         /* ── Modal de imagen ── */
         .img-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:500;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;}
@@ -194,7 +208,7 @@
             </div>
             <div class="cot-info-cell">
                 <div class="cot-info-lbl">Orden de compra</div>
-                <div class="cot-info-val">{{ $cotizacion->orden_compra ?: '—' }}</div>
+                <div class="cot-info-val">{{ $controlOc ? ($ocResumen['ordenes']->pluck('numero')->implode(' · ') ?: '—') : ($cotizacion->orden_compra ?: '—') }}</div>
             </div>
             <div class="cot-info-cell">
                 <div class="cot-info-lbl">Período inicio</div>
@@ -228,6 +242,58 @@
     </div>
 
     {{-- ══ ROW TABLE ══ --}}
+    @if($esMaquinaria)
+        <div class="control-card" id="ocPanel">
+            <h3>Órdenes de compra — {{ $controlOc ? 'cupo conjunto' : 'control pendiente de activar' }}</h3>
+            @if($controlOc)
+                <div class="control-list">
+                    @foreach($ocResumen['ordenes'] as $oc)
+                        <div class="control-chip">
+                            <strong>{{ $oc->numero }}</strong>
+                            {{ number_format($oc->horas_consumidas, 2) }} / {{ number_format($oc->horas_autorizadas, 2) }} h
+                            · Disponible {{ number_format(max(0, $oc->horas_autorizadas - $oc->horas_consumidas), 2) }} h
+                            @if($oc->ruta_documento)
+                                · <a href="{{ route('cotizaciones.ordenes.documento', [$cotizacion->id_cotizacion, $oc->id_orden_compra]) }}" target="_blank" rel="noopener">Ver OC</a>
+                            @endif
+                            <button type="button" class="btn-doc btn-doc-dl" onclick="abrirOrden({{ $oc->id_orden_compra }})">Editar</button>
+                        </div>
+                    @endforeach
+                    <div class="control-chip"><strong>Total: {{ number_format($ocResumen['horas_consumidas'], 2) }} / {{ number_format($ocResumen['horas_autorizadas'], 2) }} h</strong>
+                        @if($ocResumen['horas_sin_oc'] > 0)<span class="control-warning">{{ number_format($ocResumen['horas_sin_oc'], 2) }} h sin OC</span>@endif
+                    </div>
+                </div>
+            @else
+                <p style="font-size:12px;color:#64748b;">Esta valorización anterior conserva su OC de texto. Registra número y horas para activar el control.</p>
+            @endif
+            <button type="button" class="btn btn-ghost" style="margin-top:10px;" onclick="abrirOrden()">+ {{ $controlOc ? 'Agregar otra OC' : 'Registrar primera OC' }}</button>
+        </div>
+    @endif
+
+    @if($usaHes)
+        <div class="control-card">
+            <h3>HES asignados</h3>
+            <div class="control-list">
+                @forelse($hesList as $hes)
+                    @php
+                        $filasHes = $filas->where('id_hes', $hes->id_hes);
+                        $cantidadHes = $esMaquinaria
+                            ? $filasHes->sum(fn($f) => max((float)$f->horas_trabajadas, (float)$f->hora_minima))
+                            : $filasHes->sum('m3');
+                    @endphp
+                    <div class="control-chip"><strong>{{ $hes->codigo }}</strong>
+                        {{ number_format($cantidadHes, 2) }} {{ $esMaquinaria ? 'h' : 'm³' }} · {{ $filasHes->count() }} filas
+                        @if($filasHes->isNotEmpty())
+                            · {{ $filasHes->min('fecha') }} a {{ $filasHes->max('fecha') }}
+                        @endif
+                        · <a href="{{ route('cotizaciones.hes.documento', [$cotizacion->id_cotizacion, $hes->id_hes]) }}" target="_blank" rel="noopener">Ver HES</a>
+                    </div>
+                @empty
+                    <span style="font-size:12px;color:#64748b;">Todavía no hay HES asignados.</span>
+                @endforelse
+            </div>
+        </div>
+    @endif
+
     <div class="card" style="margin-bottom:20px;">
         <div class="card-header">
             <div>
@@ -237,9 +303,14 @@
         </div>
 
         {{-- ── BARRA DE DOCUMENTOS ── --}}
-        @if($totalPartes > 0 || $totalGRRs > 0)
+        @if($totalPartes > 0 || $totalGRRs > 0 || $usaHes)
             <div class="doc-bar">
                 <span class="doc-bar-title">Documentos adjuntos:</span>
+                @if($usaHes)
+                    <button type="button" class="btn-doc btn-doc-pdf" onclick="abrirHes()">Asignar HES</button>
+                    <span id="hesSelectionCount" style="font-size:11px;">Selecciona filas sin HES</span>
+                    <div class="doc-sep"></div>
+                @endif
 
                 @if($totalPartes > 0)
                     {{-- Descargar PDF de Partes Diarios --}}
@@ -279,6 +350,7 @@
             <table class="row-table" id="rowTable">
                 <thead>
                 <tr>
+                    @if($usaHes)<th aria-label="Seleccionar fila">✓</th>@endif
                     <th>#</th>
                     <th>Fecha</th>
                     <th>Chofer</th>
@@ -308,12 +380,21 @@
                         <th>GRR</th>
                         <th>PDF</th>
                     @endif
+                    @if($controlOc)<th>OC / horas</th>@endif
+                    @if($usaHes)<th>HES</th>@endif
                     <th style="text-align:right;">Acc.</th>
                 </tr>
                 </thead>
                 <tbody id="rowTbody">
                 @forelse($filas as $idx => $f)
-                    <tr data-id="{{ $f->_row_id }}" data-idx="{{ $idx + 1 }}">
+                    @php
+                        $facturable = $f->es_facturable === null ? (float)$f->total_fila > 0 : (bool)$f->es_facturable;
+                        $hesPendiente = $usaHes && $facturable && !$f->id_hes;
+                    @endphp
+                    <tr data-id="{{ $f->_row_id }}" data-idx="{{ $idx + 1 }}" class="{{ $hesPendiente ? 'hes-pendiente' : ($controlOc && $f->horas_sin_oc > 0 ? 'oc-pendiente' : '') }}">
+                        @if($usaHes)
+                            <td><input type="checkbox" class="hes-row-select" value="{{ $f->_row_id }}" data-cantidad="{{ $esMaquinaria ? max((float)($f->horas_trabajadas ?? 0), (float)($f->hora_minima ?? 0)) : $f->m3 }}" data-fecha="{{ $f->fecha }}" {{ !$facturable || $f->id_hes ? 'disabled' : '' }} onchange="actualizarSeleccionHes()" aria-label="Seleccionar fila {{ $idx + 1 }}"></td>
+                        @endif
                         <td style="color:var(--text-muted);font-size:10px;text-align:center;">{{ $idx + 1 }}</td>
                         <td class="mono">{{ \Carbon\Carbon::parse($f->fecha)->format('d/m/Y') }}</td>
                         <td style="font-size:12px;font-weight:600;">{{ $f->chofer_nombre }}</td>
@@ -377,6 +458,23 @@
                                 @endif
                             </td>
                         @endif
+                        @if($controlOc)
+                            <td style="font-size:11px;white-space:nowrap;">
+                                @foreach($f->oc_asignaciones as $asignacion)
+                                    <div>{{ $asignacion->numero }}: {{ number_format($asignacion->horas_asignadas, 2) }} h</div>
+                                @endforeach
+                                @if($f->horas_sin_oc > 0)<strong class="control-warning">Sin OC: {{ number_format($f->horas_sin_oc, 2) }} h</strong>@endif
+                            </td>
+                        @endif
+                        @if($usaHes)
+                            <td style="font-size:11px;white-space:nowrap;">
+                                @if($f->id_hes)
+                                    <a href="{{ route('cotizaciones.hes.documento', [$cotizacion->id_cotizacion, $f->id_hes]) }}" target="_blank" rel="noopener">{{ $f->codigo_hes }}</a>
+                                    <button type="button" class="tbl-btn" title="Desasignar HES" onclick="desasignarHes({{ $f->_row_id }})">×</button>
+                                @elseif($facturable)<span style="color:#be123c;">Pendiente</span>
+                                @else<span>—</span>@endif
+                            </td>
+                        @endif
                         <td>
                             <div style="display:flex;gap:4px;justify-content:flex-end;">
                                 <button class="tbl-btn" title="Editar fila" onclick="abrirEditarFila({{ $f->_row_id }})">
@@ -389,17 +487,17 @@
                         </td>
                     </tr>
                 @empty
-                    <tr id="emptyRow"><td colspan="{{ $esMaquinaria ? 16 : 15 }}" style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px;">
+                    <tr id="emptyRow"><td colspan="{{ ($esMaquinaria ? 16 : 15) + (int)$usaHes + (int)$controlOc + (int)$usaHes }}" style="text-align:center;padding:32px;color:var(--text-muted);font-size:13px;">
                             Sin filas. Usa el formulario de abajo para agregar la primera.
                         </td></tr>
                 @endforelse
                 @if($filas->count() > 0)
                     <tr class="sum-row" id="sumRow">
-                        <td colspan="{{ $esMaquinaria ? 14 : 11 }}" style="text-align:right;font-size:12px;letter-spacing:.4px;text-transform:uppercase;">TOTAL</td>
+                        <td colspan="{{ ($esMaquinaria ? 14 : 11) + (int)$usaHes }}" style="text-align:right;font-size:12px;letter-spacing:.4px;text-transform:uppercase;">TOTAL</td>
                         <td class="r" style="font-size:14px;color:var(--gold-d);" id="sumTotalFila">
                             {{ number_format($filas->sum('total_fila'),2) }}
                         </td>
-                        <td @if(!$esMaquinaria) colspan="3" @endif></td>
+                        <td colspan="{{ ($esMaquinaria ? 1 : 3) + (int)$controlOc + (int)$usaHes }}"></td>
                     </tr>
                 @endif
                 </tbody>
@@ -603,20 +701,72 @@
                 </form>
             </div>
 
-            <div id="phantomAlert" style="display:none;margin-top:14px;background:#fef3c7;border:2px dashed #fbbf24;border-radius:10px;padding:14px 18px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-                    <div style="flex:1;">
-                        <div style="font-weight:800;font-size:13px;color:#92400e;margin-bottom:4px;">Fila fantasma detectada — Hay un salto en las horas del horómetro</div>
-                        <div id="phantomDesc" style="font-size:12px;color:#78350f;"></div>
-                    </div>
-                    <div style="display:flex;gap:8px;">
-                        <button class="btn" style="background:#fbbf24;color:#78350f;font-size:12px;padding:7px 14px;" id="btnAceptarPhantom" onclick="aceptarPhantom()">✓ Agregar fila fantasma</button>
-                        <button class="btn btn-ghost" style="font-size:12px;padding:7px 14px;" onclick="document.getElementById('phantomAlert').style.display='none';">Ignorar</button>
-                    </div>
-                </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay control-modal" id="modalHorometro" role="dialog" aria-modal="true" aria-labelledby="tituloHorometro" tabindex="-1">
+        <div class="modal" style="max-width:480px;">
+            <div class="modal-header"><h2 id="tituloHorometro">Aviso de horómetro</h2><p>Revisa la continuidad antes de guardar.</p></div>
+            <div class="modal-body" style="padding:24px;"><p id="horometroDesc"></p></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="resolverHorometro(false)">Ignorar</button>
+                <button type="button" class="btn btn-primary" id="btnCompletarSalto" onclick="resolverHorometro(true)">Completar intervalo sin cobro</button>
             </div>
         </div>
     </div>
+
+    <div class="modal-overlay control-modal" id="modalExcesoOc" role="dialog" aria-modal="true" aria-labelledby="tituloExcesoOc" tabindex="-1">
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header"><h2 id="tituloExcesoOc">Horas fuera del cupo OC</h2><p id="excesoOcDesc"></p></div>
+            <div class="modal-body" style="padding:24px;">
+                <p style="font-size:13px;margin-bottom:14px;">Puedes guardar las horas sin OC y regularizarlas después, o añadir otra orden ahora.</p>
+                <div class="form-group"><label class="form-label">Nueva OC</label><input class="form-input" id="excesoOcNumero" maxlength="100" placeholder="Número de OC"></div>
+                <div class="form-group"><label class="form-label">Horas autorizadas adicionales</label><input class="form-input" id="excesoOcHoras" type="number" min="0.01" step="0.01"></div>
+                <div class="form-group"><label class="form-label">PDF o imagen de la OC adicional</label><input class="form-input" id="excesoOcArchivo" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style="height:auto;padding:8px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="cerrarModal('modalExcesoOc')">Cancelar</button>
+                <button type="button" class="btn btn-ghost" onclick="resolverExcesoOc(false)">Guardar sin OC</button>
+                <button type="button" class="btn btn-primary" onclick="resolverExcesoOc(true)">Agregar OC y guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay control-modal" id="modalOrden" role="dialog" aria-modal="true" aria-labelledby="tituloOrden" tabindex="-1">
+        <div class="modal" style="max-width:500px;">
+            <div class="modal-header"><h2 id="tituloOrden">Orden de compra</h2><p>El cupo se suma al de las demás órdenes.</p></div>
+            <form id="formOrden" onsubmit="guardarOrden(event)" enctype="multipart/form-data">
+                <div class="modal-body" style="padding:24px;">
+                    <div class="form-group"><label class="form-label">Número de OC *</label><input class="form-input" name="numero" required maxlength="100"></div>
+                    <div class="form-group"><label class="form-label">Horas autorizadas *</label><input class="form-input" name="horas_autorizadas" type="number" min="0.01" step="0.01" required></div>
+                    <div class="form-group"><label class="form-label">PDF o imagen de OC <span id="ordenArchivoReq"></span></label><input class="form-input" name="archivo_oc" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style="height:auto;padding:8px;"></div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-ghost" onclick="cerrarModal('modalOrden')">Cancelar</button><button type="submit" class="btn btn-primary">Guardar OC</button></div>
+            </form>
+        </div>
+    </div>
+
+    @if($usaHes)
+    <div class="modal-overlay control-modal" id="modalHes" role="dialog" aria-modal="true" aria-labelledby="tituloHes" tabindex="-1">
+        <div class="modal" style="max-width:530px;">
+            <div class="modal-header"><h2 id="tituloHes">Asignar HES</h2><p id="hesModalResumen">Selecciona filas en la tabla.</p></div>
+            <form id="formHes" onsubmit="guardarHes(event)" enctype="multipart/form-data">
+                <div class="modal-body" style="padding:24px;">
+                    @if($hesList->isNotEmpty())
+                    <div class="form-group"><label class="form-label">Usar HES existente</label>
+                        <select class="form-input" name="id_hes" id="hesExistente" onchange="cambiarModoHes()"><option value="">— Crear nuevo HES —</option>
+                            @foreach($hesList as $hes)<option value="{{ $hes->id_hes }}">{{ $hes->codigo }}</option>@endforeach
+                        </select>
+                    </div>
+                    @endif
+                    <div class="form-group"><label class="form-label">Código HES *</label><input class="form-input" name="codigo" id="hesCodigo" maxlength="100" required></div>
+                    <div class="form-group"><label class="form-label">PDF o imagen HES *</label><input class="form-input" name="archivo_hes" id="hesArchivo" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style="height:auto;padding:8px;" required></div>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-ghost" onclick="cerrarModal('modalHes')">Cancelar</button><button type="submit" class="btn btn-primary">Asignar HES</button></div>
+            </form>
+        </div>
+    </div>
+    @endif
 
     {{-- ══ MODAL ELIMINAR FILA ══ --}}
     <div class="modal-overlay" id="modalDelFila">
@@ -703,7 +853,13 @@
                     <div class="form-group" style="margin-bottom:14px;">
                         <label class="form-label">Orden de compra</label>
                         <input type="text" name="orden_compra" class="form-input" id="editHeaderOrdenCompra"
-                               value="{{ $cotizacion->orden_compra }}" maxlength="100">
+                               value="{{ $cotizacion->orden_compra }}" maxlength="100" {{ $controlOc ? 'readonly' : '' }}>
+                        @if($controlOc)<small>Edita las OCs y horas desde el panel de órdenes.</small>@endif
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <input type="hidden" name="usa_hes" value="0">
+                        <label class="form-label"><input type="checkbox" name="usa_hes" value="1" {{ $usaHes ? 'checked' : '' }}> Requiere HES por fila</label>
+                        <small>Para desactivar, primero desasigna todas las filas HES.</small>
                     </div>
                     <div class="field-row cols2">
                         <div class="form-group">
@@ -788,6 +944,10 @@
     <script>
         const COT_ID        = {{ $cotizacion->id_cotizacion }};
         const ES_MAQUINARIA = {{ $esMaquinaria ? 'true' : 'false' }};
+        const CONTROL_OC = {{ $controlOc ? 'true' : 'false' }};
+        const USA_HES = {{ $usaHes ? 'true' : 'false' }};
+        const OC_RESUMEN = @json($ocResumen);
+        const OCS = @json($ocResumen['ordenes'] ?? []);
         const CSRF          = '{{ $CSRF }}';
         const BASE_URL      = '/cotizaciones/' + COT_ID + '/rows';
 
@@ -826,6 +986,77 @@
             t.style.border     = ok ? '1px solid #6ee7b7' : '1px solid #fca5a5';
             t.style.transform  = 'translateY(0)'; t.style.opacity = '1';
             setTimeout(() => { t.style.transform = 'translateY(80px)'; t.style.opacity = '0'; }, 3500);
+        }
+
+        let editandoOrdenId = null;
+        function abrirOrden(id = null) {
+            editandoOrdenId = id;
+            const form = document.getElementById('formOrden');
+            form.reset();
+            const oc = OCS.find(item => Number(item.id_orden_compra) === Number(id));
+            if (oc) {
+                form.elements.numero.value = oc.numero;
+                form.elements.horas_autorizadas.value = oc.horas_autorizadas;
+            }
+            const requiereArchivo = !id && OCS.length > 0;
+            form.elements.archivo_oc.required = requiereArchivo;
+            document.getElementById('ordenArchivoReq').textContent = requiereArchivo ? '*' : '(opcional)';
+            document.getElementById('tituloOrden').textContent = id ? 'Editar orden de compra' : 'Agregar orden de compra';
+            abrirModal('modalOrden');
+        }
+        async function guardarOrden(event) {
+            event.preventDefault();
+            const fd = new FormData(event.target);
+            fd.append('_token', CSRF);
+            try {
+                const url = `/cotizaciones/${COT_ID}/ordenes${editandoOrdenId ? '/' + editandoOrdenId : ''}`;
+                const res = await fetch(url, { method:'POST', body:fd, headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'} });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo guardar la OC.');
+                location.reload();
+            } catch (error) { showToast(error.message, false); }
+        }
+
+        function seleccionHes() { return [...document.querySelectorAll('.hes-row-select:checked')]; }
+        function actualizarSeleccionHes() {
+            if (!USA_HES) return;
+            const selected = seleccionHes();
+            const cantidad = selected.reduce((sum, el) => sum + Number(el.dataset.cantidad), 0);
+            document.getElementById('hesSelectionCount').textContent = `${selected.length} fila(s) · ${cantidad.toFixed(2)} ${ES_MAQUINARIA ? 'h' : 'm³'}`;
+        }
+        function abrirHes() {
+            const selected = seleccionHes();
+            if (!selected.length) { showToast('Selecciona al menos una fila facturable sin HES.', false); return; }
+            const fechas = selected.map(el => el.dataset.fecha).sort();
+            const cantidad = selected.reduce((sum, el) => sum + Number(el.dataset.cantidad), 0);
+            document.getElementById('hesModalResumen').textContent = `${selected.length} filas · ${cantidad.toFixed(2)} ${ES_MAQUINARIA ? 'h' : 'm³'} · ${fechas[0]} a ${fechas.at(-1)}`;
+            abrirModal('modalHes');
+        }
+        function cambiarModoHes() {
+            const existente = Boolean(document.getElementById('hesExistente')?.value);
+            document.getElementById('hesCodigo').required = !existente;
+            document.getElementById('hesArchivo').required = !existente;
+            document.getElementById('hesCodigo').disabled = existente;
+            document.getElementById('hesArchivo').disabled = existente;
+        }
+        async function guardarHes(event) {
+            event.preventDefault();
+            const fd = new FormData(event.target);
+            seleccionHes().forEach(el => fd.append('row_ids[]', el.value));
+            fd.append('_token', CSRF);
+            try {
+                const res = await fetch(`/cotizaciones/${COT_ID}/hes`, {method:'POST',body:fd,headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo asignar HES.');
+                location.reload();
+            } catch (error) { showToast(error.message, false); }
+        }
+        async function desasignarHes(rowId) {
+            try {
+                const res = await fetch(`/cotizaciones/${COT_ID}/rows/${rowId}/hes`, {method:'DELETE',headers:{'X-CSRF-TOKEN':CSRF,Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});
+                if (!res.ok) throw new Error('No se pudo desasignar HES.');
+                location.reload();
+            } catch (error) { showToast(error.message, false); }
         }
 
         // ── Enviar Partes Diarios por WhatsApp ────────────────────────────
@@ -952,62 +1183,108 @@
             }
         }
 
-        let phantomData = null;
+        let horometroConfirmado = '', completarSalto = false, excesoConfirmado = '', pendingRowFd = null, pendingRowUrl = null;
+        let modalAnterior = null;
 
-        function parseTableNumber(value) {
-            return parseFloat(String(value ?? '').replace(/,/g, '').trim()) || 0;
+        function abrirModal(id) {
+            modalAnterior = document.activeElement;
+            const modal = document.getElementById(id);
+            modal.classList.add('open');
+            setTimeout(() => modal.querySelector('button, input, select')?.focus(), 40);
         }
-
-        function onHIBlur() {
-            if (!ES_MAQUINARIA) return;
-            const rows = document.querySelectorAll('#rowTbody tr[data-id]');
-            if (rows.length === 0) return;
-            const lastRow = rows[rows.length - 1];
-            const cells   = lastRow.querySelectorAll('td');
-            // HT está en columna índice 9 (0-based) para maquinaria
-            const htValue = parseTableNumber(cells[9]?.textContent);
-            const hiValue = parseFloat(document.getElementById('rHI')?.value) || 0;
-            if (htValue > 0 && hiValue > htValue + 0.05) {
-                const gap = (hiValue - htValue).toFixed(2);
-                phantomData = { hora_inicio: htValue, hora_fin: hiValue, gap };
-                document.getElementById('phantomDesc').textContent = `Horómetro previo terminó en ${htValue.toFixed(1)} y el actual inicia en ${hiValue.toFixed(1)} — Gap: ${gap} hrs`;
-                document.getElementById('phantomAlert').style.display = 'block';
-            } else {
-                document.getElementById('phantomAlert').style.display = 'none';
-                phantomData = null;
+        function cerrarModal(id) {
+            document.getElementById(id)?.classList.remove('open');
+            modalAnterior?.focus();
+        }
+        document.addEventListener('keydown', event => {
+            const modal = document.querySelector('.control-modal.open');
+            if (!modal) return;
+            if (event.key === 'Tab') {
+                const focusables = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href]')]
+                    .filter(el => el.getClientRects().length > 0);
+                if (!focusables.length) { event.preventDefault(); modal.focus(); return; }
+                const first = focusables[0], last = focusables.at(-1);
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+                return;
             }
-        }
+            if (event.key !== 'Escape') return;
+            cerrarModal(modal.id);
+        });
 
-        async function aceptarPhantom() {
-            if (!phantomData) return;
-            document.getElementById('phantomAlert').style.display = 'none';
-            const fd = new FormData();
-            const fecha  = document.getElementById('rFecha')?.value || '';
-            const chofer = document.getElementById('rChofer')?.value || '';
-            const maq    = document.getElementById('rMaquinaria')?.value || '';
-            const obra   = document.getElementById('rObra')?.value || '';
-            const placa  = document.getElementById('rPlaca')?.value || '';
-            const hmin   = document.getElementById('rHMin')?.value || '3';
-            const precio = document.getElementById('rPrecio')?.value || '0';
-            if (!chofer || !maq) { showToast('Completa Chofer y Maquinaria antes de aceptar la fila fantasma.', false); return; }
-            fd.append('fecha', fecha); fd.append('id_chofer', chofer); fd.append('id_maquinaria', maq);
-            fd.append('obra_maquina', obra); fd.append('placa', placa);
-            fd.append('hora_inicio', phantomData.hora_inicio); fd.append('hora_fin', phantomData.hora_fin);
-            fd.append('hora_minima', hmin); fd.append('precio_hora', precio); fd.append('n_parte_diario', '');
-            fd.append('cobrar_fila', document.querySelector('#addRowForm input[name="cobrar_fila"]:checked')?.value || '1');
-            await sendRowForm(fd);
-            phantomData = null;
+        function avisoHorometro(modo = 'add') {
+            if (!ES_MAQUINARIA) return false;
+            const form = modo === 'edit' ? document.getElementById('editFilaBody') : document.getElementById('addRowForm');
+            const maq = form.querySelector('[name="id_maquinaria"]')?.value;
+            const fecha = form.querySelector('[name="fecha"]')?.value;
+            const inicioInput = form.querySelector('[name="hora_inicio"]');
+            const inicio = Number(inicioInput?.value);
+            if (!maq || !fecha || !inicioInput?.value || !Number.isFinite(inicio)) return false;
+            const anteriores = ROWS_DATA.filter(r => String(r.id_maquinaria) === String(maq)
+                && (modo !== 'edit' || Number(r.id_cotizacion_maqu) !== Number(editRowId))
+                && (r.fecha < fecha || (r.fecha === fecha && Number(r.hora_inicio) < inicio)))
+                .sort((a,b) => String(b.fecha).localeCompare(String(a.fecha)) || Number(b.hora_fin) - Number(a.hora_fin));
+            const anterior = anteriores[0];
+            if (!anterior) return false;
+            const diferencia = inicio - Number(anterior.hora_fin);
+            if (Math.abs(diferencia) <= 0.05) return false;
+            const clave = `${modo}|${maq}|${fecha}|${inicio}|${anterior.id_cotizacion_maqu}`;
+            if (clave === horometroConfirmado) return false;
+            document.getElementById('horometroDesc').textContent = diferencia > 0
+                ? `La fila anterior de esta maquinaria terminó en ${Number(anterior.hora_fin).toFixed(2)} h y la nueva inicia en ${inicio.toFixed(2)} h. Hay ${diferencia.toFixed(2)} h de salto. Puedes completarlas sin cobro o ignorarlas.`
+                : `La fila anterior de esta maquinaria terminó en ${Number(anterior.hora_fin).toFixed(2)} h y la nueva inicia en ${inicio.toFixed(2)} h. Hay un solapamiento de ${Math.abs(diferencia).toFixed(2)} h. Si es correcto, pulsa Ignorar.`;
+            document.getElementById('btnCompletarSalto').style.display = diferencia > 0 ? '' : 'none';
+            document.getElementById('modalHorometro').dataset.clave = clave;
+            abrirModal('modalHorometro');
+            return true;
+        }
+        function onHIBlur() { avisoHorometro(); }
+        function resolverHorometro(completar) {
+            horometroConfirmado = document.getElementById('modalHorometro').dataset.clave;
+            completarSalto = completar;
+            cerrarModal('modalHorometro');
         }
 
         async function addRow(event) {
             event.preventDefault();
-            const btn = document.getElementById('btnAddRow');
-            btn.disabled = true; btn.textContent = 'Guardando…';
+            if (avisoHorometro()) return;
             const fd = new FormData(document.getElementById('addRowForm'));
+            if (completarSalto) fd.set('completar_salto', '1');
+            if (ES_MAQUINARIA && CONTROL_OC && fd.get('cobrar_fila') !== '0') {
+                const nueva = Math.max(Number(fd.get('hora_fin')) - Number(fd.get('hora_inicio')), Number(fd.get('hora_minima')));
+                const actual = ROWS_DATA.reduce((sum, row) => sum + ((row.es_facturable === null ? Number(row.total_fila) > 0 : Boolean(Number(row.es_facturable))) && !Number(row.es_ajuste_horometro)
+                    ? Math.max(Number(row.horas_trabajadas), Number(row.hora_minima)) : 0), 0);
+                const clave = `${actual}|${nueva}|${fd.get('fecha')}|${fd.get('hora_inicio')}`;
+                if (actual + nueva > Number(OC_RESUMEN.horas_autorizadas) + .005 && clave !== excesoConfirmado) {
+                    pendingRowFd = fd;
+                    pendingRowUrl = null;
+                    document.getElementById('modalExcesoOc').dataset.clave = clave;
+                    document.getElementById('excesoOcDesc').textContent = `Cupo: ${Number(OC_RESUMEN.horas_autorizadas).toFixed(2)} h · Uso proyectado: ${(actual + nueva).toFixed(2)} h · Exceso: ${(actual + nueva - Number(OC_RESUMEN.horas_autorizadas)).toFixed(2)} h`;
+                    abrirModal('modalExcesoOc');
+                    return;
+                }
+            }
             await sendRowForm(fd);
-            btn.disabled = false; btn.textContent = '+ Agregar Fila';
-            document.getElementById('phantomAlert').style.display = 'none';
-            phantomData = null;
+        }
+
+        async function resolverExcesoOc(conNuevaOc) {
+            if (!pendingRowFd) return;
+            if (conNuevaOc) {
+                const numero = document.getElementById('excesoOcNumero').value.trim();
+                const horas = Number(document.getElementById('excesoOcHoras').value);
+                const archivo = document.getElementById('excesoOcArchivo').files[0];
+                if (!numero || horas <= 0 || !archivo) { showToast('Indica número, horas positivas y PDF/imagen de la nueva OC.', false); return; }
+                pendingRowFd.set('nueva_oc_numero', numero);
+                pendingRowFd.set('nueva_oc_horas', horas.toFixed(2));
+                pendingRowFd.set('nueva_oc_archivo', archivo);
+            } else {
+                excesoConfirmado = document.getElementById('modalExcesoOc').dataset.clave;
+            }
+            cerrarModal('modalExcesoOc');
+            if (pendingRowUrl) await submitEditFd(pendingRowFd);
+            else await sendRowForm(pendingRowFd);
+            pendingRowFd = null;
+            pendingRowUrl = null;
         }
 
         async function sendRowForm(fd) {
@@ -1037,10 +1314,7 @@
                     throw new Error(data.message || 'Error al guardar.');
                 }
                 showToast('Fila agregada correctamente.');
-                actualizarTotales(data.totales);
-                document.getElementById('emptyRow')?.remove();
-                appendRowToTable(data.row);
-                resetAddForm();
+                location.reload();
             } catch(e) { showToast('Error de red: ' + e.message, false); }
         }
 
@@ -1179,18 +1453,7 @@
             const data = await res.json();
             document.getElementById('modalDelFila').classList.remove('open');
             if (data.success) {
-                document.querySelector(`#rowTbody tr[data-id="${deleteRowId}"]`)?.remove();
-                const dataIndex = ROWS_DATA.findIndex(r => r.id_cotizacion_maqu == deleteRowId || r.id_cotizacion_agr == deleteRowId);
-                if (dataIndex !== -1) ROWS_DATA.splice(dataIndex, 1);
-                actualizarTotales(data.totales);
-                document.querySelectorAll('#rowTbody tr[data-id]').forEach((r, i) => {
-                    const cell = r.querySelectorAll('td')[0];
-                    if (cell) cell.textContent = i + 1;
-                });
-                const cnt = document.querySelectorAll('#rowTbody tr[data-id]').length;
-                document.getElementById('filaCountDesc').textContent = `${cnt} fila(s) registradas`;
-                document.getElementById('totFilas').textContent = cnt;
-                showToast('Fila eliminada.');
+                location.reload();
             } else showToast('Error al eliminar.', false);
             deleteRowId = null;
         });
@@ -1322,19 +1585,41 @@
 
         async function guardarEditFila(event) {
             event.preventDefault();
+            if (avisoHorometro('edit')) return;
             const fd = new FormData(document.getElementById('formEditFila'));
             fd.append('_method', 'PUT');
             fd.append('_token', CSRF);
+            if (completarSalto) fd.set('completar_salto', '1');
+            if (ES_MAQUINARIA && CONTROL_OC && fd.get('cobrar_fila') !== '0') {
+                const anterior = ROWS_DATA.find(r => Number(r.id_cotizacion_maqu) === Number(editRowId));
+                const demandaOtros = ROWS_DATA.filter(r => Number(r.id_cotizacion_maqu) !== Number(editRowId))
+                    .reduce((sum, r) => sum + ((r.es_facturable === null ? Number(r.total_fila) > 0 : Boolean(Number(r.es_facturable))) && !Number(r.es_ajuste_horometro)
+                        ? Math.max(Number(r.horas_trabajadas), Number(r.hora_minima)) : 0), 0);
+                const nueva = anterior?.es_ajuste_horometro ? 0 : Math.max(Number(fd.get('hora_fin')) - Number(fd.get('hora_inicio')), Number(fd.get('hora_minima')));
+                const clave = `edit|${editRowId}|${demandaOtros}|${nueva}`;
+                if (demandaOtros + nueva > Number(OC_RESUMEN.horas_autorizadas) + .005 && clave !== excesoConfirmado) {
+                    pendingRowFd = fd;
+                    pendingRowUrl = `${BASE_URL}/${editRowId}`;
+                    document.getElementById('modalExcesoOc').dataset.clave = clave;
+                    document.getElementById('excesoOcDesc').textContent = `Cupo: ${Number(OC_RESUMEN.horas_autorizadas).toFixed(2)} h · Uso proyectado: ${(demandaOtros + nueva).toFixed(2)} h · Exceso: ${(demandaOtros + nueva - Number(OC_RESUMEN.horas_autorizadas)).toFixed(2)} h`;
+                    abrirModal('modalExcesoOc');
+                    return;
+                }
+            }
+            await submitEditFd(fd);
+        }
+
+        async function submitEditFd(fd) {
             try {
                 const res  = await fetch(`${BASE_URL}/${editRowId}`, { method: 'POST', body: fd });
                 const data = await res.json();
-                if (data.success) {
+                if (res.ok && data.success) {
                     showToast('Fila actualizada.');
                     document.getElementById('modalEditFila').classList.remove('open');
                     actualizarTotales(data.totales);
                     setTimeout(() => location.reload(), 800);
-                } else showToast(data.message || 'Error al guardar.', false);
-            } catch(e) { showToast('Error de red.', false); }
+                } else showToast(data.message || Object.values(data.errors || {}).flat()[0] || 'Error al guardar.', false);
+            } catch(e) { showToast('Error de red: ' + e.message, false); }
         }
 
         // ── Edit header ────────────────────────────────────────────────

@@ -54,7 +54,7 @@
     </div>
 
     <div class="card form-wrap">
-        <form id="frmCotizacion" method="POST" action="{{ route('cotizaciones.store') }}">
+        <form id="frmCotizacion" method="POST" action="{{ route('cotizaciones.store') }}" enctype="multipart/form-data">
             @csrf
             <input type="hidden" name="tipo_cotizacion" id="inputTipo" value="{{ old('tipo_cotizacion') }}">
 
@@ -149,10 +149,31 @@
                 </div>
 
                 <div class="form-group" style="margin-bottom:16px;">
-                    <label class="form-label">Orden de compra</label>
+                    <label class="form-label">Número de orden de compra <span id="ocRequired"></span></label>
                     <input type="text" name="orden_compra" class="form-input"
-                           value="{{ old('orden_compra') }}" placeholder="Ej: OC-2026-001" maxlength="100">
+                           id="ordenCompra" value="{{ old('orden_compra') }}" placeholder="Ej: OC-2026-001" maxlength="100">
                     @error('orden_compra')<p style="color:#dc2626;font-size:11px;margin-top:4px;">{{ $message }}</p>@enderror
+                </div>
+
+                <div id="ocHorasFields" style="display:none;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+                    <div class="form-group">
+                        <label class="form-label">Horas autorizadas por la OC *</label>
+                        <input id="horasOc" type="number" name="horas_oc" class="form-input" min="0.01" step="0.01" value="{{ old('horas_oc') }}" placeholder="Ej: 120">
+                        @error('horas_oc')<p style="color:#dc2626;font-size:11px;margin-top:4px;">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">PDF o imagen de la OC (se puede adjuntar luego)</label>
+                        <input type="file" name="archivo_oc" class="form-input" accept="application/pdf,image/jpeg,image/png,image/webp" style="height:auto;padding:8px;">
+                        @error('archivo_oc')<p style="color:#dc2626;font-size:11px;margin-top:4px;">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:16px;">
+                    <label style="display:flex;gap:10px;align-items:center;font-size:13px;font-weight:700;">
+                        <input type="checkbox" name="usa_hes" value="1" {{ old('usa_hes') ? 'checked' : '' }}>
+                        Esta valorización requiere HES por fila
+                    </label>
+                    <p class="item-hint">Se podrá asignar un código y documento HES a grupos de filas facturables.</p>
                 </div>
 
                 <div class="form-group" style="margin-bottom:16px;">
@@ -212,6 +233,10 @@
             chkAgr.textContent = chkAgr.style.cssText = '';
             selMaq.classList.remove('show');
             selAgr.classList.remove('show');
+            document.getElementById('ocHorasFields').style.display = tipo === 'MAQUINARIA' ? 'grid' : 'none';
+            document.getElementById('horasOc').required = tipo === 'MAQUINARIA';
+            document.getElementById('ordenCompra').required = tipo === 'MAQUINARIA';
+            document.getElementById('ocRequired').textContent = tipo === 'MAQUINARIA' ? '*' : '';
             maqEl.removeAttribute('required');
             agrEl.removeAttribute('required');
             maqEl.value = '';
@@ -273,6 +298,10 @@
                 document.getElementById('selAgregado').setAttribute('required', 'required');
             }
             document.getElementById('inputTipo').value = oldTipo;
+            document.getElementById('ocHorasFields').style.display = oldTipo === 'MAQUINARIA' ? 'grid' : 'none';
+            document.getElementById('horasOc').required = oldTipo === 'MAQUINARIA';
+            document.getElementById('ordenCompra').required = oldTipo === 'MAQUINARIA';
+            document.getElementById('ocRequired').textContent = oldTipo === 'MAQUINARIA' ? '*' : '';
             checkBtnEnabled();
         }
     </script>

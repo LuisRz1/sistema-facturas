@@ -3,6 +3,8 @@
     $forPdf = $forPdf ?? false;
     $logoDataUri = $logoDataUri ?? null;
     $logoPath = $logoPath ?? null;
+    $controlOc = $esMaquinaria && (bool)$cotizacion->control_oc_activo;
+    $usaHes = (bool)$cotizacion->usa_hes;
 @endphp
 <!DOCTYPE html>
 <html lang="es">
@@ -164,8 +166,18 @@
         <span class="meta-label">Obra:</span>
         <span class="meta-val" style="grid-column:span 3;">{{ strtoupper($cotizacion->obra) }}</span>
         <span class="meta-label">Orden de compra:</span>
-        <span class="meta-val" style="grid-column:span 3;">{{ $cotizacion->orden_compra ?: '—' }}</span>
+        <span class="meta-val" style="grid-column:span 3;">{{ $controlOc ? $ocResumen['ordenes']->pluck('numero')->implode(' · ') : ($cotizacion->orden_compra ?: '—') }}</span>
     </div>
+
+    @if($controlOc)
+        <div style="margin-bottom:8px;font-size:9px;">
+            <strong>Órdenes de compra:</strong>
+            @foreach($ocResumen['ordenes'] as $oc)
+                {{ $oc->numero }}: {{ number_format($oc->horas_consumidas, 2) }} / {{ number_format($oc->horas_autorizadas, 2) }} h{{ !$loop->last ? ' · ' : '' }}
+            @endforeach
+            @if($ocResumen['horas_sin_oc'] > 0) · <strong>Sin OC: {{ number_format($ocResumen['horas_sin_oc'], 2) }} h</strong>@endif
+        </div>
+    @endif
 
     {{-- ── SECTION TITLE ── --}}
     <div class="val-title">{{ strtoupper($cotizacion->razon_social) }}</div>
@@ -193,6 +205,8 @@
                 <th class="r">HORAS MÍNIMAS</th>
                 <th class="r">PRECIO</th>
                 <th class="r">TOTAL</th>
+                @if($controlOc)<th>OC / HORAS</th>@endif
+                @if($usaHes)<th>HES</th>@endif
             </tr>
             </thead>
             <tbody>
@@ -211,6 +225,10 @@
                     <td class="r">{{ number_format($f->hora_minima, 0) }}</td>
                     <td class="r">{{ number_format($f->precio_hora, 2) }}</td>
                     <td class="r" style="font-weight:700;">{{ number_format($f->total_fila, 2) }}</td>
+                    @if($controlOc)
+                        <td>{{ $f->oc_asignaciones->map(fn($a) => $a->numero . ': ' . number_format($a->horas_asignadas, 2) . ' h')->implode(' · ') }}{{ $f->horas_sin_oc > 0 ? ' · SIN OC: ' . number_format($f->horas_sin_oc, 2) . ' h' : '' }}</td>
+                    @endif
+                    @if($usaHes)<td>{{ $f->codigo_hes ?? '' }}</td>@endif
                 </tr>
             @endforeach
             <tr class="total-row">
@@ -219,6 +237,8 @@
                 <td></td>
                 <td></td>
                 <td class="r">S/ {{ number_format($cotizacion->total, 2) }}</td>
+                @if($controlOc)<td></td>@endif
+                @if($usaHes)<td></td>@endif
             </tr>
             </tbody>
         </table>
@@ -238,6 +258,7 @@
                 <th class="r">PRECIO</th>
                 <th class="r">TOTAL</th>
                 <th>GRR</th>
+                @if($usaHes)<th>HES</th>@endif
             </tr>
             </thead>
             <tbody>
@@ -254,6 +275,7 @@
                     <td class="r">{{ number_format($f->precio_m3, 0) }}</td>
                     <td class="r" style="font-weight:700;">{{ number_format($f->total_fila, 2) }}</td>
                     <td class="c mono" style="font-size:8.5px;">{{ $f->grr ?? '' }}</td>
+                    @if($usaHes)<td>{{ $f->codigo_hes ?? '' }}</td>@endif
                 </tr>
             @endforeach
             <tr class="total-row">
@@ -262,6 +284,7 @@
                 <td></td>
                 <td class="r">S/ {{ number_format($cotizacion->total, 2) }}</td>
                 <td></td>
+                @if($usaHes)<td></td>@endif
             </tr>
             </tbody>
         </table>

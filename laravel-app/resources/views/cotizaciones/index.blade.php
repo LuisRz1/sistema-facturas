@@ -171,7 +171,7 @@
                         <td style="font-family:'DM Mono',monospace;font-weight:700;font-size:12px;color:var(--gold-m);">
                             {{ $cot->numero_valorizacion }}
                         </td>
-                        <td style="font-family:'DM Mono',monospace;font-size:12px;">{{ $cot->orden_compra ?: '—' }}</td>
+                        <td style="font-family:'DM Mono',monospace;font-size:12px;">{{ $cot->orden_compra_mostrar ?: '—' }}</td>
                         <td>
                             <div style="font-weight:600;font-size:13px;">{{ $cot->razon_social }}</div>
                             <div style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace;">{{ $cot->ruc }}</div>
