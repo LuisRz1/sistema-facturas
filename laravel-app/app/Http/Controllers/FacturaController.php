@@ -387,17 +387,38 @@ class FacturaController extends Controller
         $factura = Factura::findOrFail($id);
 
         $validated = $request->validate([
-            'fecha_emision'    => 'nullable|date',
-            'fecha_vencimiento'=> 'nullable|date',
+            'fecha_emision'    => 'nullable|date_format:Y-m-d',
+            'fecha_vencimiento'=> 'nullable|date_format:Y-m-d',
             'glosa'            => 'nullable|string',
             'forma_pago'       => 'nullable|string',
-            'estado'           => 'nullable|in:PENDIENTE,VENCIDO,PAGADA,DIFERENCIA PENDIENTE',
+            'estado'           => 'nullable|in:PENDIENTE,VENCIDO,PAGADA,PAGO PARCIAL,DIFERENCIA PENDIENTE,POR VALIDAR DETRACCION,ANULADO,ANULADA',
             'importe_total'    => 'nullable|numeric',
             'monto_igv'        => 'nullable|numeric',
             'subtotal_gravado' => 'nullable|numeric',
         ]);
 
-        $factura->update($validated);
+        // Las versiones antiguas de la vista enviaban ANULADA, pero el valor
+        // histórico persistido es ANULADO. Además, una opción vacía no debe
+        // borrar ni volver inválido el estado al editar solamente las fechas.
+        if (($validated['estado'] ?? null) === 'ANULADA') {
+            $validated['estado'] = 'ANULADO';
+        }
+        if (array_key_exists('estado', $validated) && blank($validated['estado'])) {
+            unset($validated['estado']);
+        }
+
+        $fechaEmision = $validated['fecha_emision'] ?? $factura->fecha_emision;
+        $fechaVencimiento = array_key_exists('fecha_vencimiento', $validated)
+            ? $validated['fecha_vencimiento']
+            : $factura->fecha_vencimiento;
+        if ($fechaEmision && $fechaVencimiento && $fechaVencimiento < $fechaEmision) {
+            return response()->json([
+                'message' => 'La fecha de vencimiento no puede ser anterior a la fecha de emisión.',
+                'errors' => ['fecha_vencimiento' => ['La fecha de vencimiento no puede ser anterior a la fecha de emisión.']],
+            ], 422);
+        }
+
+        $factura->update(array_merge($validated, ['fecha_actualizacion' => now()]));
 
         if (array_key_exists('importe_total', $validated)) {
             $recaudacion = DB::table('recaudacion')->where('id_factura', $factura->id_factura)->first();

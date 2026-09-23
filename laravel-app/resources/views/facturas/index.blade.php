@@ -564,7 +564,8 @@
                             'PAGO PARCIAL'          => 'badge-pago_parcial',
                             'POR VALIDAR DETRACCION'=> 'badge-por_validar_det',
                             'DIFERENCIA PENDIENTE'  => 'badge-diferencia_pend',
-                            'ANULADA'               => 'badge-anulada',
+                            'ANULADO'               => 'badge-anulada',
+                            'ANULADA'               => 'badge-anulada', // compatibilidad con registros antiguos
                         ];
                         $badgeClass       = $badgeMap[$estado] ?? 'badge-pendiente';
                         $montoRecaudacion = $factura->monto_recaudacion ?? 0;
@@ -1435,7 +1436,8 @@
                                 <option value="PAGADA">Pagada</option>
                                 <option value="POR VALIDAR DETRACCION">Por Validar Detracción</option>
                                 <option value="DIFERENCIA PENDIENTE">Diferencia Pendiente</option>
-                                <option value="ANULADA">Anulada</option>
+                                <option value="PAGO PARCIAL">Pago Parcial</option>
+                                <option value="ANULADO">Anulado</option>
                             </select>
                         </div>
                         <div class="form-group"><label class="form-label">Forma de Pago</label><input type="text" name="forma_pago" id="editFormaPago" class="form-input"></div>
@@ -3010,14 +3012,22 @@
             }
 
             // ── Modal Editar Factura ──────────────────────────────────────────
+            function fechaParaInput(valor) {
+                if (!valor) return '';
+                const fecha = String(valor).trim().slice(0, 10);
+                return /^\d{4}-\d{2}-\d{2}$/.test(fecha) && fecha !== '0000-00-00' ? fecha : '';
+            }
+
             function abrirModalEditar(id) {
                 facturaActualId = id;
                 document.getElementById('modalEditarOverlay').classList.add('open');
-                fetch(`/facturas/${id}/edit`).then(r=>r.json()).then(f=>{
+                fetch(`/facturas/${id}/edit`, { headers: {'Accept':'application/json','X-Requested-With':'XMLHttpRequest'} })
+                .then(r => r.ok ? r.json() : r.json().then(data => Promise.reject(new Error(data.message || 'No se pudo cargar la factura.'))))
+                .then(f=>{
                     document.getElementById('editModalSubtitle').textContent = `Editando: ${f.serie}-${String(f.numero).padStart(8,'0')}`;
-                    document.getElementById('editFechaEmision').value    = f.fecha_emision     || '';
-                    document.getElementById('editFechaVencimiento').value= f.fecha_vencimiento || '';
-                    document.getElementById('editEstado').value          = f.estado            || '';
+                    document.getElementById('editFechaEmision').value    = fechaParaInput(f.fecha_emision);
+                    document.getElementById('editFechaVencimiento').value= fechaParaInput(f.fecha_vencimiento);
+                    document.getElementById('editEstado').value          = f.estado === 'ANULADA' ? 'ANULADO' : (f.estado || 'PENDIENTE');
                     document.getElementById('editGlosa').value           = f.glosa             || '';
                     document.getElementById('editFormaPago').value       = f.forma_pago        || '';
                     document.getElementById('editImporteTotal').value    = f.importe_total     || '';
@@ -3029,7 +3039,7 @@
                         const abo = parseFloat(f.monto_abonado) || 0;
                         document.getElementById('editMontoPendiente').value = Math.max(0, imp - abo).toFixed(2);
                     };
-                });
+                }).catch(err => CRC.feedback({ tipo: 'error', titulo: 'No se pudo cargar', mensaje: err.message }));
             }
             function cerrarModalEditar() { document.getElementById('modalEditarOverlay').classList.remove('open'); }
             function guardarFactura(event) {
@@ -3049,9 +3059,9 @@
                     headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':CSRF},
                     body:JSON.stringify(datos)
                 })
-                    .then(r=>r.json())
-                    .then(data=>{
-                        if(data.success){
+                    .then(r => r.json().then(data => ({ ok: r.ok, data })))
+                    .then(({ok, data})=>{
+                        if(ok && data.success){
                             cerrarModalEditar();
                             CRC.feedback({
                                 tipo: 'ok',
@@ -3060,7 +3070,8 @@
                                 onClose: () => location.reload(),
                             });
                         } else {
-                            CRC.feedback({ tipo: 'error', titulo: 'No se pudo guardar', mensaje: data.message || 'No se pudo guardar la factura.' });
+                            const detalleFecha = data.errors?.fecha_vencimiento?.[0] || data.errors?.fecha_emision?.[0];
+                            CRC.feedback({ tipo: 'error', titulo: 'No se pudo guardar', mensaje: detalleFecha || data.message || 'No se pudo guardar la factura.' });
                         }
                     })
                     .catch(err=>CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: err.message }));
@@ -3194,10 +3205,6 @@
                     })
                     .catch(err=>CRC.feedback({ tipo: 'error', titulo: 'Error de red', mensaje: err.message }));
             }
-
-            ['modalPagoMasivoOverlay','modalEditarOverlay','modalEditarClienteOverlay','modalReporteOverlay','modalVerPagosOverlay','modalNuevaFacturaOverlay'].forEach(id => {
-                document.getElementById(id)?.addEventListener('click', e => { if(e.target === e.currentTarget) e.currentTarget.classList.remove('open'); });
-            });
 
             // ── Historial de importaciones ────────────────────────────────
 
