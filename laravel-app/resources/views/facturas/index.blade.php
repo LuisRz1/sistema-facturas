@@ -2689,7 +2689,7 @@
                                     placeholder="0.00" oninput="onColaMonto(${p.idx},this.value)">
                             </div>
                             ${(p.monedaPago||'PEN')!==monedaFacturaActual()
-                                ? `<span style="display:block;margin-top:3px;font-size:10px;font-weight:600;color:#059669;">≈ ${simboloFactura()} ${montoAbonoEnFactura(p).toFixed(2)}</span>`
+                                ? `<span id="col_equiv_${p.idx}" style="display:block;margin-top:3px;font-size:10px;font-weight:600;color:#059669;">≈ ${simboloFactura()} ${montoAbonoEnFactura(p).toFixed(2)}</span>`
                                 : ''}
                         </div>
                         <div>
@@ -2772,9 +2772,18 @@
             function onColaMonto(idx, val) {
                 const p = colaPagos.find(x => x.idx === idx);
                 if (p) p.monto = val;
+                actualizarEquivalenciaFila(idx);
                 const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
                 const pagadoText = document.getElementById('prPagado').textContent.replace(/[^0-9.]/g,'');
                 actualizarResumenPago(parseFloat(pagadoText)||0, totalRec, calcularTotalCola());
+            }
+
+            function actualizarEquivalenciaFila(idx) {
+                const p = colaPagos.find(x => x.idx === idx);
+                const span = document.getElementById(`col_equiv_${idx}`);
+                if (!p || !span) return;
+                if ((p.monedaPago || 'PEN') === monedaFacturaActual()) return;
+                span.textContent = `≈ ${simboloFactura()} ${montoAbonoEnFactura(p).toFixed(2)}`;
             }
 
             function onColaField(idx, field, val) {
