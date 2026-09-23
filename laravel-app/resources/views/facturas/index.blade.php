@@ -715,6 +715,9 @@
                                 <button type="button" onclick="abrirModalEditar('{{ $factura->id_factura }}')" class="action-btn" title="Editar datos factura" style="color:#7c3aed;">
                                     <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                 </button>
+                                <button type="button" onclick="abrirHistorialAcciones({{ (int) $factura->id_factura }})" class="action-btn" title="Ver historial de acciones" style="color:#475569;">
+                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l2.5 2.5M3.05 11a9 9 0 11.5 3M3 16v-5h5"/></svg>
+                                </button>
 
                                 <button type="button"
                                         data-factura-id="{{ (int) $factura->id_factura }}"
@@ -736,29 +739,29 @@
                                 </button>
 
                                 @if($puedeNotificarDeuda)
-                                    <form method="POST" action="{{ route('facturas.enviar-whatsapp-manual',$factura->id_factura) }}" style="display:inline;">@csrf
-                                        <button type="submit" class="btn-icon-text btn-wa" title="WA cobranza">
-                                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>WA
-                                        </button>
-                                    </form>
-                                    <form method="POST" action="{{ route('facturas.enviar-correo-manual',$factura->id_factura) }}" style="display:inline;">@csrf
-                                        <button type="submit" class="btn-icon-text btn-mail" title="Correo cobranza">
-                                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>✉
-                                        </button>
-                                    </form>
+                                    <button type="button" class="btn-icon-text btn-wa" title="Revisar WA cobranza"
+                                            data-factura-id="{{ (int) $factura->id_factura }}" data-canal="WHATSAPP" data-tipo="COBRANZA"
+                                            data-action="{{ route('facturas.enviar-whatsapp-manual',$factura->id_factura) }}" onclick="abrirConfirmacionNotificacion(this)">
+                                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>WA
+                                    </button>
+                                    <button type="button" class="btn-icon-text btn-mail" title="Revisar correo de cobranza"
+                                            data-factura-id="{{ (int) $factura->id_factura }}" data-canal="CORREO" data-tipo="COBRANZA"
+                                            data-action="{{ route('facturas.enviar-correo-manual',$factura->id_factura) }}" onclick="abrirConfirmacionNotificacion(this)">
+                                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>✉
+                                    </button>
                                 @endif
 
                                 @if($estado === 'PAGADA')
-                                    <form method="POST" action="{{ route('facturas.enviar-factura-pagada-whatsapp',$factura->id_factura) }}" style="display:inline;">@csrf
-                                        <button type="submit" class="btn-icon-text btn-wa" style="background:#a7f3d0;" title="WA confirmación">
-                                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                                        </button>
-                                    </form>
-                                    <form method="POST" action="{{ route('facturas.enviar-factura-pagada-correo',$factura->id_factura) }}" style="display:inline;">@csrf
-                                        <button type="submit" class="btn-icon-text btn-mail" style="background:#bfdbfe;" title="Correo confirmación">
-                                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                                        </button>
-                                    </form>
+                                    <button type="button" class="btn-icon-text btn-wa" style="background:#a7f3d0;" title="Revisar WA de confirmación"
+                                            data-factura-id="{{ (int) $factura->id_factura }}" data-canal="WHATSAPP" data-tipo="PAGADA"
+                                            data-action="{{ route('facturas.enviar-factura-pagada-whatsapp',$factura->id_factura) }}" onclick="abrirConfirmacionNotificacion(this)">
+                                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                    </button>
+                                    <button type="button" class="btn-icon-text btn-mail" style="background:#bfdbfe;" title="Revisar correo de confirmación"
+                                            data-factura-id="{{ (int) $factura->id_factura }}" data-canal="CORREO" data-tipo="PAGADA"
+                                            data-action="{{ route('facturas.enviar-factura-pagada-correo',$factura->id_factura) }}" onclick="abrirConfirmacionNotificacion(this)">
+                                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                    </button>
                                 @endif
                             </div>
                         </td>
@@ -892,7 +895,7 @@
     @endif
 
     {{-- ═══════════ MODAL DETALLE IMPORTACIÓN ═══════════ --}}
-    <div class="modal-overlay" id="modalSincOverlay" onclick="if(event.target===this)cerrarModalSinc()">
+    <div class="modal-overlay" id="modalSincOverlay">
         <div class="modal" style="max-width:860px;width:min(860px,96vw);max-height:88vh;display:flex;flex-direction:column;">
             <div class="modal-header">
                 <h2 id="modalSincTitulo">Facturas de importación</h2>
@@ -902,6 +905,63 @@
             <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 24px 24px;">
                 <div id="modalSincBody">Cargando...</div>
             </div>
+        </div>
+    </div>
+
+    {{-- Confirmación previa: se revisa destinatario y contenido antes de encolar cualquier envío. --}}
+    <div class="modal-overlay" id="modalConfirmarWhatsAppOverlay" role="dialog" aria-modal="true" aria-labelledby="tituloConfirmarWhatsApp">
+        <div class="modal" style="max-width:650px;width:min(650px,94vw);">
+            <div class="modal-header" style="background:#0f766e;color:#fff;">
+                <h2 id="tituloConfirmarWhatsApp">Revisar envío por WhatsApp</h2>
+                <p>Confirme el destinatario y el mensaje antes de programarlo.</p>
+                <button type="button" onclick="cerrarConfirmacionNotificacion('WHATSAPP')" aria-label="Cerrar" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin:0 0 12px;"><strong>Se enviará a:</strong> <span id="confirmarWhatsAppDestinatario">Cargando…</span></p>
+                <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Mensaje que se enviará</label>
+                <pre id="confirmarWhatsAppMensaje" style="white-space:pre-wrap;overflow:auto;max-height:320px;margin:0;padding:14px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;font:13px/1.55 system-ui;color:#134e4a;">Cargando…</pre>
+            </div>
+            <div class="modal-footer">
+                <form id="formConfirmarWhatsApp" method="POST">
+                    @csrf
+                    <input type="hidden" name="confirmado_envio" value="1">
+                    <button type="submit" class="btn btn-primary" id="confirmarWhatsAppBtn" disabled style="background:#0f766e;border-color:#0f766e;">Confirmar y programar WhatsApp</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalConfirmarCorreoOverlay" role="dialog" aria-modal="true" aria-labelledby="tituloConfirmarCorreo">
+        <div class="modal" style="max-width:650px;width:min(650px,94vw);">
+            <div class="modal-header" style="background:#1d4ed8;color:#fff;">
+                <h2 id="tituloConfirmarCorreo">Revisar envío por correo</h2>
+                <p>Confirme el destinatario, asunto y mensaje antes de programarlo.</p>
+                <button type="button" onclick="cerrarConfirmacionNotificacion('CORREO')" aria-label="Cerrar" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin:0 0 8px;"><strong>Se enviará a:</strong> <span id="confirmarCorreoDestinatario">Cargando…</span></p>
+                <p style="margin:0 0 12px;"><strong>Asunto:</strong> <span id="confirmarCorreoAsunto">—</span></p>
+                <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Mensaje que se enviará</label>
+                <pre id="confirmarCorreoMensaje" style="white-space:pre-wrap;overflow:auto;max-height:320px;margin:0;padding:14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font:13px/1.55 system-ui;color:#1e3a8a;">Cargando…</pre>
+            </div>
+            <div class="modal-footer">
+                <form id="formConfirmarCorreo" method="POST">
+                    @csrf
+                    <input type="hidden" name="confirmado_envio" value="1">
+                    <button type="submit" class="btn btn-primary" id="confirmarCorreoBtn" disabled style="background:#1d4ed8;border-color:#1d4ed8;">Confirmar y programar correo</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalHistorialAccionesOverlay" role="dialog" aria-modal="true" aria-labelledby="tituloHistorialAcciones">
+        <div class="modal" style="max-width:720px;width:min(720px,94vw);">
+            <div class="modal-header">
+                <h2 id="tituloHistorialAcciones">Historial de acciones</h2>
+                <p>Usuario, acción y fecha/hora de los últimos cambios de la factura.</p>
+                <button type="button" onclick="cerrarHistorialAcciones()" aria-label="Cerrar" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;">×</button>
+            </div>
+            <div class="modal-body" id="historialAccionesBody" style="max-height:420px;overflow:auto;">Cargando…</div>
         </div>
     </div>
 
@@ -1610,6 +1670,83 @@
             const PM_TIPO_CLIENTE = @json($tipoClienteVista);
             const PM_HIGHLIGHT_KEY = 'facturas_pago_masivo_ids';
             let pagoMasivoFacturas = [];
+
+            function escapeHtml(texto) {
+                const el = document.createElement('div');
+                el.textContent = texto == null ? '' : String(texto);
+                return el.innerHTML;
+            }
+
+            async function abrirConfirmacionNotificacion(boton) {
+                const canal = boton.dataset.canal;
+                const tipo = boton.dataset.tipo;
+                const id = boton.dataset.facturaId;
+                const modal = document.getElementById(canal === 'WHATSAPP' ? 'modalConfirmarWhatsAppOverlay' : 'modalConfirmarCorreoOverlay');
+                const prefijo = canal === 'WHATSAPP' ? 'confirmarWhatsApp' : 'confirmarCorreo';
+                const destino = document.getElementById(prefijo + 'Destinatario');
+                const mensaje = document.getElementById(prefijo + 'Mensaje');
+                const botonConfirmar = document.getElementById(prefijo + 'Btn');
+                const formulario = document.getElementById('form' + prefijo.charAt(0).toUpperCase() + prefijo.slice(1));
+
+                destino.textContent = 'Cargando…';
+                mensaje.textContent = 'Cargando vista previa…';
+                botonConfirmar.disabled = true;
+                formulario.action = boton.dataset.action;
+                if (canal === 'CORREO') document.getElementById('confirmarCorreoAsunto').textContent = 'Cargando…';
+                CRC.open(modal);
+
+                try {
+                    const params = new URLSearchParams({canal, tipo});
+                    const response = await fetch('/facturas/' + encodeURIComponent(id) + '/notificaciones/vista-previa?' + params.toString(), {
+                        headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+                    });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.message || 'No se pudo generar la vista previa.');
+                    destino.textContent = data.destinatario;
+                    mensaje.textContent = data.mensaje;
+                    if (canal === 'CORREO') document.getElementById('confirmarCorreoAsunto').textContent = data.asunto || 'Sin asunto';
+                    botonConfirmar.disabled = false;
+                } catch (error) {
+                    destino.textContent = 'No disponible';
+                    mensaje.textContent = error.message || 'No se pudo generar la vista previa.';
+                    if (canal === 'CORREO') document.getElementById('confirmarCorreoAsunto').textContent = 'No disponible';
+                }
+            }
+
+            function cerrarConfirmacionNotificacion(canal) {
+                CRC.close(canal === 'WHATSAPP' ? 'modalConfirmarWhatsAppOverlay' : 'modalConfirmarCorreoOverlay');
+            }
+
+            async function abrirHistorialAcciones(idFactura) {
+                const modal = document.getElementById('modalHistorialAccionesOverlay');
+                const body = document.getElementById('historialAccionesBody');
+                body.textContent = 'Cargando…';
+                CRC.open(modal);
+                try {
+                    const response = await fetch('/facturas/' + encodeURIComponent(idFactura) + '/historial-acciones', {
+                        headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+                    });
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.message || 'No se pudo consultar el historial.');
+                    if (!data.acciones.length) {
+                        body.innerHTML = '<p style="margin:0;color:#64748b;">Aún no hay acciones registradas para esta factura.</p>';
+                        return;
+                    }
+                    body.innerHTML = data.acciones.map(item => {
+                        const fecha = item.fecha ? new Date(item.fecha.replace(' ', 'T')).toLocaleString('es-PE') : 'Sin fecha';
+                        const detalles = Object.entries(item.detalle || {}).map(([k, v]) => `${k.replaceAll('_', ' ')}: ${v}`).join(' · ');
+                        return `<article style="padding:12px 0;border-bottom:1px solid #e2e8f0;">
+                            <strong style="display:block;color:#0f172a;">${escapeHtml(item.accion.replaceAll('_', ' '))}</strong>
+                            <span style="display:block;margin-top:3px;color:#475569;font-size:13px;">${escapeHtml(item.usuario)} · ${escapeHtml(fecha)}</span>
+                            ${detalles ? `<span style="display:block;margin-top:4px;color:#64748b;font-size:12px;">${escapeHtml(detalles)}</span>` : ''}
+                        </article>`;
+                    }).join('');
+                } catch (error) {
+                    body.textContent = error.message || 'No se pudo consultar el historial.';
+                }
+            }
+
+            function cerrarHistorialAcciones() { CRC.close('modalHistorialAccionesOverlay'); }
 
             function guardarIdsPagoMasivo(ids = []) {
                 const limpios = (Array.isArray(ids) ? ids : [])

@@ -32,6 +32,8 @@
 - La lista de facturas pagina 10 por defecto y solo admite 10, 20 o 50 filas. Los filtros deben conservarse al cambiar de página.
 - En Railway Hobby el correo de producción usa Gmail API por HTTPS: `MAIL_MAILER=gmail-api`. No volver a SMTP como solución de producción sin comprobar antes las restricciones de red del plan.
 - El remitente debe coincidir con la cuenta autorizada por OAuth. Las credenciales esperadas se leen desde `config/services.php` y variables de entorno; nunca se incrustan en el código.
+- Antes de programar una notificación manual, la UI debe mostrar su destinatario y contenido en el modal específico de WhatsApp o correo. El POST exige `confirmado_envio=1`; no se deben crear atajos que omitan esa confirmación.
+- Los modales no se cierran al pulsar el fondo ni con Escape. Se cierran mediante la X o al finalizar correctamente su operación.
 - Los comprobantes persistentes usan almacenamiento S3 compatible. No depender del disco efímero del contenedor.
 - Las valorizaciones nuevas de maquinaria requieren una OC numerada con horas autorizadas; su archivo inicial puede adjuntarse después. Toda OC adicional requiere PDF o imagen. `cotizacion.orden_compra` se conserva como referencia heredada; las OCs con cupo viven en `cotizacion_orden_compra`.
 - En maquinaria, horas facturables por fila = `max(horas_trabajadas, hora_minima)` si `es_facturable` y no es ajuste de horómetro. El cupo conjunto es la suma de OCs. `maquinaria_cotizacion_oc` conserva la distribución por OC; el excedente puede quedar sin asignar y se recalcula al agregar/editar órdenes o filas.
@@ -46,6 +48,7 @@
 - La base histórica contiene más tablas que las reconstruibles desde las migraciones versionadas. Antes de alterar el esquema, comparar `Schema`/`INFORMATION_SCHEMA`, modelos y SQL existente.
 - La migración aditiva `2026_09_19_010000_add_oc_hes_to_cotizaciones` agrega indicadores, referencias HES y tablas de OC, HES y asignaciones. No inferir horas históricas del texto `orden_compra`: las valorizaciones anteriores siguen sin control hasta registrar su primera OC con cupo.
 - Existen dos identidades: `App\Models\Usuario` sobre `usuario`, usada por la autenticación del sistema, y `App\Models\User` sobre `users`. No intercambiarlas accidentalmente.
+- La migración `2026_09_23_010000_add_actor_audit_for_notifications_and_actions` añade `notificacion_factura.id_usuario` y la tabla aditiva `auditoria_accion`. Registrar las acciones relevantes sobre facturas después del commit y mostrar en el historial el usuario y la fecha/hora; no almacenar secretos ni contenido de archivos en `detalle`.
 - La cola usa la base de datos. En producción no hay un proceso worker dedicado documentado; cualquier cambio que despache jobs debe incluir estrategia de ejecución y supervisión.
 
 ## Flujo de trabajo

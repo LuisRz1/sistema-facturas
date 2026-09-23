@@ -249,7 +249,7 @@
 </div>
 
 {{-- ═══════════ MODAL DETALLE FACTURAS ═══════════ --}}
-<div class="modal-overlay" id="modalSincOverlay" onclick="if(event.target===this)cerrarModal()">
+<div class="modal-overlay" id="modalSincOverlay">
     <div class="modal" style="max-width:900px;width:min(900px,96vw);max-height:88vh;">
         <div class="modal-header">
             <h2 id="modalTitulo">Facturas de importación</h2>

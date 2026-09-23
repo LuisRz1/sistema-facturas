@@ -4,8 +4,8 @@
     'subtitle' => null,
     'maxWidth' => '680px',
     'theme' => 'dark',
-    'closeOnBackdrop' => true,
-    'closeOnEscape' => true,
+    'closeOnBackdrop' => false,
+    'closeOnEscape' => false,
     'open' => false,
 ])
 

@@ -85,6 +85,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/facturas/{id}',       [FacturaController::class, 'update'])->name('facturas.update');
     Route::post('/facturas/{id}/pago', [FacturaController::class, 'procesarPago'])->name('facturas.pago');
     Route::get('/facturas/{id}/pagos', [FacturaController::class, 'listarPagos'])->name('facturas.pagos.listar');
+    Route::get('/facturas/{id}/historial-acciones', [FacturaController::class, 'historialAcciones'])->name('facturas.historial-acciones');
     Route::delete('/facturas/{id}/pagos/{id_pago}', [FacturaController::class, 'eliminarPago'])->name('facturas.pagos.eliminar');
     Route::put('/facturas/{id}/pagos/{id_pago}', [FacturaController::class, 'editarPago'])->name('facturas.pagos.editar');
     Route::get('/facturas/pago-masivo/facturas-cliente', [FacturaController::class, 'facturasPendientesCliente'])->name('facturas.pago-masivo.facturas-cliente');
@@ -98,6 +99,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/facturas/{id}/enviar-whatsapp-manual',
         [NotificacionController::class, 'enviarWhatsAppManual']
     )->name('facturas.enviar-whatsapp-manual');
+
+    Route::get('/facturas/{id}/notificaciones/vista-previa',
+        [NotificacionController::class, 'vistaPrevia']
+    )->name('facturas.notificaciones.vista-previa');
 
     Route::post('/facturas/{id}/enviar-correo-manual',
         [NotificacionController::class, 'enviarCorreoManual']

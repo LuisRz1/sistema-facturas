@@ -482,8 +482,5 @@
             }
         }
 
-        document.getElementById('modalResultadosOverlay').addEventListener('click', e => {
-            if (e.target === e.currentTarget) cerrarModal();
-        });
     </script>
 @endpush

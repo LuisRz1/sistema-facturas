@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\EnviarWhatsApp;
 use App\Models\Factura;
 use App\Models\PagoFactura;
+use App\Services\AuditoriaAccionService;
 use App\Services\SaldoFacturaService;
 use App\Support\DocumentoPares;
 use App\Support\JobDispatch;
@@ -21,7 +22,10 @@ class FacturaController extends Controller
     /** Estados que siguen pendientes de cobro */
     private const ESTADOS_PENDIENTES = ['PENDIENTE', 'VENCIDO', 'DIFERENCIA PENDIENTE'];
 
-    public function __construct(private readonly SaldoFacturaService $saldoFactura)
+    public function __construct(
+        private readonly SaldoFacturaService $saldoFactura,
+        private readonly AuditoriaAccionService $auditoria,
+    )
     {
     }
 
@@ -349,6 +353,11 @@ class FacturaController extends Controller
             'fecha_actualizacion' => $now,
         ]);
         $num = strtoupper(trim($validated['serie'])) . '-' . str_pad($validated['numero'], 8, '0', STR_PAD_LEFT);
+        $this->auditoria->registrar('FACTURA', (int) $id, 'FACTURA_CREADA', [
+            'factura' => $num,
+            'importe_total' => (float) $validated['importe_total'],
+            'moneda' => $validated['moneda'],
+        ]);
         return response()->json(['success' => true, 'id_factura' => $id, 'message' => "Factura {$num} creada correctamente."]);
     }
 
@@ -413,6 +422,9 @@ class FacturaController extends Controller
 
         // Flash para resaltar la última factura editada al recargar
         session()->flash('last_edited_factura_id', $id);
+        $this->auditoria->registrar('FACTURA', (int) $factura->id_factura, 'FACTURA_ACTUALIZADA', [
+            'campos' => array_keys($validated),
+        ]);
 
         return response()->json([
             'success'        => true,
@@ -610,6 +622,11 @@ class FacturaController extends Controller
             DB::commit();
 
             session()->flash('last_edited_factura_id', $id);
+            $this->auditoria->registrar('FACTURA', (int) $id, 'PAGO_REGISTRADO', [
+                'monto' => $montoPagado,
+                'monto_pendiente' => $montoPendiente,
+                'estado' => $estado,
+            ]);
 
             return response()->json([
                 'success'         => true,
@@ -661,6 +678,42 @@ class FacturaController extends Controller
             'monto_abonado'   => (float) DB::table('pago_factura')->where('id_factura', $id)->where('activo', 1)->sum('monto_pagado'),
             'monto_pendiente' => (float) DB::table('factura')->where('id_factura', $id)->value('monto_pendiente'),
         ]);
+    }
+
+    /** Historial de acciones realizadas sobre una factura, visible a usuarios autenticados. */
+    public function historialAcciones($id): JsonResponse
+    {
+        Factura::findOrFail($id);
+
+        if (!Schema::hasTable('auditoria_accion')) {
+            return response()->json(['success' => true, 'acciones' => []]);
+        }
+
+        $acciones = DB::table('auditoria_accion as a')
+            ->leftJoin('usuario as u', 'u.id_usuario', '=', 'a.id_usuario')
+            ->where('a.entidad', 'FACTURA')
+            ->where('a.id_entidad', $id)
+            ->orderByDesc('a.fecha_creacion')
+            ->orderByDesc('a.id_auditoria')
+            ->limit(100)
+            ->get([
+                'a.accion', 'a.detalle', 'a.fecha_creacion',
+                'u.nombre as usuario_nombre', 'u.apellido as usuario_apellido',
+            ])
+            ->map(function ($accion) {
+                $detalle = $accion->detalle;
+                if (is_string($detalle)) {
+                    $detalle = json_decode($detalle, true) ?: [];
+                }
+                return [
+                    'accion' => $accion->accion,
+                    'detalle' => $detalle ?: [],
+                    'fecha' => $accion->fecha_creacion,
+                    'usuario' => trim(($accion->usuario_nombre ?? '') . ' ' . ($accion->usuario_apellido ?? '')) ?: 'Usuario no disponible',
+                ];
+            });
+
+        return response()->json(['success' => true, 'acciones' => $acciones]);
     }
 
     /**
@@ -723,6 +776,13 @@ class FacturaController extends Controller
             ]);
 
             DB::commit();
+
+            $this->auditoria->registrar('FACTURA', (int) $id, 'PAGO_ELIMINADO', [
+                'id_pago' => (int) $idPago,
+                'monto_eliminado' => (float) $pagoActual->monto_pagado,
+                'monto_pendiente' => $montoPendiente,
+                'estado' => $estado,
+            ]);
 
             return response()->json([
                 'success'         => true,
@@ -823,6 +883,13 @@ class FacturaController extends Controller
             ]);
 
             DB::commit();
+
+            $this->auditoria->registrar('FACTURA', (int) $id, 'PAGO_ACTUALIZADO', [
+                'id_pago' => (int) $idPago,
+                'monto' => round((float) $validated['monto_pagado'], 2),
+                'monto_pendiente' => $montoPendiente,
+                'estado' => $estado,
+            ]);
 
             return response()->json([
                 'success'         => true,
@@ -1057,6 +1124,13 @@ class FacturaController extends Controller
             }
 
             DB::commit();
+            foreach ($resumenCambios as $cambio) {
+                $this->auditoria->registrar('FACTURA', $cambio['id_factura'], 'PAGO_MASIVO_REGISTRADO', [
+                    'monto' => $cambio['monto_aplicado'],
+                    'monto_pendiente' => $cambio['pendiente_nuevo'],
+                    'estado' => $cambio['estado_nuevo'],
+                ]);
+            }
             return response()->json([
                 'success' => true,
                 'message' => 'Pago masivo registrado correctamente.',
@@ -1192,6 +1266,10 @@ class FacturaController extends Controller
         Cache::forget('facturas_clientes_PERSONA JURIDICA');
         Cache::forget('facturas_clientes_PERSONA NATURAL');
         Cache::forget('reportes_clientes_contacto');
+        $this->auditoria->registrar('FACTURA', (int) $id_factura, 'CLIENTE_DE_FACTURA_ACTUALIZADO', [
+            'id_cliente' => (int) $cliente->id_cliente,
+            'campos' => array_keys($validated),
+        ]);
 
         return response()->json(['success'=>true,'message'=>'Cliente actualizado correctamente','cliente'=>$cliente]);
     }
@@ -1220,6 +1298,7 @@ class FacturaController extends Controller
             'ruta_comprobante_pago' => $path,
             'fecha_actualizacion'   => now(),
         ]);
+        $this->auditoria->registrar('FACTURA', (int) $id, 'COMPROBANTE_ACTUALIZADO');
 
         $url = $this->resolveComprobanteUrl($path);
 

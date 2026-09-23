@@ -118,7 +118,16 @@
             });
         }
 
-        // Apertura/cierre declarativo: [data-modal-open="id"], [data-modal-close] y backdrop
+        // Un modal solo se cierra con una acción explícita. El capturador se
+        // registra antes de los scripts de cada vista para neutralizar también
+        // manejadores heredados que cerraban al pulsar el fondo.
+        document.addEventListener('click', function (e) {
+            if (e.target.classList && e.target.classList.contains('modal-overlay')) {
+                e.stopPropagation();
+            }
+        }, true);
+
+        // Apertura/cierre declarativo: [data-modal-open="id"] y [data-modal-close].
         document.addEventListener('click', function (e) {
             const opener = e.target.closest('[data-modal-open]');
             if (opener) {
@@ -135,18 +144,13 @@
                 return;
             }
 
-            if (e.target.classList && e.target.classList.contains('modal-overlay')
-                && e.target.hasAttribute('data-modal')
-                && e.target.getAttribute('data-close-on-backdrop') !== '0') {
-                closeModal(e.target);
-            }
         });
 
         document.addEventListener('keydown', function (e) {
-            if (e.key !== 'Escape') return;
-            const el = topOpenModal();
-            if (el && el.getAttribute('data-close-on-escape') !== '0') closeModal(el);
-        });
+            if (e.key !== 'Escape' || !topOpenModal()) return;
+            e.preventDefault();
+            e.stopPropagation();
+        }, true);
 
         return { open: openModal, close: closeModal, toast: toast, confirm: confirmDialog, feedback: feedback };
     })();

@@ -7,19 +7,28 @@ use App\Jobs\EnviarWhatsApp;
 use App\Jobs\EnviarWhatsAppDocumento;
 use App\Models\Factura;
 use App\Models\NotificacionFactura;
+use App\Services\AuditoriaAccionService;
 use App\Support\JobDispatch;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Auth;
 
 class NotificacionController extends Controller
 {
     // Estados que indican pago pendiente (unificados con nueva DB)
     private const ESTADOS_PENDIENTES = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE', 'POR VALIDAR DETRACCION'];
 
+    public function __construct(private readonly AuditoriaAccionService $auditoria)
+    {
+    }
+
     // ─── COBRANZA: FACTURAS PENDIENTES ───────────────────────────────────────
 
-    public function enviarWhatsAppManual(int $id): RedirectResponse
+    public function enviarWhatsAppManual(Request $request, int $id): RedirectResponse
     {
+        if (!$this->confirmado($request)) return back()->with('error', 'Revise y confirme el envío de WhatsApp antes de programarlo.');
         $factura = Factura::with('cliente')->findOrFail($id);
 
         if (!in_array($factura->estado, self::ESTADOS_PENDIENTES)) {
@@ -43,6 +52,7 @@ class NotificacionController extends Controller
             $factura->cliente->celular, null, $contenido['mensaje'],
             'PROGRAMADO', 'Envío programado', null, null
         ));
+        $this->auditarNotificacion($notif);
 
         JobDispatch::send(EnviarWhatsApp::class, [
             $factura->cliente->celular,
@@ -54,8 +64,9 @@ class NotificacionController extends Controller
         return back()->with('success', 'Envío de WhatsApp programado correctamente.');
     }
 
-    public function enviarCorreoManual(int $id): RedirectResponse
+    public function enviarCorreoManual(Request $request, int $id): RedirectResponse
     {
+        if (!$this->confirmado($request)) return back()->with('error', 'Revise y confirme el envío de correo antes de programarlo.');
         $factura = Factura::with('cliente')->findOrFail($id);
 
         if (!in_array($factura->estado, self::ESTADOS_PENDIENTES)) {
@@ -75,6 +86,7 @@ class NotificacionController extends Controller
             $factura->cliente->correo, $contenido['asunto'], $contenido['mensaje'],
             'PROGRAMADO', 'Envío programado', null, null
         ));
+        $this->auditarNotificacion($notif);
 
         JobDispatch::send(EnviarCorreo::class, [
             $factura->cliente->correo,
@@ -88,28 +100,17 @@ class NotificacionController extends Controller
 
     // ─── ENVÍO DE FACTURA PAGADA ──────────────────────────────────────────────
 
-    public function enviarFacturaPagadaWhatsApp(int $id): RedirectResponse
+    public function enviarFacturaPagadaWhatsApp(Request $request, int $id): RedirectResponse
     {
+        if (!$this->confirmado($request)) return back()->with('error', 'Revise y confirme el envío de WhatsApp antes de programarlo.');
         $factura = Factura::with('cliente')->findOrFail($id);
 
         if (!$factura->cliente?->celular) {
             return back()->with('error', 'El cliente no tiene celular registrado.');
         }
 
-        $fechaPago = $factura->fecha_abono
-            ? \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y')
-            : 'Registrada';
-
-        $mensaje = "*Confirmación de Pago*\n\n"
-            . "Estimado cliente, le informamos que su factura *{$factura->serie}-{$factura->numero}* "
-            . "ha sido procesada correctamente.\n\n"
-            . " *Detalle de pago:*\n"
-            . "• Factura: {$factura->serie}-{$factura->numero}\n"
-            . "• Fecha de pago: {$fechaPago}\n"
-            . "• Monto: {$factura->moneda} " . number_format($factura->importe_total, 2) . "\n"
-            . "• Estado: ✓ PAGADA\n\n"
-            . "Gracias por su confianza en nuestros servicios.\n\n"
-            . "Atentamente,\nSistema de Facturación";
+        $contenido = $this->buildMensajePagada($factura, 'WHATSAPP');
+        $mensaje = $contenido['mensaje'];
 
         $mediaUrl = $this->resolveComprobanteUrl($factura->ruta_comprobante_pago ?: null);
         $isPdf    = $mediaUrl && preg_match('/\.pdf(\?|$)/i', $mediaUrl);
@@ -121,6 +122,7 @@ class NotificacionController extends Controller
             $mediaUrl ? 'Envío programado con comprobante' : 'Envío programado sin comprobante',
             null, null
         ));
+        $this->auditarNotificacion($notif);
 
         if ($isPdf) {
             $fileName = 'Comprobante_' . $factura->serie . '-' . str_pad((string) $factura->numero, 8, '0', STR_PAD_LEFT) . '.pdf';
@@ -136,39 +138,26 @@ class NotificacionController extends Controller
         return back()->with('success', 'Envío de comprobante por WhatsApp programado correctamente.');
     }
 
-    public function enviarFacturaPagadaCorreo(int $id): RedirectResponse
+    public function enviarFacturaPagadaCorreo(Request $request, int $id): RedirectResponse
     {
+        if (!$this->confirmado($request)) return back()->with('error', 'Revise y confirme el envío de correo antes de programarlo.');
         $factura = Factura::with('cliente')->findOrFail($id);
 
         if (!$factura->cliente?->correo) {
             return back()->with('error', 'El cliente no tiene correo registrado.');
         }
 
-        $fechaPago = $factura->fecha_abono
-            ? \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y')
-            : 'Registrada';
-
-        $asunto  = "Confirmación de Pago - Factura {$factura->serie}-{$factura->numero}";
-        $mensaje = "Estimado cliente,\n\n"
-            . "Le informamos que su factura {$factura->serie}-{$factura->numero} ha sido PAGADA correctamente.\n\n"
-            . "Detalle de pago:\n"
-            . "- Factura: {$factura->serie}-{$factura->numero}\n"
-            . "- Fecha de pago: {$fechaPago}\n"
-            . "- Monto pagado: {$factura->moneda} " . number_format($factura->importe_total, 2) . "\n"
-            . "- Estado: ✓ PAGADA\n";
-
-        if ($factura->ruta_comprobante_pago) {
-            $mensaje .= "\n Ver comprobante: {$factura->ruta_comprobante_pago}\n";
-        }
-
-        $mensaje .= "\nGracias por su confianza.\n\nAtentamente,\nSistema de Facturación";
-        $html = $this->buildCorreoHtml($factura, true, $fechaPago);
+        $contenido = $this->buildMensajePagada($factura, 'CORREO');
+        $asunto = $contenido['asunto'];
+        $mensaje = $contenido['mensaje'];
+        $html = $this->buildCorreoHtml($factura, true, $contenido['fecha_pago']);
 
         $notif = NotificacionFactura::create($this->baseNotif(
             $factura->id_factura, 'CORREO', 'ENVIO_FACTURA', 'ENVIO_FACTURA_PAGADA',
             $factura->cliente->correo, $asunto, $mensaje,
             'PROGRAMADO', 'Envío programado', null, null
         ));
+        $this->auditarNotificacion($notif);
 
         JobDispatch::send(EnviarCorreo::class, [
             $factura->cliente->correo,
@@ -181,6 +170,37 @@ class NotificacionController extends Controller
     }
 
     // ─── HELPER PRIVADO ───────────────────────────────────────────────────────
+
+    public function vistaPrevia(Request $request, int $id): JsonResponse
+    {
+        $datos = $request->validate([
+            'canal' => 'required|in:WHATSAPP,CORREO',
+            'tipo' => 'required|in:COBRANZA,PAGADA',
+        ]);
+        $factura = Factura::with('cliente')->findOrFail($id);
+
+        if ($datos['tipo'] === 'COBRANZA' && !in_array($factura->estado, self::ESTADOS_PENDIENTES, true)) {
+            return response()->json(['message' => 'La factura ya no está pendiente de pago.'], 422);
+        }
+
+        $contenido = $datos['tipo'] === 'COBRANZA'
+            ? $this->buildMensajeCobranza($factura)
+            : $this->buildMensajePagada($factura, $datos['canal']);
+        $destinatario = $datos['canal'] === 'WHATSAPP'
+            ? $factura->cliente?->celular
+            : $factura->cliente?->correo;
+
+        if (!$destinatario) {
+            return response()->json(['message' => 'El cliente no tiene un destinatario configurado para este canal.'], 422);
+        }
+
+        return response()->json([
+            'canal' => $datos['canal'],
+            'destinatario' => $destinatario,
+            'asunto' => $datos['canal'] === 'CORREO' ? $contenido['asunto'] : null,
+            'mensaje' => $contenido['mensaje'],
+        ]);
+    }
 
     private function buildMensajeCobranza(Factura $factura): array
     {
@@ -232,6 +252,46 @@ class NotificacionController extends Controller
         ];
     }
 
+    private function buildMensajePagada(Factura $factura, string $canal): array
+    {
+        $fechaPago = $factura->fecha_abono
+            ? \Carbon\Carbon::parse($factura->fecha_abono)->format('d/m/Y')
+            : 'Registrada';
+        $numero = $factura->serie.'-'.$factura->numero;
+
+        $asunto = "Confirmación de Pago - Factura {$numero}";
+        if ($canal === 'WHATSAPP') {
+            return [
+                'asunto' => $asunto,
+                'fecha_pago' => $fechaPago,
+                'mensaje' => "*Confirmación de Pago*\n\n"
+                    . "Estimado cliente, le informamos que su factura *{$numero}* ha sido procesada correctamente.\n\n"
+                    . "*Detalle de pago:*\n"
+                    . "• Factura: {$numero}\n"
+                    . "• Fecha de pago: {$fechaPago}\n"
+                    . "• Monto: {$factura->moneda} " . number_format((float) $factura->importe_total, 2) . "\n"
+                    . "• Estado: ✓ PAGADA\n\n"
+                    . "Gracias por su confianza en nuestros servicios.\n\nAtentamente,\nSistema de Facturación",
+            ];
+        }
+
+        $mensaje = "Estimado cliente,\n\n"
+            . "Le informamos que su factura {$numero} ha sido PAGADA correctamente.\n\n"
+            . "Detalle de pago:\n"
+            . "- Factura: {$numero}\n"
+            . "- Fecha de pago: {$fechaPago}\n"
+            . "- Monto pagado: {$factura->moneda} " . number_format((float) $factura->importe_total, 2) . "\n"
+            . "- Estado: ✓ PAGADA\n";
+        if ($factura->ruta_comprobante_pago) {
+            $mensaje .= "\nVer comprobante: {$factura->ruta_comprobante_pago}\n";
+        }
+        return [
+            'asunto' => $asunto,
+            'fecha_pago' => $fechaPago,
+            'mensaje' => $mensaje . "\nGracias por su confianza.\n\nAtentamente,\nSistema de Facturación",
+        ];
+    }
+
     private function buildCorreoHtml(Factura $factura, bool $pagada, ?string $fechaPago = null): string
     {
         $numero = $factura->serie . '-' . $factura->numero;
@@ -265,6 +325,7 @@ class NotificacionController extends Controller
     ): array {
         return [
             'id_factura'          => $idFactura,
+            'id_usuario'          => Auth::id(),
             'id_regla'            => null,
             'canal'               => $canal,
             'categoria'           => $categoria,
@@ -281,6 +342,21 @@ class NotificacionController extends Controller
             'fecha_creacion'      => now(),
             'fecha_actualizacion' => now(),
         ];
+    }
+
+    private function confirmado(Request $request): bool
+    {
+        return $request->boolean('confirmado_envio');
+    }
+
+    private function auditarNotificacion(NotificacionFactura $notificacion): void
+    {
+        $this->auditoria->registrar('FACTURA', $notificacion->id_factura, 'NOTIFICACION_PROGRAMADA', [
+            'id_notificacion' => $notificacion->id_notificacion,
+            'canal' => $notificacion->canal,
+            'destinatario' => $notificacion->destinatario,
+            'tipo' => $notificacion->tipo_notificacion,
+        ]);
     }
 
     private function resolveComprobanteUrl(?string $storedValue): ?string

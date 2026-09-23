@@ -1208,8 +1208,6 @@
                 else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
                 return;
             }
-            if (event.key !== 'Escape') return;
-            cerrarModal(modal.id);
         });
 
         function avisoHorometro(modo = 'add') {
@@ -1649,15 +1647,5 @@
             return d.toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' });
         }
 
-        ['modalDelFila','modalEditFila','modalEditHeader','modalAdjunto','modalEditClienteCot'].forEach(id => {
-            document.getElementById(id)?.addEventListener('click', e => {
-                if (e.target !== e.currentTarget) return;
-                if (id === 'modalAdjunto') {
-                    cerrarAdjuntoModal();
-                    return;
-                }
-                e.currentTarget.classList.remove('open');
-            });
-        });
     </script>
 @endpush

@@ -13,6 +13,7 @@ class NotificacionFactura extends Model
 
     protected $fillable = [
         'id_factura',
+        'id_usuario',
         'id_regla',
         'canal',
         'categoria',

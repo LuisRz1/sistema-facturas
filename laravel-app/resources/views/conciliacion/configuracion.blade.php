@@ -490,16 +490,5 @@
         document.getElementById('modalConfig').classList.add('open');
     }
 
-    // Close modal on overlay click
-    document.getElementById('modalConfig').addEventListener('click', function(e) {
-        if (e.target === this) cerrarModal();
-    });
-
-    // Close modal on Escape key
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && document.getElementById('modalConfig').classList.contains('open')) {
-            cerrarModal();
-        }
-    });
 </script>
 @endpush

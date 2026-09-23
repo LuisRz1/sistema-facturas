@@ -505,14 +505,6 @@
                 if (form) form.submit();
             }
 
-            document.getElementById('modalOverlay').addEventListener('click', function(e) {
-                if (e.target === this) cerrarModal();
-            });
-
-            document.getElementById('modalDeleteClienteOverlay').addEventListener('click', function(e) {
-                if (e.target === this) cerrarModalEliminarCliente();
-            });
-
             // Reabre el modal si hubo error de validación en el servidor
             @if($errors->any() || session('_old_input'))
                 document.getElementById('modalOverlay').classList.add('open');
