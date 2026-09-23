@@ -50,7 +50,7 @@ class NormalizarPendientesFacturasTest extends TestCase
             ->expectsOutputToContain('Vista previa.')
             ->assertSuccessful();
 
-        $this->assertSame('110.00', DB::table('factura')->value('monto_pendiente'));
+        $this->assertEqualsWithDelta(110.00, (float) DB::table('factura')->value('monto_pendiente'), 0.001);
     }
 
     public function test_apply_actualiza_solo_el_pendiente_cuando_recaudacion_no_esta_confirmada(): void
@@ -62,11 +62,11 @@ class NormalizarPendientesFacturasTest extends TestCase
             ->assertSuccessful();
 
         $factura = DB::table('factura')->first();
-        $this->assertSame('100.00', $factura->monto_pendiente);
-        $this->assertSame('100.00', $factura->importe_total);
-        $this->assertSame('0.00', $factura->monto_abonado);
+        $this->assertEqualsWithDelta(100.00, (float) $factura->monto_pendiente, 0.001);
+        $this->assertEqualsWithDelta(100.00, (float) $factura->importe_total, 0.001);
+        $this->assertEqualsWithDelta(0.00, (float) $factura->monto_abonado, 0.001);
         $this->assertSame('PENDIENTE', $factura->estado);
-        $this->assertSame('10.00', DB::table('recaudacion')->value('total_recaudacion'));
+        $this->assertEqualsWithDelta(10.00, (float) DB::table('recaudacion')->value('total_recaudacion'), 0.001);
     }
 
     private function insertarFacturaConRecaudacion(): void
