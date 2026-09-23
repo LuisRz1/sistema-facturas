@@ -19,6 +19,17 @@ use PhpOffice\PhpSpreadsheet\Style\Font;
 
 class ReporteController extends Controller
 {
+    /** Estados reales del sistema. Se usan cuando el filtro es "todos". */
+    private const ESTADOS_TODOS = [
+        'PENDIENTE',
+        'VENCIDO',
+        'PAGO PARCIAL',
+        'DIFERENCIA PENDIENTE',
+        'POR VALIDAR DETRACCION',
+        'PAGADA',
+        'ANULADO',
+    ];
+
     public function index()
     {
         $clientes = Cache::remember('reportes_clientes_contacto', 300, function () {
@@ -124,6 +135,51 @@ class ReporteController extends Controller
     }
 
     /**
+     * Resuelve los estados solicitados por el reporte:
+     *   - `estados[]` (múltiple) si viene;
+     *   - `estado` (único) si viene;
+     *   - sin filtro => TODOS los estados del sistema.
+     */
+    private function resolverEstadosFiltro(Request $request): array
+    {
+        $estadosParam = $request->input('estados', []);
+        $estadoSimple = $request->input('estado');
+
+        if (!empty($estadosParam)) {
+            $estadosFiltro = array_values(array_filter(
+                (array) $estadosParam,
+                fn ($estado) => $estado !== null && $estado !== ''
+            ));
+        } elseif ($estadoSimple !== null && $estadoSimple !== '') {
+            $estadosFiltro = [$estadoSimple];
+        } else {
+            $estadosFiltro = self::ESTADOS_TODOS;
+        }
+
+        if (empty($estadosFiltro)) {
+            $estadosFiltro = self::ESTADOS_TODOS;
+        }
+
+        return $this->normalizarEstadosFiltro($estadosFiltro);
+    }
+
+    /** Etiqueta legible del conjunto de estados activo. */
+    private function estadoLabel(array $estadosFiltro): string
+    {
+        $normalizados = array_values(array_unique(array_map('strtoupper', $estadosFiltro)));
+        $todos = array_values(array_unique(self::ESTADOS_TODOS));
+
+        sort($normalizados);
+        sort($todos);
+
+        if ($normalizados === $todos) {
+            return 'TODOS LOS ESTADOS';
+        }
+
+        return implode(' · ', $estadosFiltro);
+    }
+
+    /**
      * Replica los indicadores de la pantalla Gestión de Facturas.
      */
     private function buildDashboardMetrics(Collection $facturasParaTotales): array
@@ -223,16 +279,10 @@ class ReporteController extends Controller
     public function json(Request $request)
     {
         $idCliente  = $request->input('id_cliente');
-        $estado     = $request->input('estado');
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
 
-        if ($estado) {
-            $estadosFiltro = [$estado];
-        } else {
-            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE', 'PAGADA'];
-        }
-        $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
+        $estadosFiltro = $this->resolverEstadosFiltro($request);
 
         $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
             ->whereIn('f.estado', $estadosFiltro)
@@ -268,7 +318,7 @@ class ReporteController extends Controller
             'cliente_nombre'  => $clienteNombre,
             'cliente_celular' => $clienteCelular,
             'cliente_correo'  => $clienteCorreo,
-            'estado_label'    => $estado ? strtoupper($estado) : 'TODOS LOS ESTADOS',
+            'estado_label'    => $this->estadoLabel($estadosFiltro),
             'periodo_label'   => $periodoLabel,
             'resumen' => [
                 'total_facturas'    => $facturasParaTotales->where('estado', '!=', 'ANULADO')->count(),
@@ -287,17 +337,7 @@ class ReporteController extends Controller
         $idCliente    = $request->input('id_cliente');
         $fechaDesde   = $request->input('fecha_desde');
         $fechaHasta   = $request->input('fecha_hasta');
-        $estadosParam = $request->input('estados', []);
-        $estadoSimple = $request->input('estado');
-
-        if ($estadoSimple) {
-            $estadosFiltro = [$estadoSimple];
-        } elseif (!empty($estadosParam)) {
-            $estadosFiltro = (array) $estadosParam;
-        } else {
-            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE'];
-        }
-        $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
+        $estadosFiltro = $this->resolverEstadosFiltro($request);
 
         $usuarioIdsParam = $request->input('usuario_ids', []);
         $usuarioIdSimple = $request->input('usuario_id');
@@ -366,7 +406,7 @@ class ReporteController extends Controller
             ->orderBy('nombre')
             ->get(['id_usuario', 'nombre', 'apellido', 'celular', 'correo']);
 
-        $estadoLabel       = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
+        $estadoLabel       = $this->estadoLabel($estadosFiltro);
         $periodoLabel      = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
         $estadosFiltroJson = json_encode($estadosFiltro);
 
@@ -385,7 +425,6 @@ class ReporteController extends Controller
     {
         $idCliente  = $request->input('id_cliente');
         $usuarioId  = $request->input('usuario_id');
-        $estado     = $request->input('estado');
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
         $tipoReporte = $request->input('tipo_reporte', 'detallado');
@@ -410,14 +449,10 @@ class ReporteController extends Controller
             return response()->json(['success' => false, 'error' => 'Debes seleccionar un cliente o usuario destino.'], 422);
         }
 
-        $estadosParam  = $request->input('estados', []);
-        $estadosFiltro = !empty($estadosParam)
-            ? (array) $estadosParam
-            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE']);
-        $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
+        $estadosFiltro = $this->resolverEstadosFiltro($request);
 
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
+        $estadoLabel  = $this->estadoLabel($estadosFiltro);
 
         if ($tipoReporte === 'general') {
             @set_time_limit(180);
@@ -471,7 +506,7 @@ class ReporteController extends Controller
         $facturasParaTotales = $this->filtrarParaTotales($facturas, $orphanFacturaIds);
 
         $periodoLabel      = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel       = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
+        $estadoLabel       = $this->estadoLabel($estadosFiltro);
         $clienteNombre     = strtoupper($nombre ?? 'TODOS LOS CLIENTES');
         $facturasAgrupadas = $facturas->groupBy('razon_social')->sortKeys();
         $facturasAgrupParaTotales = $facturasParaTotales->groupBy('razon_social')->sortKeys();
@@ -542,7 +577,6 @@ class ReporteController extends Controller
     {
         $idCliente  = $request->input('id_cliente');
         $usuarioId  = $request->input('usuario_id');
-        $estado     = $request->input('estado');
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
         $tipoReporte = $request->input('tipo_reporte', 'detallado');
@@ -567,11 +601,7 @@ class ReporteController extends Controller
             return response()->json(['success' => false, 'error' => 'Debes seleccionar un cliente o usuario destino.'], 422);
         }
 
-        $estadosParam  = $request->input('estados', []);
-        $estadosFiltro = !empty($estadosParam)
-            ? (array) $estadosParam
-            : ($estado ? [$estado] : ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE']);
-        $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
+        $estadosFiltro = $this->resolverEstadosFiltro($request);
 
         if ($tipoReporte === 'general') {
             @set_time_limit(180);
@@ -608,7 +638,7 @@ class ReporteController extends Controller
 
         $facturasAgrupadas = $facturas->groupBy('razon_social')->sortKeys();
         $periodoLabel      = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel       = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
+        $estadoLabel       = $this->estadoLabel($estadosFiltro);
         $clienteNombre     = strtoupper($nombre ?? 'TODOS LOS CLIENTES');
         $usuarioDestino    = null;
         $todosUsuarios     = collect([]);
@@ -691,13 +721,7 @@ class ReporteController extends Controller
     {
         $fechaDesde   = $request->input('fecha_desde');
         $fechaHasta   = $request->input('fecha_hasta');
-        $estadosParam = $request->input('estados', []);
-        $estadoSimple = $request->input('estado');
-
-        if ($estadoSimple)          $estadosFiltro = [$estadoSimple];
-        elseif (!empty($estadosParam)) $estadosFiltro = (array) $estadosParam;
-        else                           $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE'];
-        $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
+        $estadosFiltro = $this->resolverEstadosFiltro($request);
 
         $query = DB::table('factura as f')
             ->join('cliente as c', 'c.id_cliente', '=', 'f.id_cliente')
@@ -814,7 +838,7 @@ class ReporteController extends Controller
             $totalPendienteUsd     += (float) ($c['pendiente_usd'] ?? 0);
         }
 
-        $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
+        $estadoLabel  = $this->estadoLabel($estadosFiltro);
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
 
         $usuarioIdsParam = $request->input('usuario_ids', []);
@@ -846,18 +870,8 @@ class ReporteController extends Controller
         $idCliente    = $request->input('id_cliente');
         $fechaDesde   = $request->input('fecha_desde');
         $fechaHasta   = $request->input('fecha_hasta');
-        $estadosParam = $request->input('estados', []);
-        $estadoSimple = $request->input('estado');
         $modo         = $request->input('modo', 'por_cliente'); // por_cliente | una_hoja | resumen
-
-        if ($estadoSimple) {
-            $estadosFiltro = [$estadoSimple];
-        } elseif (!empty($estadosParam)) {
-            $estadosFiltro = (array) $estadosParam;
-        } else {
-            $estadosFiltro = ['PENDIENTE', 'VENCIDO', 'PAGO PARCIAL', 'DIFERENCIA PENDIENTE'];
-        }
-        $estadosFiltro = $this->normalizarEstadosFiltro($estadosFiltro);
+        $estadosFiltro = $this->resolverEstadosFiltro($request);
 
         $facturas = $this->queryFacturas($idCliente, null, $fechaDesde, $fechaHasta)
             ->whereIn('f.estado', $estadosFiltro)
@@ -885,7 +899,7 @@ class ReporteController extends Controller
         $facturasAgrupParaTotales = $facturasParaTotales->groupBy('razon_social')->sortKeys();
 
         $periodoLabel = $this->buildPeriodoLabel($fechaDesde, $fechaHasta);
-        $estadoLabel  = count($estadosFiltro) >= 5 ? 'TODOS LOS PENDIENTES' : implode(' · ', $estadosFiltro);
+        $estadoLabel  = $this->estadoLabel($estadosFiltro);
 
         // ── Colores ARGB ──────────────────────────────────────────────────
         $C_COMPANY = 'FF0F172A'; // dark navy

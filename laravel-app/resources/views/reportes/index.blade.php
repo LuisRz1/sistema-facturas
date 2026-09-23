@@ -16,12 +16,13 @@
         .rs-box.rojo  .rs-value { color:var(--red); }
         .rs-box.amber .rs-value { color:var(--amber); }
         .badge-estado { display:inline-block; padding:2px 10px; border-radius:20px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
-        .estado-PENDIENTE  { background:#fef3c7; color:#92400e; }
-        .estado-POR_VENCER { background:#ffedd5; color:#c2410c; }
-        .estado-VENCIDA    { background:#fee2e2; color:#991b1b; }
-        .estado-PAGADA     { background:#d1fae5; color:#065f46; }
-        .estado-ANULADA    { background:#f1f5f9; color:#64748b; }
-        .estado-OBSERVADA  { background:#ede9fe; color:#5b21b6; }
+        .estado-PENDIENTE              { background:#fef3c7; color:#92400e; }
+        .estado-VENCIDO                { background:#fee2e2; color:#991b1b; }
+        .estado-PAGO_PARCIAL           { background:#ffedd5; color:#c2410c; }
+        .estado-DIFERENCIA_PENDIENTE   { background:#fde68a; color:#92400e; }
+        .estado-POR_VALIDAR_DETRACCION { background:#ede9fe; color:#5b21b6; }
+        .estado-PAGADA                 { background:#d1fae5; color:#065f46; }
+        .estado-ANULADO                { background:#f1f5f9; color:#64748b; }
         .mono { font-family:'DM Mono',monospace; font-size:12px; }
         .text-right { text-align:right; }
         .detrac-cell { color:#d97706; font-weight:700; }
@@ -101,11 +102,12 @@
                     <select name="estado" class="form-input" id="selEstado">
                         <option value="">Todos los estados</option>
                         <option value="PENDIENTE">Pendiente</option>
-                        <option value="POR_VENCER">Por Vencer</option>
-                        <option value="VENCIDA">Vencida</option>
+                        <option value="VENCIDO">Vencido</option>
+                        <option value="PAGO PARCIAL">Pago parcial</option>
+                        <option value="DIFERENCIA PENDIENTE">Diferencia pendiente</option>
+                        <option value="POR VALIDAR DETRACCION">Por validar detracción</option>
                         <option value="PAGADA">Pagada</option>
-                        <option value="ANULADA">Anulada</option>
-                        <option value="OBSERVADA">Observada</option>
+                        <option value="ANULADO">Anulado</option>
                     </select>
                 </div>
 
@@ -186,7 +188,9 @@
         }
 
         function estadoBadge(e) {
-            return `<span class="badge-estado estado-${e}">${e.replace('_',' ')}</span>`;
+            const clase = String(e || '').toUpperCase().replace(/\s+/g, '_');
+            const label = String(e || '').replace(/_/g, ' ');
+            return `<span class="badge-estado estado-${clase}">${label}</span>`;
         }
 
         function onClienteChange() {
