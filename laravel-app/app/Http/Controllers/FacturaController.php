@@ -477,6 +477,49 @@ class FacturaController extends Controller
     }
 
     /**
+     * Resuelve un abono a la moneda de la factura. Acepta `moneda_pago`
+     * (PEN/USD) y `monto_original` (monto tal como se pagó). Si no vienen, se
+     * asume que el monto ya está expresado en la moneda de la factura.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array{monto: float, monto_original: float, moneda_pago: string, monto_cambio: ?float}
+     */
+    private function resolverAbonoEnMonedaFactura(Factura $factura, array $validated, float $montoEntrada): array
+    {
+        $monedaFactura = strtoupper((string) $factura->moneda);
+        $monedaPago = strtoupper((string) ($validated['moneda_pago'] ?? ''));
+        if ($monedaPago === '') {
+            $monedaPago = $monedaFactura;
+        }
+
+        $montoOriginal = array_key_exists('monto_original', $validated) && $validated['monto_original'] !== null
+            ? round((float) $validated['monto_original'], 2)
+            : round($montoEntrada, 2);
+
+        $montoCambio = isset($validated['monto_cambio']) && (float) $validated['monto_cambio'] > 0
+            ? round((float) $validated['monto_cambio'], 4)
+            : ($factura->monto_cambio === null ? null : round((float) $factura->monto_cambio, 4));
+
+        $convertido = $this->saldoFactura->montoAbonoEnMonedaFactura(
+            $montoOriginal,
+            $monedaPago,
+            $monedaFactura,
+            $montoCambio,
+        );
+
+        if ($convertido === null) {
+            throw new \RuntimeException('Indique el tipo de cambio para convertir el abono a la moneda de la factura.');
+        }
+
+        return [
+            'monto'          => $convertido,
+            'monto_original' => $montoOriginal,
+            'moneda_pago'    => $monedaPago,
+            'monto_cambio'   => $montoCambio,
+        ];
+    }
+
+    /**
      * Procesar pago / abono — inserta en pago_factura y recalcula totales.
      */
     public function procesarPago(Request $request, $id): JsonResponse
@@ -492,6 +535,9 @@ class FacturaController extends Controller
             'forma_pago_abono'       => 'nullable|string|max:50',
             'observacion'            => 'nullable|string',
             'comprobante'            => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:20480',
+            // Moneda del abono (puede diferir de la moneda de la factura).
+            'moneda_pago'            => 'nullable|string|in:PEN,USD',
+            'monto_original'         => 'nullable|numeric|min:0',
             // Recaudación (nivel factura)
             'total_recaudacion'      => 'nullable|numeric|min:0',
             'porcentaje_recaudacion' => 'nullable|numeric|min:0',
@@ -501,12 +547,12 @@ class FacturaController extends Controller
             'monto_cambio'           => 'nullable|numeric|min:0',
         ]);
 
-        $montoPagado = round((float) ($validated['monto_pagado'] ?? 0), 2);
+        $montoEntrada = round((float) ($validated['monto_pagado'] ?? 0), 2);
 
         // Subir el comprobante a S3 ANTES de abrir la transacción: la subida puede
         // tardar segundos y no debe retener el lock de la factura.
         $rutaComprobante = null;
-        if ($montoPagado > 0 && $request->hasFile('comprobante')) {
+        if ($montoEntrada > 0 && $request->hasFile('comprobante')) {
             $rutaComprobante = $request->file('comprobante')
                 ->store("facturas/comprobantes/{$id}", 's3');
             if (!$rutaComprobante) {
@@ -518,6 +564,14 @@ class FacturaController extends Controller
         try {
             /** @var Factura $factura */
             $factura = Factura::whereKey($id)->lockForUpdate()->firstOrFail();
+
+            // Convertir el abono a la moneda de la factura (pago en soles para
+            // facturas USD, o viceversa, usando el tipo de cambio de la factura).
+            $abono = $montoEntrada > 0
+                ? $this->resolverAbonoEnMonedaFactura($factura, $validated, $montoEntrada)
+                : ['monto' => 0.0, 'monto_original' => 0.0, 'moneda_pago' => null, 'monto_cambio' => null];
+            $montoPagado = $abono['monto'];
+
             if ($montoPagado > 0 && (
                 !$factura->activo
                 || !in_array($factura->estado, ['PENDIENTE', 'VENCIDO', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'], true)
@@ -531,6 +585,9 @@ class FacturaController extends Controller
                 DB::table('pago_factura')->insert([
                     'id_factura'            => $id,
                     'monto_pagado'          => $montoPagado,
+                    'moneda_pago'           => $abono['moneda_pago'],
+                    'monto_original'        => $abono['monto_original'],
+                    'monto_cambio_pago'     => $abono['monto_cambio'],
                     'fecha_pago'            => $validated['fecha_pago'] ?? now()->toDateString(),
                     'cuenta_pago'           => $validated['cuenta_pago'] ?? null,
                     'ruta_comprobante_pago' => $rutaComprobante,
@@ -645,6 +702,8 @@ class FacturaController extends Controller
             session()->flash('last_edited_factura_id', $id);
             $this->auditoria->registrar('FACTURA', (int) $id, 'PAGO_REGISTRADO', [
                 'monto' => $montoPagado,
+                'moneda_pago' => $abono['moneda_pago'],
+                'monto_original' => $abono['monto_original'],
                 'monto_pendiente' => $montoPendiente,
                 'estado' => $estado,
             ]);
@@ -683,6 +742,9 @@ class FacturaController extends Controller
             return [
                 'id_pago'          => $p->id_pago,
                 'monto_pagado'     => $p->monto_pagado,
+                'moneda_pago'      => $p->moneda_pago ?? null,
+                'monto_original'   => $p->monto_original ?? null,
+                'monto_cambio_pago'=> $p->monto_cambio_pago ?? null,
                 'fecha_pago'       => $p->fecha_pago,
                 'cuenta_pago'      => $p->cuenta_pago,
                 'numero_operacion' => $p->numero_operacion,
@@ -837,6 +899,9 @@ class FacturaController extends Controller
 
         $validated = $request->validate([
             'monto_pagado'     => 'required|numeric|min:0.01',
+            'moneda_pago'      => 'nullable|string|in:PEN,USD',
+            'monto_original'   => 'nullable|numeric|min:0',
+            'monto_cambio'     => 'nullable|numeric|min:0',
             'fecha_pago'       => 'required|date',
             'cuenta_pago'      => 'nullable|string|max:100',
             'numero_operacion' => 'nullable|string|max:100',
@@ -851,8 +916,14 @@ class FacturaController extends Controller
             $pagoActual = DB::table('pago_factura')->where('id_pago', $idPago)
                 ->where('id_factura', $id)->where('activo', 1)->lockForUpdate()->first();
             if (!$pagoActual) throw new \RuntimeException('Pago no encontrado.');
+
+            $abono = $this->resolverAbonoEnMonedaFactura($factura, $validated, (float) $validated['monto_pagado']);
+
             DB::table('pago_factura')->where('id_pago', $idPago)->where('id_factura', $id)->where('activo', 1)->update([
-                'monto_pagado'        => round((float) $validated['monto_pagado'], 2),
+                'monto_pagado'        => $abono['monto'],
+                'moneda_pago'         => $abono['moneda_pago'],
+                'monto_original'      => $abono['monto_original'],
+                'monto_cambio_pago'   => $abono['monto_cambio'],
                 'fecha_pago'          => $validated['fecha_pago'],
                 'cuenta_pago'         => $validated['cuenta_pago'] ?? null,
                 'numero_operacion'    => $validated['numero_operacion'] ?? null,
@@ -907,7 +978,9 @@ class FacturaController extends Controller
 
             $this->auditoria->registrar('FACTURA', (int) $id, 'PAGO_ACTUALIZADO', [
                 'id_pago' => (int) $idPago,
-                'monto' => round((float) $validated['monto_pagado'], 2),
+                'monto' => $abono['monto'],
+                'moneda_pago' => $abono['moneda_pago'],
+                'monto_original' => $abono['monto_original'],
                 'monto_pendiente' => $montoPendiente,
                 'estado' => $estado,
             ]);
@@ -968,6 +1041,8 @@ class FacturaController extends Controller
             'id_cliente'   => 'required|integer|exists:cliente,id_cliente',
             'monto_total'  => 'required|numeric|min:0.01',
             'fecha_abono'  => 'required|date',
+            'moneda_pago'  => 'nullable|string|in:PEN,USD',
+            'monto_cambio' => 'nullable|numeric|min:0',
             'cuenta_pago'  => 'nullable|string|max:255',
             'banco_origen' => 'nullable|string|max:255',
             'observacion'  => 'nullable|string|max:1000',
@@ -1058,6 +1133,13 @@ class FacturaController extends Controller
                 ->get(['id_factura', 'total_recaudacion', 'fecha_recaudacion', 'activo'])
                 ->keyBy('id_factura');
 
+            // Moneda de la transferencia (puede diferir de la de las facturas).
+            $monedaFactura = strtoupper((string) $facturas->first()->moneda);
+            $monedaPago = strtoupper((string) ($validated['moneda_pago'] ?? ''));
+            if ($monedaPago === '') {
+                $monedaPago = $monedaFactura;
+            }
+
             foreach ($detallesNorm as $d) {
                 /** @var Factura $factura */
                 $factura = $facturas->get($d['id_factura']);
@@ -1073,18 +1155,36 @@ class FacturaController extends Controller
                     throw new \RuntimeException("La factura {$factura->serie}-{$factura->numero} ya no está disponible para pago masivo.");
                 }
 
+                $montoOriginal = round((float) $d['monto'], 2);
+                $montoCambio = isset($validated['monto_cambio']) && (float) $validated['monto_cambio'] > 0
+                    ? round((float) $validated['monto_cambio'], 4)
+                    : ($factura->monto_cambio === null ? null : round((float) $factura->monto_cambio, 4));
+
+                $montoAplicado = $this->saldoFactura->montoAbonoEnMonedaFactura(
+                    $montoOriginal,
+                    $monedaPago,
+                    $monedaFactura,
+                    $montoCambio,
+                );
+                if ($montoAplicado === null) {
+                    throw new \RuntimeException('Indique el tipo de cambio para convertir el abono a la moneda de la factura.');
+                }
+
                 $pendienteAntes = round((float) $factura->monto_pendiente, 2);
-                if ($toCents($d['monto']) > $toCents($pendienteAntes)) {
+                if ($toCents($montoAplicado) > $toCents($pendienteAntes)) {
                     throw new \RuntimeException("El monto asignado supera el pendiente de la factura {$factura->serie}-{$factura->numero}.");
                 }
 
                 $estadoAntes  = (string) $factura->estado;
                 $abonadoAntes = round((float) $factura->monto_abonado, 2);
 
-                // Insertar el abono en pago_factura
+                // Insertar el abono en pago_factura (monto_pagado en moneda de factura)
                 DB::table('pago_factura')->insert([
                     'id_factura'            => $factura->id_factura,
-                    'monto_pagado'          => round((float) $d['monto'], 2),
+                    'monto_pagado'          => $montoAplicado,
+                    'moneda_pago'           => $monedaPago,
+                    'monto_original'        => $montoOriginal,
+                    'monto_cambio_pago'     => $montoCambio,
                     'fecha_pago'            => $validated['fecha_abono'],
                     'cuenta_pago'           => $validated['cuenta_pago'] ?? null,
                     'banco_origen'          => $validated['banco_origen'] ?? null,
@@ -1128,13 +1228,18 @@ class FacturaController extends Controller
                     'estado'              => $estadoNuevo,
                     'fecha_actualizacion' => now(),
                 ];
+                if (isset($validated['monto_cambio']) && (float) $validated['monto_cambio'] > 0) {
+                    $updateData['monto_cambio'] = round((float) $validated['monto_cambio'], 4);
+                }
 
                 $factura->update($updateData);
 
                 $resumenCambios[] = [
                     'id_factura' => (int) $factura->id_factura,
                     'factura' => $factura->serie . '-' . str_pad((string) $factura->numero, 8, '0', STR_PAD_LEFT),
-                    'monto_aplicado' => round((float) $d['monto'], 2),
+                    'monto_aplicado' => $montoAplicado,
+                    'moneda_pago' => $monedaPago,
+                    'monto_original' => $montoOriginal,
                     'estado_anterior' => $estadoAntes,
                     'estado_nuevo' => $estadoNuevo,
                     'abonado_anterior' => $abonadoAntes,

@@ -983,7 +983,7 @@
             <form id="formPagoMasivo" onsubmit="guardarPagoMasivo(event)" style="display:flex;flex-direction:column;min-height:0;flex:1;">
                 @csrf
                 <div class="modal-body" style="padding:24px;overflow-y:auto;min-height:0;flex:1;">
-                    <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px;">
+                    <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:12px;">
                         <div class="form-group">
                             <label class="form-label">Cliente</label>
                             <select id="pmCliente" class="form-input" onchange="cargarFacturasPagoMasivo()" required>
@@ -1000,6 +1000,20 @@
                         <div class="form-group">
                             <label class="form-label">Fecha Abono</label>
                             <input type="date" id="pmFechaAbono" class="form-input" value="{{ now()->format('Y-m-d') }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Moneda del pago</label>
+                            <select id="pmMonedaPago" class="form-input" onchange="onPmMonedaChange()">
+                                <option value="PEN">Soles (S/)</option>
+                                <option value="USD">Dólares (US$)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="pmTcWrap" style="display:none;margin-top:8px;">
+                        <div class="form-group" style="max-width:320px;">
+                            <label class="form-label">Tipo de cambio (S/ por 1 USD)</label>
+                            <input type="number" id="pmTc" step="0.001" min="0.001" class="form-input" placeholder="3.750">
+                            <span style="font-size:11px;color:var(--text-muted);margin-top:3px;display:block;">Convierte la transferencia a la moneda de las facturas seleccionadas.</span>
                         </div>
                     </div>
 
@@ -1176,8 +1190,19 @@
                 <input type="hidden" id="editPagoId">
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                     <div class="form-group">
-                        <label class="form-label">Monto *</label>
+                        <label class="form-label">Monto (moneda del pago) *</label>
                         <input type="number" id="editPagoMonto" step="0.01" min="0.01" class="form-input" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Moneda del pago *</label>
+                        <select id="editPagoMoneda" class="form-input" onchange="onEditPagoMonedaChange()">
+                            <option value="PEN">Soles (S/)</option>
+                            <option value="USD">Dólares (US$)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="editPagoTcGrp" style="display:none;">
+                        <label class="form-label">Tipo de cambio (S/ por 1 USD)</label>
+                        <input type="number" id="editPagoTc" step="0.001" min="0.001" class="form-input" placeholder="3.750">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Fecha *</label>
@@ -1342,6 +1367,13 @@
                             <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                             Agregar abono
                         </button>
+                    </div>
+                    <div id="abonoTcWrap" style="display:none;margin-bottom:12px;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;">
+                        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                            <label style="font-size:12px;font-weight:700;color:#1e40af;">Tipo de cambio (S/ por 1 USD)</label>
+                            <input type="number" id="pagoTcAbono" step="0.001" min="0.001" class="form-input" style="max-width:140px;" placeholder="3.750" oninput="onTcAbonoChange()">
+                            <span style="font-size:11px;color:#1d4ed8;">Se usa para convertir abonos en soles a la moneda de la factura (USD).</span>
+                        </div>
                     </div>
                     <div id="colaAbonos"></div>
                     <div id="colaVacia" style="text-align:center;padding:14px 0;color:#93c5fd;font-size:12px;font-weight:600;">
@@ -1931,6 +1963,11 @@
                 document.getElementById('pmBancoOrigenOtro').style.display = 'none';
                 document.getElementById('pmObservacion').value = 'Pago realizado desde un pago masivo';
                 document.getElementById('pmComprobante').value = '';
+                const _pmMon = document.getElementById('pmMonedaPago');
+                if (_pmMon) _pmMon.value = 'PEN';
+                const _pmTc = document.getElementById('pmTc');
+                if (_pmTc) _pmTc.value = '';
+                onPmMonedaChange();
                 pagoMasivoFacturas = [];
                 renderFacturasPagoMasivo();
                 recalcularPagoMasivo();
@@ -1984,6 +2021,18 @@
                 }
             }
 
+            function pmMonedaFactura() {
+                const sel = pagoMasivoFacturas.filter(f => f.selected);
+                if (!sel.length) return 'PEN';
+                return String(sel[0].moneda || '').toUpperCase().includes('USD') ? 'USD' : 'PEN';
+            }
+            function onPmMonedaChange() {
+                const sel = document.getElementById('pmMonedaPago');
+                const wrap = document.getElementById('pmTcWrap');
+                if (!sel || !wrap) return;
+                wrap.style.display = (sel.value !== pmMonedaFactura()) ? 'block' : 'none';
+            }
+
             async function cargarFacturasPagoMasivo() {
                 const idCliente = document.getElementById('pmCliente').value;
                 const tbody = document.getElementById('pmFacturasBody');
@@ -2020,6 +2069,7 @@
                     }));
                     renderFacturasPagoMasivo();
                     recalcularPagoMasivo();
+                    onPmMonedaChange();
                 } catch (e) {
                     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#dc2626;padding:16px;">${e.message}</td></tr>`;
                 }
@@ -2058,6 +2108,7 @@
                 f.monto = checked ? Number(f.pendiente.toFixed(2)) : 0;
                 renderFacturasPagoMasivo();
                 recalcularPagoMasivo();
+                onPmMonedaChange();
             }
 
             function setMontoFacturaMasiva(idx, value) {
@@ -2125,6 +2176,15 @@
                 formData.append('id_cliente', idCliente);
                 formData.append('monto_total', montoTotal.toFixed(2));
                 formData.append('fecha_abono', fechaAbono);
+                const pmMoneda = (document.getElementById('pmMonedaPago').value || pmMonedaFactura()).toUpperCase();
+                const pmTcVal = parseFloat(document.getElementById('pmTc').value) || 0;
+                if (pmMoneda !== pmMonedaFactura() && pmTcVal <= 0) {
+                    CRC.feedback({ tipo: 'error', titulo: 'Falta el tipo de cambio', mensaje: 'Indica el tipo de cambio para convertir la transferencia a la moneda de las facturas.' });
+                    btn.disabled = false; btn.textContent = 'Guardar Pago Masivo';
+                    return;
+                }
+                formData.append('moneda_pago', pmMoneda);
+                if (pmTcVal > 0) formData.append('monto_cambio', pmTcVal.toFixed(4));
                 formData.append('cuenta_pago', cuentaPago);
                 formData.append('banco_origen', bancoFinal);
                 formData.append('observacion',  observacionMasivo);
@@ -2224,6 +2284,12 @@
                     }
                 }, 50);
 
+                // Tipo de cambio para abonos (facturas USD): convierte soles→USD.
+                const _tcAbonoWrap = document.getElementById('abonoTcWrap');
+                const _tcAbonoInp  = document.getElementById('pagoTcAbono');
+                if (_tcAbonoWrap) _tcAbonoWrap.style.display = (moneda && moneda.includes('USD')) ? 'block' : 'none';
+                if (_tcAbonoInp) _tcAbonoInp.value = facturaMontoCambio > 0 ? parseFloat(facturaMontoCambio).toFixed(4) : '';
+
                 if (_edDisp) _edDisp.textContent = (moneda && moneda.includes('USD') && pctRec > 0)
                     ? `≈ USD ${parseFloat(pctRec).toFixed(2)} se descontarán del total de la factura` : '';
 
@@ -2309,8 +2375,49 @@
                     : 'Guardar pagos';
             }
 
+            // ── Conversión de moneda del abono ─────────────────────────────────
+            function monedaFacturaActual() {
+                return (facturaMoneda || '').toUpperCase().includes('USD') ? 'USD' : 'PEN';
+            }
+            function simboloFactura() {
+                return monedaFacturaActual() === 'USD' ? 'USD' : 'S/';
+            }
+            function tcAbono() {
+                const el = document.getElementById('pagoTcAbono');
+                const v = el ? parseFloat(el.value) : 0;
+                return v > 0 ? v : (parseFloat(facturaMontoCambio) || 0);
+            }
+            function montoAbonoEnFactura(p) {
+                const monto = parseFloat(p.monto) || 0;
+                const monedaFac = monedaFacturaActual();
+                const monedaPago = (p.monedaPago || monedaFac).toUpperCase();
+                if (monedaPago === monedaFac) return monto;
+                const tc = tcAbono();
+                if (tc <= 0) return 0;
+                if (monedaFac === 'USD' && monedaPago === 'PEN') return monto / tc;
+                if (monedaFac === 'PEN' && monedaPago === 'USD') return monto * tc;
+                return monto;
+            }
             function calcularTotalCola() {
-                return colaPagos.reduce((s, p) => s + (parseFloat(p.monto) || 0), 0);
+                return colaPagos.reduce((s, p) => s + (montoAbonoEnFactura(p) || 0), 0);
+            }
+            function onTcAbonoChange() {
+                const el = document.getElementById('pagoTcAbono');
+                const recTc = document.getElementById('pagoTipoCambio');
+                if (el && recTc && el.value) recTc.value = el.value;
+                renderCola();
+                const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                const pagadoText = document.getElementById('prPagado').textContent.replace(/[^0-9.]/g,'');
+                actualizarResumenPago(parseFloat(pagadoText)||0, totalRec, calcularTotalCola());
+            }
+            function onColaMoneda(idx, val) {
+                const p = colaPagos.find(x => x.idx === idx);
+                if (!p) return;
+                p.monedaPago = val;
+                renderCola();
+                const totalRec = parseFloat(document.getElementById('pagoTotalRecaudacion').value) || 0;
+                const pagadoText = document.getElementById('prPagado').textContent.replace(/[^0-9.]/g,'');
+                actualizarResumenPago(parseFloat(pagadoText)||0, totalRec, calcularTotalCola());
             }
 
             // ── Lista de pagos existentes ──────────────────────────────────────
@@ -2352,10 +2459,14 @@
                     const comp = p.comprobante_url
                         ? `<a href="${p.comprobante_url}" target="_blank" style="color:#1d4ed8;font-weight:600;font-size:11px;">Ver</a>`
                         : '<span style="color:#9ca3af;">—</span>';
+                    const monedaFac = (facturaMoneda || '').toUpperCase().includes('USD') ? 'USD' : 'PEN';
+                    const orig = (p.moneda_pago && p.monto_original != null && String(p.moneda_pago).toUpperCase() !== monedaFac)
+                        ? `${String(p.moneda_pago).toUpperCase() === 'USD' ? 'US$' : 'S/'} ${Number(p.monto_original).toFixed(2)}`
+                        : '';
                     return `<tr style="border-bottom:1px solid #f3e8c1;">
                         <td style="padding:7px 8px;color:#9ca3af;">${i+1}</td>
                         <td style="padding:7px 8px;white-space:nowrap;">${fechaStr}</td>
-                        <td style="padding:7px 8px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:#059669;">${sym} ${Number(p.monto_pagado).toFixed(2)}</td>
+                        <td style="padding:7px 8px;text-align:right;font-family:'DM Mono',monospace;font-weight:700;color:#059669;">${sym} ${Number(p.monto_pagado).toFixed(2)}${orig ? `<div style="font-size:10px;font-weight:600;color:#64748b;">${orig}</div>` : ''}</td>
                         <td style="padding:7px 8px;font-size:11px;">${p.banco_origen||'—'}</td>
                         <td style="padding:7px 8px;">${p.cuenta_pago||'—'}</td>
                         <td style="padding:7px 8px;font-family:'DM Mono',monospace;font-size:11px;">${p.numero_operacion||'—'}</td>
@@ -2396,8 +2507,13 @@
                 const p = pagoListaCargada.find(x => x.id_pago == idPago);
                 if (!p) return;
                 document.getElementById('editPagoId').value          = idPago;
-                document.getElementById('editPagoMonto').value       = Number(p.monto_pagado).toFixed(2);
+                document.getElementById('editPagoMonto').value       = Number(p.monto_original ?? p.monto_pagado).toFixed(2);
+                document.getElementById('editPagoMoneda').value      = (p.moneda_pago || monedaFacturaActual()).toUpperCase();
+                document.getElementById('editPagoTc').value          = p.monto_cambio_pago
+                    ? Number(p.monto_cambio_pago).toFixed(4)
+                    : (facturaMontoCambio > 0 ? Number(facturaMontoCambio).toFixed(4) : '');
                 document.getElementById('editPagoFecha').value       = p.fecha_pago || '';
+                onEditPagoMonedaChange();
                 // Banco origen select
                 const bancoSel      = document.getElementById('editPagoBanco');
                 const bancoOtroInp  = document.getElementById('editPagoBancoOtro');
@@ -2459,6 +2575,13 @@
                 if (sel.value !== 'OTROS') otro.value = '';
             }
 
+            function onEditPagoMonedaChange() {
+                const sel = document.getElementById('editPagoMoneda');
+                const grp = document.getElementById('editPagoTcGrp');
+                if (!sel || !grp) return;
+                grp.style.display = (sel.value !== monedaFacturaActual()) ? 'block' : 'none';
+            }
+
             function cerrarModalEditarPago() {
                 document.getElementById('modalEditarPagoOverlay').classList.remove('open');
             }
@@ -2475,11 +2598,21 @@
                 const bancoFinal = selBanco === 'OTROS'
                     ? document.getElementById('editPagoBancoOtro').value
                     : selBanco;
+                const monedaEdit = (document.getElementById('editPagoMoneda').value || monedaFacturaActual()).toUpperCase();
+                const tcEdit = parseFloat(document.getElementById('editPagoTc').value) || 0;
+                if (monedaEdit !== monedaFacturaActual() && tcEdit <= 0) {
+                    CRC.feedback({ tipo: 'error', titulo: 'Falta el tipo de cambio', mensaje: 'Indica el tipo de cambio para convertir el abono a la moneda de la factura.' });
+                    btn.disabled = false;
+                    document.getElementById('editPagoTc').focus();
+                    return;
+                }
                 try {
                     const body = new URLSearchParams({
                         _token:           CSRF,
                         _method:          'PUT',
                         monto_pagado:     document.getElementById('editPagoMonto').value,
+                        moneda_pago:      monedaEdit,
+                        monto_original:   document.getElementById('editPagoMonto').value,
                         fecha_pago:       document.getElementById('editPagoFecha').value,
                         banco_origen:     bancoFinal,
                         cuenta_pago:      cuentaFinal,
@@ -2487,6 +2620,7 @@
                         forma_pago:       document.getElementById('editPagoForma').value,
                         observacion:      document.getElementById('editPagoObs').value,
                     });
+                    if (tcEdit > 0) body.append('monto_cambio', tcEdit.toFixed(4));
                     const res  = await fetch(`/facturas/${facturaActualId}/pagos/${idPago}`, {
                         method : 'POST',
                         headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -2510,7 +2644,7 @@
             function agregarFilaPago() {
                 const hoy = '{{ now()->format("Y-m-d") }}';
                 const idx = ++colaIdx;
-                colaPagos.push({ idx, monto:'', fecha:hoy, cuenta:'', cuentaPreset:'', cuentaOtro:'', numeroOp:'', bancoPreset:'', bancoOtro:'', formaPago:'', observacion:'', file:null });
+                colaPagos.push({ idx, monto:'', monedaPago:monedaFacturaActual(), fecha:hoy, cuenta:'', cuentaPreset:'', cuentaOtro:'', numeroOp:'', bancoPreset:'', bancoOtro:'', formaPago:'', observacion:'', file:null });
                 renderCola();
                 // Enfocar el campo monto de la nueva fila
                 setTimeout(() => {
@@ -2538,15 +2672,25 @@
                     <button type="button" onclick="eliminarFilaCola(${p.idx})"
                         style="position:absolute;top:10px;right:10px;background:#fee2e2;color:#dc2626;border:none;border-radius:5px;cursor:pointer;padding:3px 8px;font-size:12px;font-weight:700;line-height:1;" title="Quitar fila">✕</button>
 
-                    <div style="display:grid;grid-template-columns:140px 140px 1fr 1fr;gap:10px;align-items:end;">
+                    <div style="display:grid;grid-template-columns:104px 150px 130px 1fr 1fr;gap:10px;align-items:end;">
+                        <div>
+                            <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#1e40af;display:block;margin-bottom:4px;">Moneda *</label>
+                            <select id="col_moneda_${p.idx}" class="form-input" onchange="onColaMoneda(${p.idx},this.value)">
+                                <option value="PEN"${(p.monedaPago||'PEN')==='PEN'?' selected':''}>Soles</option>
+                                <option value="USD"${(p.monedaPago||'PEN')==='USD'?' selected':''}>Dólares</option>
+                            </select>
+                        </div>
                         <div>
                             <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#1e40af;display:block;margin-bottom:4px;">Monto *</label>
                             <div style="position:relative;">
-                                <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:700;color:#1d4ed8;">S/</span>
+                                <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:12px;font-weight:700;color:#1d4ed8;">${(p.monedaPago||'PEN')==='USD'?'US$':'S/'}</span>
                                 <input type="number" id="col_monto_${p.idx}" step="0.01" min="0.01" value="${p.monto}"
-                                    class="form-input" style="padding-left:28px;font-weight:700;font-size:14px;color:#1d4ed8;border-color:#93c5fd;"
+                                    class="form-input" style="padding-left:34px;font-weight:700;font-size:14px;color:#1d4ed8;border-color:#93c5fd;"
                                     placeholder="0.00" oninput="onColaMonto(${p.idx},this.value)">
                             </div>
+                            ${(p.monedaPago||'PEN')!==monedaFacturaActual()
+                                ? `<span style="display:block;margin-top:3px;font-size:10px;font-weight:600;color:#059669;">≈ ${simboloFactura()} ${montoAbonoEnFactura(p).toFixed(2)}</span>`
+                                : ''}
                         </div>
                         <div>
                             <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#374151;display:block;margin-bottom:4px;">Fecha *</label>
@@ -2761,6 +2905,15 @@
                     }
                 }
 
+                const monedaFac = monedaFacturaActual();
+                const necesitaTc = colaPagos.some(p => (p.monedaPago || monedaFac) !== monedaFac);
+                if (necesitaTc && tcAbono() <= 0) {
+                    CRC.feedback({ tipo: 'error', titulo: 'Falta el tipo de cambio', mensaje: 'Indica el tipo de cambio para convertir los abonos a la moneda de la factura.' });
+                    const _tcEl = document.getElementById('pagoTcAbono');
+                    if (_tcEl) _tcEl.focus();
+                    return;
+                }
+
                 const btn = document.getElementById('btnGuardarPago');
                 btn.disabled = true;
 
@@ -2779,6 +2932,9 @@
                         formData.append('banco_origen',     p.bancoPreset === 'OTROS' ? (p.bancoOtro||'') : (p.bancoPreset||''));
                         formData.append('forma_pago_abono', p.formaPago    || '');
                         formData.append('observacion',      p.observacion  || '');
+                        formData.append('moneda_pago',      (p.monedaPago || monedaFac));
+                        formData.append('monto_original',   parseFloat(p.monto).toFixed(2));
+                        if (tcAbono() > 0) formData.append('monto_cambio', tcAbono().toFixed(4));
                         if (p.file) formData.append('comprobante', p.file);
                         // Recaudación solo en el último abono
                         if (i === colaPagos.length - 1) {
@@ -2787,7 +2943,6 @@
                             formData.append('tipo_recaudacion',       tipoRec || '');
                             formData.append('fecha_recaudacion',      fechaRec);
                             formData.append('validar_detraccion',     validarDet ? '1' : '0');
-                            if (tipoCambio > 0) formData.append('monto_cambio', tipoCambio.toFixed(4));
                         }
 
                         try {

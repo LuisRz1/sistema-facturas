@@ -68,4 +68,40 @@ class SaldoFacturaServiceTest extends TestCase
             ], 118.00],
         ];
     }
+
+    #[DataProvider('casosDeConversionAbono')]
+    public function test_convierte_el_abono_a_la_moneda_de_la_factura(
+        float $monto,
+        string $monedaPago,
+        string $monedaFactura,
+        ?float $montoCambio,
+        ?float $esperado,
+    ): void {
+        $resultado = (new SaldoFacturaService())->montoAbonoEnMonedaFactura(
+            $monto,
+            $monedaPago,
+            $monedaFactura,
+            $montoCambio,
+        );
+
+        if ($esperado === null) {
+            $this->assertNull($resultado);
+            return;
+        }
+
+        $this->assertEqualsWithDelta($esperado, $resultado, 0.001);
+    }
+
+    public static function casosDeConversionAbono(): array
+    {
+        return [
+            'misma moneda no convierte' => [375.00, 'PEN', 'PEN', 3.75, 375.00],
+            'USD igual no convierte' => [100.00, 'USD', 'USD', null, 100.00],
+            'soles a USD con TC' => [375.00, 'PEN', 'USD', 3.75, 100.00],
+            'soles a USD sin TC devuelve null' => [375.00, 'PEN', 'USD', null, null],
+            'soles a USD TC cero devuelve null' => [375.00, 'PEN', 'USD', 0.0, null],
+            'USD a soles con TC' => [100.00, 'USD', 'PEN', 3.75, 375.00],
+            'redondeo a dos decimales' => [100.00, 'PEN', 'USD', 3.00, 33.33],
+        ];
+    }
 }

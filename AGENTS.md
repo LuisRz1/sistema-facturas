@@ -28,6 +28,7 @@
 ## Invariantes funcionales
 
 - `factura.monto_pendiente` se calcula de forma centralizada: `importe_total - pagos_directos - recaudación_confirmada`. Una recaudación solo descuenta si está activa y tiene `fecha_recaudacion`; en USD se convierte con `monto_cambio`. Las notas de crédito conservan su saldo negativo y los anulados quedan en cero.
+- Los abonos indican la moneda en que se pagaron (`pago_factura.moneda_pago`) y se guardan siempre en la moneda de la factura (`monto_pagado`), conservando el monto tal como se pagó en `monto_original` y el tipo de cambio usado en `monto_cambio_pago`. Si la moneda del pago difiere de la de la factura se convierte con `monto_cambio` (soles↔dólares); sin tipo de cambio la operación se bloquea. La conversión vive en `App\Services\SaldoFacturaService::montoAbonoEnMonedaFactura` y aplica a abono individual, edición y pago masivo.
 - Los estados pendientes usados por facturación son `PENDIENTE`, `VENCIDO` y `DIFERENCIA PENDIENTE`; revisar cuidadosamente cualquier ampliación porque dashboard y reportes replican esta lógica.
 - La lista de facturas pagina 10 por defecto y solo admite 10, 20 o 50 filas. Los filtros deben conservarse al cambiar de página.
 - En Railway Hobby el correo de producción usa Gmail API por HTTPS: `MAIL_MAILER=gmail-api`. No volver a SMTP como solución de producción sin comprobar antes las restricciones de red del plan.
@@ -49,6 +50,7 @@
 - La migración aditiva `2026_09_19_010000_add_oc_hes_to_cotizaciones` agrega indicadores, referencias HES y tablas de OC, HES y asignaciones. No inferir horas históricas del texto `orden_compra`: las valorizaciones anteriores siguen sin control hasta registrar su primera OC con cupo.
 - Existen dos identidades: `App\Models\Usuario` sobre `usuario`, usada por la autenticación del sistema, y `App\Models\User` sobre `users`. No intercambiarlas accidentalmente.
 - La migración `2026_09_23_010000_add_actor_audit_for_notifications_and_actions` añade `notificacion_factura.id_usuario` y la tabla aditiva `auditoria_accion`. Registrar las acciones relevantes sobre facturas después del commit y mostrar en el historial el usuario y la fecha/hora; no almacenar secretos ni contenido de archivos en `detalle`.
+- La migración aditiva `2026_09_23_020000_add_moneda_pago_to_pago_factura` agrega `moneda_pago`, `monto_original` y `monto_cambio_pago` a `pago_factura`. `monto_pagado` sigue siendo la suma que alimenta `monto_abonado` y ya está expresada en la moneda de la factura.
 - La cola usa la base de datos. En producción no hay un proceso worker dedicado documentado; cualquier cambio que despache jobs debe incluir estrategia de ejecución y supervisión.
 
 ## Flujo de trabajo

@@ -41,6 +41,43 @@ final class SaldoFacturaService
         return round(max(0, $importeTotal - $montoAbonado - $recaudacionConfirmada), 2);
     }
 
+    /**
+     * Convierte el monto de un abono (expresado en la moneda en que se pagó) a
+     * la moneda de la factura. Devuelve null cuando se requiere conversión pero
+     * no hay tipo de cambio disponible, para que el llamador pueda bloquear.
+     */
+    public function montoAbonoEnMonedaFactura(
+        float $monto,
+        string $monedaPago,
+        string $monedaFactura,
+        ?float $montoCambio,
+    ): ?float {
+        $monto = round($monto, 2);
+        $pago = strtoupper(trim($monedaPago));
+        $factura = strtoupper(trim($monedaFactura));
+
+        // Misma moneda (o datos incompletos): no hay nada que convertir.
+        if ($pago === '' || $factura === '' || $pago === $factura) {
+            return $monto;
+        }
+
+        $tipoCambio = round((float) $montoCambio, 4);
+        if ($tipoCambio <= 0) {
+            return null;
+        }
+
+        if ($factura === 'USD' && $pago === 'PEN') {
+            return round($monto / $tipoCambio, 2);
+        }
+
+        if ($factura === 'PEN' && $pago === 'USD') {
+            return round($monto * $tipoCambio, 2);
+        }
+
+        // Par de monedas no contemplado: no convertir para no mezclar.
+        return $monto;
+    }
+
     public function recaudacionConfirmadaEnMoneda(
         float $totalRecaudacion,
         ?string $fechaRecaudacion,

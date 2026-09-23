@@ -42,6 +42,9 @@ class PagosFacturasTest extends TestCase
             $table->increments('id_pago');
             $table->unsignedInteger('id_factura');
             $table->decimal('monto_pagado', 12, 2);
+            $table->string('moneda_pago', 3)->nullable();
+            $table->decimal('monto_original', 12, 2)->nullable();
+            $table->decimal('monto_cambio_pago', 10, 4)->nullable();
             $table->date('fecha_pago')->nullable();
             $table->string('cuenta_pago')->nullable();
             $table->string('ruta_comprobante_pago')->nullable();
@@ -218,6 +221,100 @@ class PagosFacturasTest extends TestCase
         ])->assertUnprocessable();
         $this->assertSaldo($id, 40, 60, 'DIFERENCIA PENDIENTE');
         $this->assertEqualsWithDelta(40, (float) DB::table('pago_factura')->where('id_pago', $pagoId)->value('monto_pagado'), 0.001);
+    }
+
+    public function test_abono_en_soles_se_convierte_a_usd_con_el_tipo_de_cambio(): void
+    {
+        $id = $this->factura(1, 100, 'USD', null, 3.75);
+
+        $this->postJson("/facturas/{$id}/pago", [
+            'monto_pagado'   => 375,
+            'monto_original' => 375,
+            'moneda_pago'    => 'PEN',
+            'monto_cambio'   => 3.75,
+            'fecha_pago'     => '2026-09-20',
+        ])->assertOk()
+            ->assertJsonPath('monto_pendiente', 0)
+            ->assertJsonPath('estado', 'PAGADA');
+
+        $pago = DB::table('pago_factura')->where('id_factura', $id)->first();
+        $this->assertEqualsWithDelta(100, (float) $pago->monto_pagado, 0.001);
+        $this->assertSame('PEN', $pago->moneda_pago);
+        $this->assertEqualsWithDelta(375, (float) $pago->monto_original, 0.001);
+        $this->assertEqualsWithDelta(3.75, (float) $pago->monto_cambio_pago, 0.0001);
+        $this->assertSaldo($id, 100, 0, 'PAGADA');
+    }
+
+    public function test_abono_en_soles_sin_tipo_de_cambio_es_rechazado(): void
+    {
+        $id = $this->factura(1, 100, 'USD');
+
+        $this->postJson("/facturas/{$id}/pago", [
+            'monto_pagado'   => 375,
+            'monto_original' => 375,
+            'moneda_pago'    => 'PEN',
+            'fecha_pago'     => '2026-09-20',
+        ])->assertUnprocessable();
+
+        $this->assertSame(0, DB::table('pago_factura')->count());
+        $this->assertSaldo($id, 0, 100, 'PENDIENTE');
+    }
+
+    public function test_editar_abono_convierte_soles_a_usd(): void
+    {
+        $id = $this->factura(1, 100, 'USD', null, 3.75);
+        $this->postJson("/facturas/{$id}/pago", [
+            'monto_pagado' => 100, 'fecha_pago' => '2026-09-20',
+        ])->assertOk()->assertJsonPath('estado', 'PAGADA');
+        $pagoId = DB::table('pago_factura')->value('id_pago');
+
+        $this->putJson("/facturas/{$id}/pagos/{$pagoId}", [
+            'monto_pagado'   => 375,
+            'monto_original' => 375,
+            'moneda_pago'    => 'PEN',
+            'monto_cambio'   => 3.75,
+            'fecha_pago'     => '2026-09-20',
+        ])->assertOk()->assertJsonPath('monto_pendiente', 0);
+
+        $pago = DB::table('pago_factura')->where('id_pago', $pagoId)->first();
+        $this->assertEqualsWithDelta(100, (float) $pago->monto_pagado, 0.001);
+        $this->assertSame('PEN', $pago->moneda_pago);
+        $this->assertEqualsWithDelta(375, (float) $pago->monto_original, 0.001);
+    }
+
+    public function test_pago_masivo_convierte_soles_a_usd(): void
+    {
+        $id = $this->factura(1, 100, 'USD', null, 3.75);
+
+        $this->postJson('/facturas/pago-masivo/procesar', [
+            'id_cliente'   => 1,
+            'monto_total'  => 375,
+            'fecha_abono'  => '2026-09-20',
+            'moneda_pago'  => 'PEN',
+            'monto_cambio' => 3.75,
+            'detalles'     => [['id_factura' => $id, 'monto' => 375]],
+        ])->assertOk()->assertJsonPath('facturas_actualizadas', 1);
+
+        $pago = DB::table('pago_factura')->where('id_factura', $id)->first();
+        $this->assertEqualsWithDelta(100, (float) $pago->monto_pagado, 0.001);
+        $this->assertSame('PEN', $pago->moneda_pago);
+        $this->assertEqualsWithDelta(375, (float) $pago->monto_original, 0.001);
+        $this->assertSaldo($id, 100, 0, 'PAGADA');
+    }
+
+    public function test_abono_en_dolares_para_factura_en_soles_se_convierte(): void
+    {
+        $id = $this->factura(1, 1000, 'PEN', null, 3.75);
+
+        $this->postJson("/facturas/{$id}/pago", [
+            'monto_pagado'   => 100,
+            'monto_original' => 100,
+            'moneda_pago'    => 'USD',
+            'monto_cambio'   => 3.75,
+            'fecha_pago'     => '2026-09-20',
+        ])->assertOk()->assertJsonPath('monto_pendiente', 625);
+
+        $this->assertSaldo($id, 375, 625, 'DIFERENCIA PENDIENTE');
     }
 
     private function factura(int $cliente, float $importe, string $moneda = 'PEN', ?string $tipoRecaudacion = null, ?float $cambio = null): int

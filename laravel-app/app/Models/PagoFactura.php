@@ -14,6 +14,9 @@ class PagoFactura extends Model
     protected $fillable = [
         'id_factura',
         'monto_pagado',
+        'moneda_pago',
+        'monto_original',
+        'monto_cambio_pago',
         'fecha_pago',
         'cuenta_pago',
         'ruta_comprobante_pago',
