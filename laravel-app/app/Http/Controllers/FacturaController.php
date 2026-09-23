@@ -312,8 +312,12 @@ class FacturaController extends Controller
             'glosa'             => 'nullable|string|max:500',
             'forma_pago'        => 'nullable|string|max:100',
             'estado'            => 'nullable|in:PENDIENTE,VENCIDO,PAGADA,DIFERENCIA PENDIENTE,POR VALIDAR DETRACCION',
-            'usuario_creacion'  => 'nullable|string|max:100',
         ]);
+
+        // Quién crea la factura: siempre el usuario autenticado. Se guarda tanto
+        // en `id_usuario` como en `usuario_creacion` (que alimenta la columna
+        // "CREADO POR" del listado).
+        $idUsuarioCreador = auth()->id();
 
         // Check for duplicate serie+numero per client
         $existe = DB::table('factura')
@@ -332,7 +336,7 @@ class FacturaController extends Controller
         $now    = now();
         $id = DB::table('factura')->insertGetId([
             'id_cliente'          => $validated['id_cliente'],
-            'id_usuario'          => auth()->id(),
+            'id_usuario'          => $idUsuarioCreador,
             'serie'               => strtoupper(trim($validated['serie'])),
             'numero'              => (int) $validated['numero'],
             'moneda'              => $validated['moneda'],
@@ -348,7 +352,7 @@ class FacturaController extends Controller
             'forma_pago'          => $validated['forma_pago'] ?? null,
             'estado'              => $estado,
             'activo'              => 1,
-            'usuario_creacion'    => $validated['usuario_creacion'] ?? null,
+            'usuario_creacion'    => $idUsuarioCreador,
             'fecha_creacion'      => $now,
             'fecha_actualizacion' => $now,
         ]);
