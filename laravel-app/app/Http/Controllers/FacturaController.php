@@ -485,6 +485,13 @@ class FacturaController extends Controller
         try {
             /** @var Factura $factura */
             $factura = Factura::whereKey($id)->lockForUpdate()->firstOrFail();
+            if ($montoPagado > 0 && (
+                !$factura->activo
+                || !in_array($factura->estado, ['PENDIENTE', 'VENCIDO', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'], true)
+                || (float) $factura->importe_total <= 0
+            )) {
+                throw new \RuntimeException('La factura no está disponible para registrar abonos.');
+            }
 
             // Insertar nuevo abono si el monto es mayor que cero
             if ($montoPagado > 0) {
@@ -507,14 +514,38 @@ class FacturaController extends Controller
             // conservar el registro existente y, especialmente, su fecha de
             // confirmación para no alterar el saldo al registrar un abono.
             $recaudacionExistente = DB::table('recaudacion')->where('id_factura', $id)->first();
+            $camposDeRecaudacion = [
+                'total_recaudacion',
+                'porcentaje_recaudacion',
+                'tipo_recaudacion',
+                'fecha_recaudacion',
+                'validar_detraccion',
+            ];
+            $actualizaRecaudacion = collect($camposDeRecaudacion)
+                ->contains(fn (string $campo) => array_key_exists($campo, $validated));
+
             $totalRecaudacion = array_key_exists('total_recaudacion', $validated)
                 ? round((float) $validated['total_recaudacion'], 2)
                 : round((float) ($recaudacionExistente->total_recaudacion ?? 0), 2);
             $tipoRecaudacion  = $validated['tipo_recaudacion'] ?? $factura->tipo_recaudacion;
             $porcentaje       = $validated['porcentaje_recaudacion'] ?? ($recaudacionExistente->porcentaje ?? null);
-            $fechaRecaudacion = array_key_exists('fecha_recaudacion', $validated)
-                ? $validated['fecha_recaudacion']
-                : ($recaudacionExistente->fecha_recaudacion ?? null);
+
+            // La fecha es la fuente de verdad de la confirmación. Cuando el
+            // usuario desmarca la confirmación, se debe borrar explícitamente
+            // para que la recaudación deje de descontar el saldo y sea editable.
+            if ($actualizaRecaudacion && array_key_exists('validar_detraccion', $validated)) {
+                $fechaRecaudacion = (bool) $validated['validar_detraccion']
+                    ? ($validated['fecha_recaudacion'] ?? ($recaudacionExistente->fecha_recaudacion ?? null))
+                    : null;
+            } else {
+                $fechaRecaudacion = array_key_exists('fecha_recaudacion', $validated)
+                    ? $validated['fecha_recaudacion']
+                    : ($recaudacionExistente->fecha_recaudacion ?? null);
+            }
+
+            if ($actualizaRecaudacion && (bool) ($validated['validar_detraccion'] ?? false) && empty($fechaRecaudacion)) {
+                throw new \RuntimeException('Indique la fecha de depósito para confirmar la recaudación.');
+            }
 
             if ($tipoRecaudacion && $totalRecaudacion > 0) {
                 DB::table('recaudacion')->updateOrInsert(
@@ -543,6 +574,15 @@ class FacturaController extends Controller
             // Actualizar monto_cambio en el modelo si se proporciona en el formulario
             if (isset($validated['monto_cambio']) && (float)$validated['monto_cambio'] > 0) {
                 $factura->monto_cambio = round((float)$validated['monto_cambio'], 4);
+            }
+            $recaudacionConfirmada = $this->saldoFactura->recaudacionConfirmadaEnMoneda(
+                $totalRecaudacion, $fechaRecaudacion, (string) $factura->moneda,
+                $factura->monto_cambio === null ? null : (float) $factura->monto_cambio,
+                $tipoRecaudacion, (bool) ($recaudacionExistente->activo ?? true),
+            );
+            if ($montoPagado > 0 && (int) round($montoAbonadoTotal * 100) >
+                (int) round(max(0, $importeTotal - $recaudacionConfirmada) * 100)) {
+                throw new \RuntimeException('El abono supera el saldo disponible de la factura.');
             }
             $montoPendiente = $this->calcularMontoPendiente(
                 $factura, $montoAbonadoTotal, $totalRecaudacion, $fechaRecaudacion,
@@ -582,6 +622,7 @@ class FacturaController extends Controller
 
         } catch (\Throwable $e) {
             DB::rollBack();
+            if ($rutaComprobante) Storage::disk('s3')->delete($rutaComprobante);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
     }
@@ -641,7 +682,11 @@ class FacturaController extends Controller
 
         DB::beginTransaction();
         try {
-            DB::table('pago_factura')->where('id_pago', $idPago)->update([
+            $factura = Factura::whereKey($id)->lockForUpdate()->firstOrFail();
+            $pagoActual = DB::table('pago_factura')->where('id_pago', $idPago)
+                ->where('id_factura', $id)->where('activo', 1)->lockForUpdate()->first();
+            if (!$pagoActual) throw new \RuntimeException('Pago no encontrado.');
+            DB::table('pago_factura')->where('id_pago', $idPago)->where('id_factura', $id)->where('activo', 1)->update([
                 'activo'               => 0,
                 'fecha_actualizacion'  => now(),
             ]);
@@ -721,7 +766,11 @@ class FacturaController extends Controller
 
         DB::beginTransaction();
         try {
-            DB::table('pago_factura')->where('id_pago', $idPago)->update([
+            $factura = Factura::whereKey($id)->lockForUpdate()->firstOrFail();
+            $pagoActual = DB::table('pago_factura')->where('id_pago', $idPago)
+                ->where('id_factura', $id)->where('activo', 1)->lockForUpdate()->first();
+            if (!$pagoActual) throw new \RuntimeException('Pago no encontrado.');
+            DB::table('pago_factura')->where('id_pago', $idPago)->where('id_factura', $id)->where('activo', 1)->update([
                 'monto_pagado'        => round((float) $validated['monto_pagado'], 2),
                 'fecha_pago'          => $validated['fecha_pago'],
                 'cuenta_pago'         => $validated['cuenta_pago'] ?? null,
@@ -744,6 +793,16 @@ class FacturaController extends Controller
                     ->sum('monto_pagado'),
                 2
             );
+
+            $recaudacionConfirmada = $this->saldoFactura->recaudacionConfirmadaEnMoneda(
+                $totalRecaudacion, $fechaRecaudacion, (string) $factura->moneda,
+                $factura->monto_cambio === null ? null : (float) $factura->monto_cambio,
+                $factura->tipo_recaudacion, (bool) ($recaudacion->activo ?? true),
+            );
+            if ((int) round($montoAbonadoTotal * 100) >
+                (int) round(max(0, (float) $factura->importe_total - $recaudacionConfirmada) * 100)) {
+                throw new \RuntimeException('El abono supera el saldo disponible de la factura.');
+            }
 
             $montoPendiente = $this->calcularMontoPendiente(
                 $factura, $montoAbonadoTotal, $totalRecaudacion, $fechaRecaudacion,
@@ -894,12 +953,16 @@ class FacturaController extends Controller
             $resumenCambios = [];
 
             $facturas = Factura::whereIn('id_factura', $ids->all())
+                ->orderBy('id_factura')
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id_factura');
 
             if ($facturas->count() !== $ids->count()) {
                 throw new \RuntimeException('Una o más facturas no existen o no están disponibles.');
+            }
+            if ($facturas->pluck('moneda')->map(fn ($moneda) => strtoupper((string) $moneda))->unique()->count() !== 1) {
+                throw new \RuntimeException('Un pago masivo solo puede incluir facturas de una misma moneda.');
             }
 
             $recaudMap = DB::table('recaudacion')
@@ -918,7 +981,7 @@ class FacturaController extends Controller
                     throw new \RuntimeException('Todas las facturas seleccionadas deben pertenecer al mismo cliente.');
                 }
 
-                if (!in_array($factura->estado, ['PENDIENTE', 'VENCIDO', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'], true)) {
+                if (!$factura->activo || !in_array($factura->estado, ['PENDIENTE', 'VENCIDO', 'POR VALIDAR DETRACCION', 'DIFERENCIA PENDIENTE'], true)) {
                     throw new \RuntimeException("La factura {$factura->serie}-{$factura->numero} ya no está disponible para pago masivo.");
                 }
 
@@ -1002,6 +1065,7 @@ class FacturaController extends Controller
             ]);
         } catch (\Throwable $e) {
             DB::rollBack();
+            if ($rutaComprobanteMasivo) Storage::disk('s3')->delete($rutaComprobanteMasivo);
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),

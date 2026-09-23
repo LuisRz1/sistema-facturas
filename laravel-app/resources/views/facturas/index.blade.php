@@ -933,7 +933,7 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Monto Transferencia</label>
+                            <label class="form-label">Monto Transferencia (una sola moneda)</label>
                             <input type="number" id="pmMontoTotal" class="form-input" step="0.01" min="0.01" placeholder="0.00" oninput="recalcularPagoMasivo()" required>
                         </div>
                         <div class="form-group">
@@ -1603,6 +1603,7 @@
             let facturaMontoPendiente = 0; // monto_pendiente directo de BD (al abrir el modal)
             let facturaMontoCambio   = 0; // monto_cambio (tipo de cambio) de BD
             let recaudYaPagada       = false; // true when existing recaudacion already has fecha (paid)
+            let recaudacionFueConfirmadaAlAbrir = false;
             const CSRF = document.querySelector('meta[name="csrf-token"]').content;
             const PM_FETCH_URL = '{{ route("facturas.pago-masivo.facturas-cliente") }}';
             const PM_SAVE_URL = '{{ route("facturas.pago-masivo.procesar") }}';
@@ -1894,7 +1895,7 @@
 
                 tbody.innerHTML = pagoMasivoFacturas.map((f, idx) => {
                     const doc = `${f.serie}-${String(f.numero).padStart(8, '0')}`;
-                    const pend = `S/ ${Number(f.pendiente).toFixed(2)}`;
+                    const pend = `${f.moneda === 'USD' ? 'US$' : 'S/'} ${Number(f.pendiente).toFixed(2)}`;
                     return `<tr>
                         <td style="text-align:center;"><input type="checkbox" ${f.selected ? 'checked' : ''} onchange="toggleFacturaMasiva(${idx}, this.checked)"></td>
                         <td><strong>${doc}</strong></td>
@@ -1908,6 +1909,12 @@
             function toggleFacturaMasiva(idx, checked) {
                 const f = pagoMasivoFacturas[idx];
                 if (!f) return;
+                const monedaSeleccionada = pagoMasivoFacturas.find(factura => factura.selected && factura.id_factura !== f.id_factura)?.moneda;
+                if (checked && monedaSeleccionada && monedaSeleccionada !== f.moneda) {
+                    CRC.feedback({ tipo: 'error', titulo: 'Monedas distintas', mensaje: 'Una transferencia masiva solo puede aplicarse a facturas de la misma moneda.' });
+                    renderFacturasPagoMasivo();
+                    return;
+                }
                 f.selected = checked;
                 f.monto = checked ? Number(f.pendiente.toFixed(2)) : 0;
                 renderFacturasPagoMasivo();
@@ -1924,15 +1931,17 @@
 
             function recalcularPagoMasivo() {
                 const totalTransfer = Number(document.getElementById('pmMontoTotal').value || 0);
+                const moneda = pagoMasivoFacturas.find(f => f.selected)?.moneda || 'PEN';
+                const simbolo = moneda === 'USD' ? 'US$' : 'S/';
                 const totalAsignado = pagoMasivoFacturas
                     .filter(f => f.selected)
                     .reduce((acc, f) => acc + Number(f.monto || 0), 0);
                 const diff = totalTransfer - totalAsignado;
 
-                document.getElementById('pmKpiTransfer').textContent = `S/ ${totalTransfer.toFixed(2)}`;
-                document.getElementById('pmKpiAsignado').textContent = `S/ ${totalAsignado.toFixed(2)}`;
+                document.getElementById('pmKpiTransfer').textContent = `${simbolo} ${totalTransfer.toFixed(2)}`;
+                document.getElementById('pmKpiAsignado').textContent = `${simbolo} ${totalAsignado.toFixed(2)}`;
                 const diffEl = document.getElementById('pmKpiDiferencia');
-                diffEl.textContent = `S/ ${diff.toFixed(2)}`;
+                diffEl.textContent = `${simbolo} ${diff.toFixed(2)}`;
                 diffEl.style.color = Math.abs(diff) < 0.005 ? '#059669' : '#dc2626';
             }
 
@@ -1958,6 +1967,11 @@
                 const suma = detalles.reduce((acc, d) => acc + Number(d.monto), 0);
                 if (!detalles.length) {
                     CRC.feedback({ tipo: 'error', titulo: 'Sin facturas seleccionadas', mensaje: 'Selecciona al menos una factura para el pago masivo.' });
+                    btn.disabled = false; btn.textContent = 'Guardar Pago Masivo';
+                    return;
+                }
+                if (new Set(pagoMasivoFacturas.filter(f => f.selected).map(f => f.moneda)).size !== 1) {
+                    CRC.feedback({ tipo: 'error', titulo: 'Monedas distintas', mensaje: 'Selecciona facturas de una sola moneda por transferencia.' });
                     btn.disabled = false; btn.textContent = 'Guardar Pago Masivo';
                     return;
                 }
@@ -2032,13 +2046,22 @@
                 facturaMontoPendiente = parseFloat(montoPendienteDB || 0);
                 facturaMontoCambio    = parseFloat(montoCambio || 0);
                 recaudYaPagada        = !!(fechaRec && fechaRec.trim() !== '');
+                recaudacionFueConfirmadaAlAbrir = recaudYaPagada;
+
+                // Versiones anteriores guardaban el equivalente USD en
+                // porcentaje, pero no persistían el TC. Podemos reconstruirlo
+                // aquí para que el usuario lo confirme al guardar, sin mezclar
+                // PEN con USD en el saldo.
+                if ((moneda || '').includes('USD') && facturaMontoCambio <= 0 && totalRec > 0 && pctRec > 0) {
+                    facturaMontoCambio = parseFloat((totalRec / pctRec).toFixed(4));
+                }
                 colaPagos       = [];
                 colaIdx         = 0;
                 document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} — ${moneda} ${parseFloat(importe).toFixed(2)}`;
 
                 // Recaudación
                 document.getElementById('pagoFechaRecaudacion').value = fechaRec || '';
-                document.getElementById('chkValidarDetraccion').checked = false;
+                document.getElementById('chkValidarDetraccion').checked = recaudYaPagada;
                 document.getElementById('pagoTotalRecaudacion').value  = totalRec > 0 ? totalRec : '';
                 document.getElementById('pagoPorcentaje').value        = pctRec   > 0 ? pctRec   : '';
                 seleccionarTipoRec(tipoRec || '');
@@ -2567,6 +2590,7 @@
                 const validarDet = document.getElementById('chkValidarDetraccion').checked;
                 const fechaRec   = document.getElementById('pagoFechaRecaudacion').value || '';
                 const pctRec     = parseFloat(document.getElementById('pagoPorcentaje').value) || 0;
+                const tipoCambio = parseFloat(document.getElementById('pagoTipoCambio').value) || facturaMontoCambio || 0;
 
                 // Validar conversión USD si está activa y NO fue ya pagada
                 const convWrapG = document.getElementById('recaudUsdConvWrap');
@@ -2580,7 +2604,8 @@
                     }
                 }
 
-                if (!colaPagos.length && !validarDet) {
+                const seEstaDesconfirmando = recaudacionFueConfirmadaAlAbrir && !validarDet;
+                if (!colaPagos.length && !validarDet && !seEstaDesconfirmando) {
                     CRC.feedback({ tipo: 'error', titulo: 'Nada por registrar', mensaje: 'Agrega al menos un abono o confirma la recaudación antes de guardar.' });
                     return;
                 }
@@ -2623,6 +2648,7 @@
                             formData.append('tipo_recaudacion',       tipoRec || '');
                             formData.append('fecha_recaudacion',      fechaRec);
                             formData.append('validar_detraccion',     validarDet ? '1' : '0');
+                            if (tipoCambio > 0) formData.append('monto_cambio', tipoCambio.toFixed(4));
                         }
 
                         try {
@@ -2650,7 +2676,8 @@
                     formData.append('porcentaje_recaudacion', pctRec.toString());
                     formData.append('tipo_recaudacion',       tipoRec || '');
                     formData.append('fecha_recaudacion',      fechaRec);
-                    formData.append('validar_detraccion',     '1');
+                    formData.append('validar_detraccion',     validarDet ? '1' : '0');
+                    if (tipoCambio > 0) formData.append('monto_cambio', tipoCambio.toFixed(4));
                     try {
                         const res = await fetch(`/facturas/${facturaActualId}/pago`, {
                             method : 'POST',
@@ -2745,20 +2772,6 @@
                     if (montoGrp) montoGrp.style.display = 'none';
                     if (pctGroup) pctGroup.style.display = 'none';
                     if (usdNote) usdNote.style.display = 'none';
-                    // Si la recaudación ya fue pagada, bloquear edición de los campos de conversión
-                    const solesInp = document.getElementById('pagoMontoSoles');
-                    const tcInp   = document.getElementById('pagoTipoCambio');
-                    if (recaudYaPagada) {
-                        if (solesInp) { solesInp.readOnly = true; solesInp.style.background = '#f1f5f9'; solesInp.style.color = '#64748b'; }
-                        if (tcInp)    { tcInp.readOnly = true;    tcInp.style.background    = '#f1f5f9'; tcInp.style.color    = '#64748b'; }
-                        const lockNote = document.getElementById('recaudConvLockNote');
-                        if (lockNote) lockNote.style.display = 'block';
-                    } else {
-                        if (solesInp) { solesInp.readOnly = false; solesInp.style.background = ''; solesInp.style.color = ''; }
-                        if (tcInp)    { tcInp.readOnly = false;    tcInp.style.background    = ''; tcInp.style.color    = ''; }
-                        const lockNote = document.getElementById('recaudConvLockNote');
-                        if (lockNote) lockNote.style.display = 'none';
-                    }
                 } else {
                     if (convWrap) convWrap.style.display = 'none';
                     if (montoGrp) montoGrp.style.display = '';
@@ -2769,6 +2782,8 @@
                         if (label) label.textContent = 'Monto (USD)';
                     }
                 }
+
+                actualizarEdicionRecaudacion();
             }
 
             function calcularRecaudacion() {
@@ -2809,10 +2824,51 @@
             }
 
             function onChkDetraccionChange() {
+                const chk = document.getElementById('chkValidarDetraccion').checked;
+
+                // Al desconfirmar se borra la fecha: sin fecha la recaudación
+                // no descuenta saldo. Los campos vuelven a estar disponibles
+                // para corregir el monto, el tipo de cambio o la fecha.
+                if (!chk) {
+                    recaudYaPagada = false;
+                    document.getElementById('pagoFechaRecaudacion').value = '';
+                }
+                actualizarEdicionRecaudacion();
+
                 const over = document.getElementById('alertaOverflow').style.display !== 'none';
                 if (!over) {
-                    const chk = document.getElementById('chkValidarDetraccion').checked;
-                    document.getElementById('btnGuardarPago').disabled = colaPagos.length === 0 && !chk;
+                    const permiteGuardarDesconfirmacion = recaudacionFueConfirmadaAlAbrir && !chk;
+                    document.getElementById('btnGuardarPago').disabled = colaPagos.length === 0 && !chk && !permiteGuardarDesconfirmacion;
+                }
+            }
+
+            function actualizarEdicionRecaudacion() {
+                const bloqueada = recaudYaPagada;
+                const campos = [
+                    'pagoPorcentaje',
+                    'pagoTotalRecaudacion',
+                    'pagoMontoSoles',
+                    'pagoTipoCambio',
+                    'pagoFechaRecaudacion',
+                ];
+
+                campos.forEach(id => {
+                    const input = document.getElementById(id);
+                    if (!input) return;
+                    input.disabled = bloqueada;
+                    input.style.background = bloqueada ? '#f1f5f9' : '';
+                    input.style.color = bloqueada ? '#64748b' : '';
+                    input.style.cursor = bloqueada ? 'not-allowed' : '';
+                });
+
+                const note = document.getElementById('recaudConvLockNote');
+                if (note) note.style.display = bloqueada ? 'block' : 'none';
+
+                const desc = document.getElementById('chkValidarDesc');
+                if (desc) {
+                    desc.textContent = bloqueada
+                        ? 'La recaudación ya fue confirmada. Desmarca la casilla para borrar la fecha y editar sus datos.'
+                        : 'Al marcar esta opción se confirmará el depósito y cambiará el estado de la factura.';
                 }
             }
 
