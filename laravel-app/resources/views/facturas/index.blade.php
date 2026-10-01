@@ -654,7 +654,7 @@
                         <td style="text-align:right;">
                             @if($montoAbonado > 0)
                                 <button type="button"
-                                    onclick="abrirModalVerPagos({{ $factura->id_factura }}, '{{ $factura->moneda }}')"
+                                    onclick="abrirModalVerPagos({{ $factura->id_factura }}, '{{ $factura->moneda }}', '{{ $factura->serie }}', {{ (int) $factura->numero }})"
                                     style="background:none;border:none;padding:0;cursor:pointer;text-align:right;width:100%;"
                                     title="Ver detalle de pagos">
                                     <div style="font-weight:700;font-family:'DM Mono',monospace;font-size:12px;color:#059669;text-decoration:underline dotted #059669;">
@@ -722,6 +722,8 @@
 
                                 <button type="button"
                                         data-factura-id="{{ (int) $factura->id_factura }}"
+                                        data-serie="{{ e((string) $factura->serie) }}"
+                                        data-numero="{{ (int) $factura->numero }}"
                                         data-importe="{{ (float) $factura->importe_total }}"
                                         data-moneda="{{ e((string) $factura->moneda) }}"
                                         data-monto-abonado="{{ (float) $montoAbonado }}"
@@ -1822,7 +1824,6 @@
                     setTimeout(() => {
                         firstRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }, 300);
-                    showToastFactura('✓ Facturas de pago masivo resaltadas.');
                 }
 
                 return !!firstRow;
@@ -2207,7 +2208,6 @@
                     guardarIdsPagoMasivo(idsActualizados);
 
                     cerrarModalPagoMasivo();
-                    showToastFactura(`✓ ${data.facturas_actualizadas || detalles.length} factura(s) actualizadas por pago masivo.`);
                     abrirResumenPagoMasivo(data.resumen || []);
                 } catch (e) {
                     CRC.feedback({ tipo: 'error', titulo: 'No se pudo registrar', mensaje: e.message });
@@ -2234,11 +2234,13 @@
                     btn.dataset.estado || '',
                     btn.dataset.fechaRecaudacion || '',
                     parseFloat(btn.dataset.montoCambio || '0'),
-                    parseFloat(btn.dataset.montoPendiente || '0')
+                    parseFloat(btn.dataset.montoPendiente || '0'),
+                    btn.dataset.serie || '',
+                    btn.dataset.numero || ''
                 );
             }
 
-            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, fechaRec, montoCambio, montoPendienteDB) {
+            function abrirModalPago(id, importe, moneda, montoAbonado, totalRec, pctRec, tipoRec, estado, fechaRec, montoCambio, montoPendienteDB, serie = '', numero = '') {
                 facturaActualId       = id;
                 facturaImporte        = parseFloat(importe);
                 facturaMoneda         = moneda;
@@ -2256,7 +2258,7 @@
                 }
                 colaPagos       = [];
                 colaIdx         = 0;
-                document.getElementById('modalPagoSubtitle').textContent = `Factura #${id} — ${moneda} ${parseFloat(importe).toFixed(2)}`;
+                document.getElementById('modalPagoSubtitle').textContent = `${(serie && numero) ? `${serie}-${numero}` : `Factura #${id}`} — ${moneda} ${parseFloat(importe).toFixed(2)}`;
 
                 // Recaudación
                 document.getElementById('pagoFechaRecaudacion').value = fechaRec || '';
@@ -2825,9 +2827,9 @@
             }
 
             // ── Modal Ver Pagos (solo lectura) ─────────────────────────────
-            async function abrirModalVerPagos(idFactura, moneda) {
+            async function abrirModalVerPagos(idFactura, moneda, serie = '', numero = '') {
                 const overlay = document.getElementById('modalVerPagosOverlay');
-                document.getElementById('modalVerPagosSubtitle').textContent = `Factura #${idFactura}`;
+                document.getElementById('modalVerPagosSubtitle').textContent = (serie && numero) ? `${serie}-${numero}` : `Factura #${idFactura}`;
                 document.getElementById('verPagosLoading').style.display = 'block';
                 document.getElementById('verPagosLoading').textContent   = 'Cargando...';
                 document.getElementById('verPagosVacio').style.display   = 'none';

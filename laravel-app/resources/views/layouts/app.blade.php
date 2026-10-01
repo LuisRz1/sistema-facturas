@@ -898,25 +898,18 @@
     </header>
 
     <main class="main-content">
-        @if(session('success'))
-            <div class="alert alert-success">
-                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                {{ session('success') }}
-            </div>
-        @endif
-
-        @if(session('error'))
-            <div class="alert alert-error">
-                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                {{ session('error') }}
-            </div>
-        @endif
-
         @yield('content')
     </main>
 </div>
 
 @include('partials.ui-scripts')
+
+@if(session('success'))
+<script>CRC.feedback({ tipo: 'ok', titulo: 'Listo', mensaje: @json(session('success')) });</script>
+@endif
+@if(session('error'))
+<script>CRC.feedback({ tipo: 'error', titulo: 'Aviso', mensaje: @json(session('error')) });</script>
+@endif
 
 @stack('scripts')
 
