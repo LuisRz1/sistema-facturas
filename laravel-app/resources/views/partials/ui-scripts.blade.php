@@ -152,6 +152,18 @@
             e.stopPropagation();
         }, true);
 
+        // Evita doble envío: al enviar un formulario, deshabilita su botón.
+        document.addEventListener('submit', function (e) {
+            const form = e.target;
+            if (!(form instanceof HTMLFormElement)) return;
+            const boton = form.querySelector('button[type="submit"]:not([disabled]), input[type="submit"]:not([disabled])');
+            if (!boton) return;
+            setTimeout(() => {
+                boton.disabled = true;
+                boton.dataset.submitting = '1';
+            }, 0);
+        }, true);
+
         return { open: openModal, close: closeModal, toast: toast, confirm: confirmDialog, feedback: feedback };
     })();
 </script>

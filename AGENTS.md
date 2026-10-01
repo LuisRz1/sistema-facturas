@@ -35,6 +35,7 @@
 - El remitente debe coincidir con la cuenta autorizada por OAuth. Las credenciales esperadas se leen desde `config/services.php` y variables de entorno; nunca se incrustan en el código.
 - Antes de programar una notificación manual, la UI debe mostrar su destinatario y contenido en el modal específico de WhatsApp o correo. El POST exige `confirmado_envio=1`; no se deben crear atajos que omitan esa confirmación.
 - Los modales no se cierran al pulsar el fondo ni con Escape. Se cierran mediante la X o al finalizar correctamente su operación.
+- Los formularios de creación/registro están protegidos contra doble envío: el middleware global `App\Http\Middleware\PreventDuplicateSubmission` rechaza envíos idénticos repetidos (misma IP, ruta y datos) durante el procesamiento y un breve enfriamiento, y los botones se deshabilitan al enviar. No quitar esa protección ni introducir endpoints de escritura que la eludan.
 - Los comprobantes persistentes usan almacenamiento S3 compatible. No depender del disco efímero del contenedor.
 - Las valorizaciones nuevas de maquinaria requieren una OC numerada con horas autorizadas; su archivo inicial puede adjuntarse después. Toda OC adicional requiere PDF o imagen. `cotizacion.orden_compra` se conserva como referencia heredada; las OCs con cupo viven en `cotizacion_orden_compra`.
 - Una valorización admite varias OCs, pero una OC y un HES son **únicos globalmente**: el mismo `numero`/`codigo` no puede existir en dos valorizaciones. No se pueden eliminar una OC con filas asignadas ni un HES con filas (bloqueo con aviso).
