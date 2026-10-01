@@ -727,17 +727,14 @@
 
     <div class="modal-overlay control-modal" id="modalExcesoOc" role="dialog" aria-modal="true" aria-labelledby="tituloExcesoOc" tabindex="-1">
         <div class="modal" style="max-width:520px;">
-            <div class="modal-header"><h2 id="tituloExcesoOc">Horas fuera del cupo OC</h2><p id="excesoOcDesc"></p></div>
+            <div class="modal-header"><h2 id="tituloExcesoOc">Horas fuera del cupo OC</h2><p>El total supera las órdenes de compra registradas.</p></div>
             <div class="modal-body" style="padding:24px;">
-                <p style="font-size:13px;margin-bottom:14px;">Puedes guardar las horas sin OC y regularizarlas después, o añadir otra orden ahora.</p>
-                <div class="form-group"><label class="form-label">Nueva OC</label><input class="form-input" id="excesoOcNumero" maxlength="100" placeholder="Número de OC"></div>
-                <div class="form-group"><label class="form-label">Horas autorizadas adicionales</label><input class="form-input" id="excesoOcHoras" type="number" min="0.01" step="0.01"></div>
-                <div class="form-group"><label class="form-label">PDF o imagen de la OC adicional</label><input class="form-input" id="excesoOcArchivo" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style="height:auto;padding:8px;"></div>
+                <p id="excesoOcDesc" style="font-size:13px;"></p>
+                <p style="font-size:12px;color:#64748b;margin-top:12px;">Puedes continuar; las horas que excedan el cupo quedarán como «sin OC» hasta que registres otra orden de compra.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-ghost" onclick="cerrarModal('modalExcesoOc')">Cancelar</button>
-                <button type="button" class="btn btn-ghost" onclick="resolverExcesoOc(false)">Guardar sin OC</button>
-                <button type="button" class="btn btn-primary" onclick="resolverExcesoOc(true)">Agregar OC y guardar</button>
+                <button type="button" class="btn btn-primary" onclick="resolverExcesoOc()">Continuar</button>
             </div>
         </div>
     </div>
@@ -1414,27 +1411,47 @@
             cerrarModal('modalHorometro');
         }
 
+        // Horas facturables totales de las filas (excluyendo una fila si se edita).
+        function demandaHorasOc(excluirRowId) {
+            return ROWS_DATA.reduce((sum, r) => {
+                if (excluirRowId && Number(r.id_cotizacion_maqu) === Number(excluirRowId)) return sum;
+                const cobra = r.es_facturable === null ? Number(r.total_fila) > 0 : Boolean(Number(r.es_facturable));
+                if (!cobra || Number(r.es_ajuste_horometro)) return sum;
+                return sum + Math.max(Number(r.horas_trabajadas), Number(r.hora_minima));
+            }, 0);
+        }
+
+        // Avisa (sin bloquear) cuando las horas superan el cupo de las OC existentes.
+        function excedeCupoOc(fd, excluirRowId, clave) {
+            if (!ES_MAQUINARIA || !CONTROL_OC) return false;
+            const nueva = (fd.get('cobrar_fila') === '0')
+                ? 0
+                : Math.max(Number(fd.get('hora_fin')) - Number(fd.get('hora_inicio')), Number(fd.get('hora_minima')));
+            const total = demandaHorasOc(excluirRowId) + nueva;
+            const autorizadas = Number(OC_RESUMEN?.horas_autorizadas || 0);
+            if (total <= autorizadas + 0.005 || clave === excesoConfirmado) return false;
+
+            pendingRowFd = fd;
+            pendingRowUrl = (excluirRowId === null) ? null : `${BASE_URL}/${excluirRowId}`;
+            document.getElementById('modalExcesoOc').dataset.clave = clave;
+            document.getElementById('excesoOcDesc').textContent =
+                `El total de horas (${total.toFixed(2)} h) supera el cupo de las OC (${autorizadas.toFixed(2)} h). Exceso: ${(total - autorizadas).toFixed(2)} h.`;
+            abrirModal('modalExcesoOc');
+            return true;
+        }
+
         async function addRow(event) {
             event.preventDefault();
             if (avisoHorometro()) return;
             const fd = new FormData(document.getElementById('addRowForm'));
             if (completarSalto) fd.set('completar_salto', '1');
+            if (excedeCupoOc(fd, null, `add|${fd.get('hora_inicio')}|${fd.get('hora_fin')}|${fd.get('fecha')}`)) return;
             await sendRowForm(fd);
         }
 
-        async function resolverExcesoOc(conNuevaOc) {
+        async function resolverExcesoOc() {
             if (!pendingRowFd) return;
-            if (conNuevaOc) {
-                const numero = document.getElementById('excesoOcNumero').value.trim();
-                const horas = Number(document.getElementById('excesoOcHoras').value);
-                const archivo = document.getElementById('excesoOcArchivo').files[0];
-                if (!numero || horas <= 0 || !archivo) { showToast('Indica número, horas positivas y PDF/imagen de la nueva OC.', false); return; }
-                pendingRowFd.set('nueva_oc_numero', numero);
-                pendingRowFd.set('nueva_oc_horas', horas.toFixed(2));
-                pendingRowFd.set('nueva_oc_archivo', archivo);
-            } else {
-                excesoConfirmado = document.getElementById('modalExcesoOc').dataset.clave;
-            }
+            excesoConfirmado = document.getElementById('modalExcesoOc').dataset.clave;
             cerrarModal('modalExcesoOc');
             if (pendingRowUrl) await submitEditFd(pendingRowFd);
             else await sendRowForm(pendingRowFd);
@@ -1745,6 +1762,7 @@
             fd.append('_method', 'PUT');
             fd.append('_token', CSRF);
             if (completarSalto) fd.set('completar_salto', '1');
+            if (excedeCupoOc(fd, editRowId, `edit|${editRowId}|${fd.get('hora_inicio')}|${fd.get('hora_fin')}|${fd.get('fecha')}`)) return;
             await submitEditFd(fd);
         }
 
