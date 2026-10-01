@@ -566,7 +566,7 @@
                             </div>
                             <div>
                                 <div class="row-input-lbl">HT *</div>
-                                <input type="number" class="row-input" id="rHT" name="hora_fin" step="0.01" placeholder="0" required oninput="calcTotalFila()">
+                                <input type="number" class="row-input" id="rHT" name="hora_fin" step="0.01" placeholder="0" required oninput="calcTotalFila()" onblur="onHTBlur()">
                             </div>
                             <div>
                                 <div class="row-input-lbl">H.Trab.</div>
@@ -1359,9 +1359,12 @@
                 abrirModal('modalHorometro');
             };
 
-            // La hora de inicio debe ser menor que la de término.
-            const fin = Number(form.querySelector('[name="hora_fin"]')?.value);
-            if (Number.isFinite(fin) && fin <= inicio) {
+            // La hora de inicio debe ser menor que la de término, pero solo se
+            // valida cuando ya se ingresó un número en la hora de término.
+            const finInput = form.querySelector('[name="hora_fin"]');
+            const finRaw = finInput ? String(finInput.value).trim() : '';
+            const fin = Number(finRaw);
+            if (finRaw !== '' && Number.isFinite(fin) && fin <= inicio) {
                 document.getElementById('modalHorometro').dataset.clave = `hi-ht|${inicio}|${fin}`;
                 mostrarError(`La hora de inicio (${inicio.toFixed(2)}) debe ser menor que la hora de término (${fin.toFixed(2)}).`, false);
                 return true;
@@ -1389,6 +1392,18 @@
             return true;
         }
         function onHIBlur() { avisoHorometro(); }
+        function onHTBlur() {
+            if (!ES_MAQUINARIA) return;
+            const form = document.getElementById('addRowForm');
+            const inicio = Number(form.querySelector('[name="hora_inicio"]')?.value);
+            const finRaw = String(form.querySelector('[name="hora_fin"]')?.value ?? '').trim();
+            const fin = Number(finRaw);
+            if (finRaw === '' || !Number.isFinite(inicio) || !Number.isFinite(fin) || fin > inicio) return;
+            document.getElementById('horometroDesc').textContent = `La hora de inicio (${inicio.toFixed(2)}) debe ser menor que la hora de término (${fin.toFixed(2)}).`;
+            document.getElementById('btnCompletarSalto').style.display = 'none';
+            document.getElementById('modalHorometro').dataset.clave = `hi-ht|${inicio}|${fin}`;
+            abrirModal('modalHorometro');
+        }
         function resolverHorometro(completar) {
             if (completar) {
                 horometroConfirmado = document.getElementById('modalHorometro').dataset.clave;
