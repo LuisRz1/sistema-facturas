@@ -24,6 +24,56 @@
             return abiertos.length ? abiertos[abiertos.length - 1] : null;
         }
 
+        // ── Loader global (círculo de carga) ──────────────────────────────
+        let cargandoPendientes = 0;
+        let cargandoTimer = null;
+        const loader = document.createElement('div');
+        loader.id = 'crcLoader';
+        loader.setAttribute('aria-hidden', 'true');
+        loader.innerHTML = '<div class="crc-spinner" role="status" aria-label="Cargando"></div>';
+        (function () {
+            const estilo = document.createElement('style');
+            estilo.textContent = '#crcLoader{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:100000;}#crcLoader.show{display:flex;}#crcLoader .crc-spinner{width:46px;height:46px;border:4px solid rgba(255,255,255,.45);border-top-color:#f5c842;border-radius:50%;animation:crcSpin .8s linear infinite;}@keyframes crcSpin{to{transform:rotate(360deg);}}';
+            document.head.appendChild(estilo);
+        })();
+        function montarLoader() {
+            if (document.body && !document.getElementById('crcLoader')) document.body.appendChild(loader);
+        }
+        if (document.body) montarLoader(); else document.addEventListener('DOMContentLoaded', montarLoader);
+
+        const loading = {
+            start(espera = 200) {
+                cargandoPendientes++;
+                if (cargandoTimer) return;
+                cargandoTimer = setTimeout(() => { cargandoTimer = null; if (cargandoPendientes > 0) loader.classList.add('show'); }, espera);
+            },
+            stop() {
+                cargandoPendientes = Math.max(0, cargandoPendientes - 1);
+                if (cargandoPendientes === 0) {
+                    if (cargandoTimer) { clearTimeout(cargandoTimer); cargandoTimer = null; }
+                    loader.classList.remove('show');
+                }
+            },
+            show() {
+                if (cargandoTimer) { clearTimeout(cargandoTimer); cargandoTimer = null; }
+                loader.classList.add('show');
+            },
+            hide() {
+                cargandoPendientes = 0;
+                if (cargandoTimer) { clearTimeout(cargandoTimer); cargandoTimer = null; }
+                loader.classList.remove('show');
+            },
+        };
+
+        // Envuelve fetch para mostrar el loader cuando una petición tarda.
+        if (window.fetch) {
+            const fetchOriginal = window.fetch.bind(window);
+            window.fetch = function (...args) {
+                loading.start();
+                return fetchOriginal(...args).finally(() => loading.stop());
+            };
+        }
+
         function toast(mensaje, tipo = 'info', ms = 4000) {
             const stack = document.getElementById('crcToastStack');
             if (!stack) return;
@@ -164,6 +214,6 @@
             }, 0);
         }, true);
 
-        return { open: openModal, close: closeModal, toast: toast, confirm: confirmDialog, feedback: feedback };
+        return { open: openModal, close: closeModal, toast: toast, confirm: confirmDialog, feedback: feedback, loading: loading };
     })();
 </script>

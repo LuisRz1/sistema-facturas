@@ -1004,6 +1004,11 @@
 
 @push('scripts')
     <script>
+        function recargar() {
+            if (window.CRC && CRC.loading) CRC.loading.show();
+            location.reload();
+        }
+
         function escapeHtml(value) {
             return String(value ?? '').replace(/[&<>"']/g, char => ({
                 '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -1039,7 +1044,7 @@
                 const res = await fetch(url, { method:'POST', body:fd, headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'} });
                 const data = await res.json();
                 if (!res.ok || !data.success) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo guardar la OC.');
-                location.reload();
+                recargar();
             } catch (error) { showToast(error.message, false); }
         }
 
@@ -1074,14 +1079,14 @@
                 const res = await fetch(`/cotizaciones/${COT_ID}/hes`, {method:'POST',body:fd,headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});
                 const data = await res.json();
                 if (!res.ok || !data.success) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo asignar HES.');
-                location.reload();
+                recargar();
             } catch (error) { showToast(error.message, false); }
         }
         async function desasignarHes(rowId) {
             try {
                 const res = await fetch(`/cotizaciones/${COT_ID}/rows/${rowId}/hes`, {method:'DELETE',headers:{'X-CSRF-TOKEN':CSRF,Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});
                 if (!res.ok) throw new Error('No se pudo desasignar HES.');
-                location.reload();
+                recargar();
             } catch (error) { showToast(error.message, false); }
         }
 
@@ -1137,7 +1142,7 @@
                 const data = await res.json();
                 if (!res.ok || !data.success) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo asignar la OC.');
                 cerrarModal('modalAsignarOc');
-                CRC.feedback({ tipo: 'ok', titulo: 'OC asignada', mensaje: 'La orden de compra se actualizó.', onClose: () => location.reload() });
+                CRC.feedback({ tipo: 'ok', titulo: 'OC asignada', mensaje: 'La orden de compra se actualizó.', onClose: () => recargar() });
             } catch (error) {
                 CRC.feedback({ tipo: 'error', titulo: 'No se pudo asignar', mensaje: error.message });
             }
@@ -1151,7 +1156,7 @@
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.message || 'No se pudo quitar la OC.');
-                    CRC.feedback({ tipo: 'ok', titulo: 'OC quitada', mensaje: 'La fila quedó sin OC.', onClose: () => location.reload() });
+                    CRC.feedback({ tipo: 'ok', titulo: 'OC quitada', mensaje: 'La fila quedó sin OC.', onClose: () => recargar() });
                 } catch (error) {
                     CRC.feedback({ tipo: 'error', titulo: 'No se pudo quitar', mensaje: error.message });
                 }
@@ -1166,7 +1171,7 @@
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo eliminar la OC.');
-                    CRC.feedback({ tipo: 'ok', titulo: 'OC eliminada', mensaje: 'La orden de compra se eliminó.', onClose: () => location.reload() });
+                    CRC.feedback({ tipo: 'ok', titulo: 'OC eliminada', mensaje: 'La orden de compra se eliminó.', onClose: () => recargar() });
                 } catch (error) {
                     CRC.feedback({ tipo: 'error', titulo: 'No se pudo eliminar', mensaje: error.message });
                 }
@@ -1181,7 +1186,7 @@
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo eliminar el HES.');
-                    CRC.feedback({ tipo: 'ok', titulo: 'HES eliminado', mensaje: 'El HES se eliminó.', onClose: () => location.reload() });
+                    CRC.feedback({ tipo: 'ok', titulo: 'HES eliminado', mensaje: 'El HES se eliminó.', onClose: () => recargar() });
                 } catch (error) {
                     CRC.feedback({ tipo: 'error', titulo: 'No se pudo eliminar', mensaje: error.message });
                 }
@@ -1277,7 +1282,7 @@
             }
             showToast('Cliente actualizado correctamente.');
             document.getElementById('modalEditClienteCot').classList.remove('open');
-            setTimeout(() => location.reload(), 700);
+            setTimeout(() => recargar(), 700);
         }
 
         function calcTotalFila() {
@@ -1449,7 +1454,7 @@
                     throw new Error(data.message || 'Error al guardar.');
                 }
                 showToast('Fila agregada correctamente.');
-                location.reload();
+                recargar();
             } catch(e) { showToast('Error de red: ' + e.message, false); }
         }
 
@@ -1588,7 +1593,7 @@
             const data = await res.json();
             document.getElementById('modalDelFila').classList.remove('open');
             if (data.success) {
-                location.reload();
+                recargar();
             } else showToast('Error al eliminar.', false);
             deleteRowId = null;
         });
@@ -1736,7 +1741,7 @@
                     showToast('Fila actualizada.');
                     document.getElementById('modalEditFila').classList.remove('open');
                     actualizarTotales(data.totales);
-                    setTimeout(() => location.reload(), 800);
+                    setTimeout(() => recargar(), 800);
                 } else showToast(data.message || Object.values(data.errors || {}).flat()[0] || 'Error al guardar.', false);
             } catch(e) { showToast('Error de red: ' + e.message, false); }
         }
@@ -1758,7 +1763,7 @@
             if (data.success) {
                 showToast('Encabezado actualizado.');
                 document.getElementById('modalEditHeader').classList.remove('open');
-                setTimeout(() => location.reload(), 800);
+                setTimeout(() => recargar(), 800);
             } else showToast('Error al guardar.', false);
         }
 

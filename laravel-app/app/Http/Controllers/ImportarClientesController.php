@@ -208,6 +208,7 @@ class ImportarClientesController extends Controller
         Cache::forget('facturas_clientes_PERSONA JURIDICA');
         Cache::forget('facturas_clientes_PERSONA NATURAL');
         Cache::forget('reportes_clientes_contacto');
+        Cache::forget('cot_catalogos');
 
         return redirect()->route('clientes.index')->with('resumen_importacion', [
             'insertados'   => $insertados,

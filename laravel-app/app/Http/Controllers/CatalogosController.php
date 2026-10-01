@@ -3,10 +3,16 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class CatalogosController extends Controller
 {
+    private function limpiarCache(): void
+    {
+        Cache::forget('cot_catalogos');
+    }
+
     public function index()
     {
         $choferes    = DB::table('chofer')->where('activo', 1)->orderBy('nombres')->get();
@@ -32,6 +38,7 @@ class CatalogosController extends Controller
             'activo'         => 1,
             'fecha_creacion' => now(),
         ]));
+        $this->limpiarCache();
 
         return response()->json(['success' => true, 'message' => 'Chofer creado.']);
     }
@@ -47,6 +54,7 @@ class CatalogosController extends Controller
         DB::table('chofer')->where('id_chofer', $id)->update(array_merge($v, [
             'fecha_actualizacion' => now(),
         ]));
+        $this->limpiarCache();
 
         return response()->json(['success' => true, 'message' => 'Chofer actualizado.']);
     }
@@ -74,6 +82,7 @@ class CatalogosController extends Controller
             'activo'              => 0,
             'fecha_actualizacion' => now(),
         ]);
+        $this->limpiarCache();
         return response()->json(['success' => true]);
     }
 
@@ -92,6 +101,7 @@ class CatalogosController extends Controller
             'activo'         => 1,
             'fecha_creacion' => now(),
         ]));
+        $this->limpiarCache();
 
         return response()->json(['success' => true, 'message' => 'Maquinaria creada.']);
     }
@@ -106,6 +116,7 @@ class CatalogosController extends Controller
         DB::table('maquinaria')->where('id_maquinaria', $id)->update(array_merge($v, [
             'fecha_actualizacion' => now(),
         ]));
+        $this->limpiarCache();
 
         return response()->json(['success' => true, 'message' => 'Maquinaria actualizada.']);
     }
@@ -128,6 +139,7 @@ class CatalogosController extends Controller
             'activo'              => 0,
             'fecha_actualizacion' => now(),
         ]);
+        $this->limpiarCache();
         return response()->json(['success' => true]);
     }
 
@@ -146,6 +158,7 @@ class CatalogosController extends Controller
             'activo'         => 1,
             'fecha_creacion' => now(),
         ]));
+        $this->limpiarCache();
 
         return response()->json(['success' => true, 'message' => 'Agregado creado.']);
     }
@@ -160,6 +173,7 @@ class CatalogosController extends Controller
         DB::table('agregado')->where('id_agregado', $id)->update(array_merge($v, [
             'fecha_actualizacion' => now(),
         ]));
+        $this->limpiarCache();
 
         return response()->json(['success' => true, 'message' => 'Agregado actualizado.']);
     }
@@ -182,6 +196,7 @@ class CatalogosController extends Controller
             'activo'              => 0,
             'fecha_actualizacion' => now(),
         ]);
+        $this->limpiarCache();
         return response()->json(['success' => true]);
     }
 }

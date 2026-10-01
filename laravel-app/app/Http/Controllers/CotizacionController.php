@@ -6,6 +6,7 @@ use App\Services\ValorizacionOcService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
 
@@ -122,13 +123,26 @@ class CotizacionController extends Controller
 
     public function create()
     {
-        $clientes    = DB::table('cliente')->where('activo', 1)->orderBy('razon_social')
-            ->get(['id_cliente', 'razon_social', 'ruc']);
-        $maquinarias = DB::table('maquinaria')->where('activo', 1)->orderBy('nombre')->get();
-        $agregados   = DB::table('agregado')->where('activo', 1)->orderBy('nombre')->get();
-        $choferes    = DB::table('chofer')->where('activo', 1)->orderBy('nombres')->get();
+        $catalogos = $this->catalogos();
+        $clientes    = $catalogos['clientes'];
+        $maquinarias = $catalogos['maquinarias'];
+        $agregados   = $catalogos['agregados'];
+        $choferes    = $catalogos['choferes'];
 
         return view('cotizaciones.create', compact('clientes', 'maquinarias', 'agregados', 'choferes'));
+    }
+
+    /** Catálogos de la valorización, cacheados en una sola entrada. */
+    private function catalogos(): array
+    {
+        return Cache::remember('cot_catalogos', 600, function () {
+            return [
+                'clientes'    => DB::table('cliente')->where('activo', 1)->orderBy('razon_social')->get(['id_cliente', 'razon_social', 'ruc']),
+                'maquinarias' => DB::table('maquinaria')->where('activo', 1)->orderBy('nombre')->get(),
+                'agregados'   => DB::table('agregado')->where('activo', 1)->orderBy('nombre')->get(),
+                'choferes'    => DB::table('chofer')->where('activo', 1)->orderBy('nombres')->get(),
+            ];
+        });
     }
 
     public function store(Request $request)
@@ -219,11 +233,11 @@ class CotizacionController extends Controller
             ? app(ValorizacionOcService::class)->resumen($id) : null;
         $hesList = DB::table('cotizacion_hes')->where('id_cotizacion', $id)->orderBy('id_hes')->get();
 
-        $clientes    = DB::table('cliente')->where('activo', 1)->orderBy('razon_social')
-            ->get(['id_cliente', 'razon_social', 'ruc']);
-        $maquinarias = DB::table('maquinaria')->where('activo', 1)->orderBy('nombre')->get();
-        $agregados   = DB::table('agregado')->where('activo', 1)->orderBy('nombre')->get();
-        $choferes    = DB::table('chofer')->where('activo', 1)->orderBy('nombres')->get();
+        $catalogos = $this->catalogos();
+        $clientes    = $catalogos['clientes'];
+        $maquinarias = $catalogos['maquinarias'];
+        $agregados   = $catalogos['agregados'];
+        $choferes    = $catalogos['choferes'];
 
         return view('cotizaciones.show', compact(
             'cotizacion', 'filas', 'clientes', 'maquinarias', 'agregados', 'choferes', 'ocResumen', 'hesList'
@@ -302,6 +316,7 @@ class CotizacionController extends Controller
         DB::table('cliente')
             ->where('id_cliente', $cliente->id_cliente)
             ->update(array_merge($validated, ['fecha_actualizacion' => now()]));
+        Cache::forget('cot_catalogos');
 
         return response()->json(['success' => true, 'message' => 'Datos del cliente actualizados correctamente.']);
     }

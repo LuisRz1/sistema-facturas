@@ -15,7 +15,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class PreventDuplicateSubmission
 {
-    private const VENTANA_SEGUNDOS = 5;
+    private const VENTANA_SEGUNDOS = 12;
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -32,20 +32,16 @@ class PreventDuplicateSubmission
             $key = 'subm:fp:' . md5($request->ip() . '|' . $request->method() . '|' . $request->path() . '|' . http_build_query($payload));
         }
 
-        // Bloqueo durante todo el procesamiento (máx. 60 s) para que un envío
-        // lento no deje pasar un segundo; el candado se libera al terminar.
-        if (!Cache::add($key, 'processing', 60)) {
+        // Una sola operación de caché: bloquea durante el procesamiento y un
+        // breve enfriamiento; si la operación falla, se libera para reintentar.
+        if (!Cache::add($key, 1, self::VENTANA_SEGUNDOS)) {
             return $this->duplicado($request);
         }
 
         $response = $next($request);
 
         if ($response->getStatusCode() >= 400) {
-            // La operación no se completó: permite reintentar de inmediato.
             Cache::forget($key);
-        } else {
-            // Enfriamiento corto para absorber doble clic/reenvío inmediato.
-            Cache::put($key, 'done', self::VENTANA_SEGUNDOS);
         }
 
         return $response;

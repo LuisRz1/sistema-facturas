@@ -1681,6 +1681,11 @@
 
     @push('scripts')
         <script>
+            function recargar() {
+                if (window.CRC && CRC.loading) CRC.loading.show();
+                recargar();
+            }
+
             // ── Dropdown Validar Recaudación ──────────────────────────────────────
             function toggleRecaudacionMenu() {
                 var menu = document.getElementById('recaudacionMenu');
@@ -2018,7 +2023,7 @@
             function cerrarResumenPagoMasivo(recargar = false) {
                 document.getElementById('modalPagoMasivoResumenOverlay').classList.remove('open');
                 if (recargar) {
-                    location.reload();
+                    recargar();
                 }
             }
 
@@ -3006,7 +3011,7 @@
                     mensaje: colaPagos.length > 0
                         ? `${colaPagos.length} abono(s) guardado(s) correctamente.`
                         : 'La recaudación se confirmó correctamente.',
-                    onClose: () => location.reload(),
+                    onClose: () => recargar(),
                 });
             }
 
@@ -3233,7 +3238,7 @@
                                 tipo: 'ok',
                                 titulo: 'Factura actualizada',
                                 mensaje: `La factura ${data.factura_num || ''} se actualizó correctamente.`,
-                                onClose: () => location.reload(),
+                                onClose: () => recargar(),
                             });
                         } else {
                             const detalleFecha = data.errors?.fecha_vencimiento?.[0] || data.errors?.fecha_emision?.[0];
@@ -3328,7 +3333,7 @@
                             tipo: 'ok',
                             titulo: 'Factura creada',
                             mensaje: data.message || 'La factura se creó correctamente.',
-                            onClose: () => location.reload(),
+                            onClose: () => recargar(),
                         });
                     } else {
                         CRC.feedback({ tipo: 'error', titulo: 'No se pudo crear la factura', mensaje: data.message || 'Error al crear la factura.' });
@@ -3363,7 +3368,7 @@
                                 tipo: 'ok',
                                 titulo: 'Cliente actualizado',
                                 mensaje: 'Los datos del cliente se guardaron correctamente.',
-                                onClose: () => location.reload(),
+                                onClose: () => recargar(),
                             });
                         } else {
                             CRC.feedback({ tipo: 'error', titulo: 'No se pudo guardar', mensaje: data.message || 'No se pudo actualizar el cliente.' });
@@ -3432,7 +3437,7 @@
                                 tipo: 'ok',
                                 titulo: 'Importación desactivada',
                                 mensaje: `${data.total} factura(s) ocultada(s) correctamente.`,
-                                onClose: () => location.reload(),
+                                onClose: () => recargar(),
                             });
                         } else {
                             CRC.feedback({ tipo: 'error', titulo: 'No se pudo desactivar', mensaje: data.error ?? 'Error desconocido' });
@@ -3454,7 +3459,7 @@
                             tipo: 'ok',
                             titulo: 'Importación reactivada',
                             mensaje: `${data.total} factura(s) visibles nuevamente.`,
-                            onClose: () => location.reload(),
+                            onClose: () => recargar(),
                         });
                     } else if (data.conflictos) {
                         CRC.feedback({
