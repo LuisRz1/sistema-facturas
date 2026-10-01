@@ -447,6 +447,12 @@ class CotizacionController extends Controller
                         DB::table('maquinaria_cotizacion')->insert($ajuste);
                     }
                 }
+                $this->validarContinuidadMaquinaria(
+                    (int) $cotizacion->id_cotizacion,
+                    (int) $insertData['id_maquinaria'],
+                    (string) $insertData['fecha'],
+                    (float) $insertData['hora_inicio'],
+                );
                 $rowId = DB::table('maquinaria_cotizacion')->insertGetId($insertData);
                 $this->recalcularTotales($cotizacion->id_cotizacion);
                 return $rowId;
@@ -631,7 +637,7 @@ class CotizacionController extends Controller
             unset($updateData['imagen_parte_diario'], $updateData['cobrar_fila'], $updateData['completar_salto']);
 
             try {
-                DB::transaction(function () use ($idCotizacion, $rowId, $updateData, $cotizacion, $v) {
+                DB::transaction(function () use ($idCotizacion, $rowId, $updateData, $cotizacion, $v, $currentRow) {
                     DB::table('cotizacion')->where('id_cotizacion', $idCotizacion)->lockForUpdate()->first();
                     abort_unless(DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $rowId)
                         ->where('id_cotizacion', $idCotizacion)->where('activo', 1)->lockForUpdate()->first(), 404);
@@ -657,6 +663,19 @@ class CotizacionController extends Controller
                                 'es_ajuste_horometro' => true, 'activo' => 1, 'fecha_creacion' => now(),
                             ]);
                         }
+                    }
+                    $cambioHoras = (float) $v['hora_inicio'] !== (float) $currentRow->hora_inicio
+                        || (float) $v['hora_fin'] !== (float) $currentRow->hora_fin
+                        || (string) $v['fecha'] !== (string) $currentRow->fecha
+                        || (int) $v['id_maquinaria'] !== (int) $currentRow->id_maquinaria;
+                    if ($cambioHoras) {
+                        $this->validarContinuidadMaquinaria(
+                            (int) $idCotizacion,
+                            (int) $v['id_maquinaria'],
+                            (string) $v['fecha'],
+                            (float) $v['hora_inicio'],
+                            (int) $rowId,
+                        );
                     }
                     DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $rowId)
                         ->where('id_cotizacion', $idCotizacion)->where('activo', 1)->update($updateData);
@@ -827,6 +846,47 @@ class CotizacionController extends Controller
                 return $fila;
             });
         }
+    }
+
+    /**
+     * Continuidad de horómetro en maquinaria: la hora de inicio debe coincidir
+     * con el término de la fila anterior de la misma máquina.
+     */
+    private function validarContinuidadMaquinaria(int $idCotizacion, int $idMaquinaria, string $fecha, float $horaInicio, ?int $excluirFila = null): void
+    {
+        $anterior = DB::table('maquinaria_cotizacion')
+            ->where('id_cotizacion', $idCotizacion)
+            ->where('id_maquinaria', $idMaquinaria)
+            ->where('activo', 1)
+            ->when($excluirFila, fn ($q) => $q->where('id_cotizacion_maqu', '<>', $excluirFila))
+            ->where(function ($q) use ($fecha, $horaInicio) {
+                $q->where('fecha', '<', $fecha)
+                    ->orWhere(function ($same) use ($fecha, $horaInicio) {
+                        $same->where('fecha', $fecha)->where('hora_inicio', '<=', $horaInicio);
+                    });
+            })
+            ->orderByDesc('fecha')
+            ->orderByDesc('hora_inicio')
+            ->orderByDesc('hora_fin')
+            ->first();
+
+        if (!$anterior) {
+            return;
+        }
+
+        $diferencia = round($horaInicio - (float) $anterior->hora_fin, 2);
+        if (abs($diferencia) <= 0.005) {
+            return;
+        }
+
+        $termino = number_format((float) $anterior->hora_fin, 2);
+        $inicio = number_format($horaInicio, 2);
+
+        throw \Illuminate\Validation\ValidationException::withMessages([
+            'hora_inicio' => $diferencia < 0
+                ? "La hora de inicio ({$inicio}) es anterior al término de la fila anterior ({$termino}); corrige el solapamiento."
+                : "La hora de inicio ({$inicio}) debe ser igual al término de la fila anterior ({$termino}) o completar el intervalo sin cobro.",
+        ]);
     }
 
     private function recalcularTotales(int $idCotizacion): void

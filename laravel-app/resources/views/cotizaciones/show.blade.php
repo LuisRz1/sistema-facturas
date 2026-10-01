@@ -58,13 +58,13 @@
         .doc-count{display:inline-flex;align-items:center;justify-content:center;background:var(--gold-m);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:800;margin-left:2px;}
         .doc-sep{width:1px;height:28px;background:var(--gold-b);flex-shrink:0;}
 
-        .row-table{width:100%;border-collapse:collapse;font-size:12px;}
+        .row-table{width:100%;border-collapse:collapse;font-size:12px;min-width:1120px;}
         .row-table thead tr{background:#0f172a;color:#fff;}
         .row-table thead th{padding:9px 10px;text-align:left;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;white-space:nowrap;}
         .row-table thead th.r{text-align:right;}
         .row-table tbody tr{border-bottom:1px solid #f1f5f9;transition:background .12s;}
         .row-table tbody tr:hover{background:#fffdf5;}
-        .row-table tbody td{padding:9px 10px;vertical-align:middle;}
+        .row-table tbody td{padding:9px 10px;vertical-align:middle;white-space:nowrap;}
         .row-table tbody td.r{text-align:right;font-family:'DM Mono',monospace;}
         .row-table tbody td.mono{font-family:'DM Mono',monospace;}
 
@@ -89,6 +89,10 @@
         .tbl-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--gold-b);background:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;color:var(--text-muted);}
         .tbl-btn:hover{background:var(--gold-l);border-color:var(--gold-m);color:var(--gold-d);}
         .tbl-btn.del:hover{background:#fee2e2;border-color:#fca5a5;color:#dc2626;}
+        .oc-btn{height:28px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;border-radius:6px;border:1px solid var(--gold-b);background:#fff;font-size:11px;font-weight:700;color:var(--gold-d);cursor:pointer;white-space:nowrap;transition:all .15s;}
+        .oc-btn:hover{background:var(--gold-l);border-color:var(--gold-m);}
+        .oc-btn.sin{color:#b45309;border-color:#fde68a;background:#fffbeb;}
+        .oc-btn.sin:hover{background:#fef3c7;}
 
         .field-row{display:grid;gap:12px;}
         .field-row.cols2{grid-template-columns:1fr 1fr;}
@@ -463,13 +467,12 @@
                         @if($controlOc)
                             <td style="font-size:11px;white-space:nowrap;">
                                 @if($f->id_orden_compra)
-                                    <button type="button" class="tbl-btn" title="Cambiar OC" onclick="abrirAsignarOc({{ $f->_row_id }})">
+                                    <button type="button" class="oc-btn" title="Cambiar OC" onclick="abrirAsignarOc({{ $f->_row_id }})">
                                         {{ $f->oc_numero }}: {{ number_format($f->oc_asignaciones->first()->horas_asignadas ?? 0, 2) }} h
                                     </button>
                                     <button type="button" class="tbl-btn" title="Quitar OC" onclick="quitarOc({{ $f->_row_id }})">×</button>
                                 @else
-                                    <button type="button" class="tbl-btn" title="Asignar OC" onclick="abrirAsignarOc({{ $f->_row_id }})">Asignar OC</button>
-                                    @if($facturable)<strong class="control-warning">Sin OC</strong>@endif
+                                    <button type="button" class="oc-btn sin" title="Asignar OC" onclick="abrirAsignarOc({{ $f->_row_id }})">Asignar OC</button>
                                 @endif
                             </td>
                         @endif
@@ -712,11 +715,11 @@
     </div>
 
     <div class="modal-overlay control-modal" id="modalHorometro" role="dialog" aria-modal="true" aria-labelledby="tituloHorometro" tabindex="-1">
-        <div class="modal" style="max-width:480px;">
-            <div class="modal-header"><h2 id="tituloHorometro">Aviso de horómetro</h2><p>Revisa la continuidad antes de guardar.</p></div>
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header" style="background:#7f1d1d;"><h2 id="tituloHorometro">Error de horómetro</h2><p style="color:#fecaca;">La numeración debe ser continua.</p></div>
             <div class="modal-body" style="padding:24px;"><p id="horometroDesc"></p></div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-ghost" onclick="resolverHorometro(false)">Ignorar</button>
+                <button type="button" class="btn btn-ghost" onclick="resolverHorometro(false)">Cancelar</button>
                 <button type="button" class="btn btn-primary" id="btnCompletarSalto" onclick="resolverHorometro(true)">Completar intervalo sin cobro</button>
             </div>
         </div>
@@ -1344,28 +1347,50 @@
             const inicioInput = form.querySelector('[name="hora_inicio"]');
             const inicio = Number(inicioInput?.value);
             if (!maq || !fecha || !inicioInput?.value || !Number.isFinite(inicio)) return false;
+
+            const mostrarError = (mensaje, permiteCompletar) => {
+                document.getElementById('horometroDesc').textContent = mensaje;
+                document.getElementById('btnCompletarSalto').style.display = permiteCompletar ? '' : 'none';
+                abrirModal('modalHorometro');
+            };
+
+            // La hora de inicio debe ser menor que la de término.
+            const fin = Number(form.querySelector('[name="hora_fin"]')?.value);
+            if (Number.isFinite(fin) && fin <= inicio) {
+                document.getElementById('modalHorometro').dataset.clave = `hi-ht|${inicio}|${fin}`;
+                mostrarError(`La hora de inicio (${inicio.toFixed(2)}) debe ser menor que la hora de término (${fin.toFixed(2)}).`, false);
+                return true;
+            }
+
             const anteriores = ROWS_DATA.filter(r => String(r.id_maquinaria) === String(maq)
                 && (modo !== 'edit' || Number(r.id_cotizacion_maqu) !== Number(editRowId))
-                && (r.fecha < fecha || (r.fecha === fecha && Number(r.hora_inicio) < inicio)))
-                .sort((a,b) => String(b.fecha).localeCompare(String(a.fecha)) || Number(b.hora_fin) - Number(a.hora_fin));
+                && (r.fecha < fecha || (r.fecha === fecha && Number(r.hora_inicio) <= inicio)))
+                .sort((a,b) => String(b.fecha).localeCompare(String(a.fecha)) || Number(b.hora_inicio) - Number(a.hora_inicio) || Number(b.hora_fin) - Number(a.hora_fin));
             const anterior = anteriores[0];
             if (!anterior) return false;
+
             const diferencia = inicio - Number(anterior.hora_fin);
-            if (Math.abs(diferencia) <= 0.05) return false;
+            if (Math.abs(diferencia) <= 0.005) return false;
+
             const clave = `${modo}|${maq}|${fecha}|${inicio}|${anterior.id_cotizacion_maqu}`;
             if (clave === horometroConfirmado) return false;
-            document.getElementById('horometroDesc').textContent = diferencia > 0
-                ? `La fila anterior de esta maquinaria terminó en ${Number(anterior.hora_fin).toFixed(2)} h y la nueva inicia en ${inicio.toFixed(2)} h. Hay ${diferencia.toFixed(2)} h de salto. Puedes completarlas sin cobro o ignorarlas.`
-                : `La fila anterior de esta maquinaria terminó en ${Number(anterior.hora_fin).toFixed(2)} h y la nueva inicia en ${inicio.toFixed(2)} h. Hay un solapamiento de ${Math.abs(diferencia).toFixed(2)} h. Si es correcto, pulsa Ignorar.`;
-            document.getElementById('btnCompletarSalto').style.display = diferencia > 0 ? '' : 'none';
             document.getElementById('modalHorometro').dataset.clave = clave;
-            abrirModal('modalHorometro');
+            mostrarError(
+                diferencia > 0
+                    ? `La fila anterior de esta maquinaria terminó en ${Number(anterior.hora_fin).toFixed(2)} h y la nueva inicia en ${inicio.toFixed(2)} h. La hora de inicio debe ser igual al término anterior; puedes completar las ${diferencia.toFixed(2)} h sin cobro.`
+                    : `La fila anterior de esta maquinaria terminó en ${Number(anterior.hora_fin).toFixed(2)} h y la nueva inicia en ${inicio.toFixed(2)} h. Hay un solapamiento de ${Math.abs(diferencia).toFixed(2)} h; corrige la hora de inicio.`,
+                diferencia > 0
+            );
             return true;
         }
         function onHIBlur() { avisoHorometro(); }
         function resolverHorometro(completar) {
-            horometroConfirmado = document.getElementById('modalHorometro').dataset.clave;
-            completarSalto = completar;
+            if (completar) {
+                horometroConfirmado = document.getElementById('modalHorometro').dataset.clave;
+                completarSalto = true;
+            } else {
+                completarSalto = false;
+            }
             cerrarModal('modalHorometro');
         }
 

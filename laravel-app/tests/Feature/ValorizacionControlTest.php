@@ -315,6 +315,29 @@ class ValorizacionControlTest extends TestCase
         $this->assertStringContainsString('HES-001', $html);
     }
 
+    public function test_continuidad_de_horometro_bloquea_solapamiento_y_exige_completar(): void
+    {
+        Storage::fake('s3');
+        $this->withoutMiddleware();
+        DB::table('chofer')->insert(['id_chofer' => 1, 'nombres' => 'Chofer']);
+        DB::table('maquinaria')->insert(['id_maquinaria' => 1, 'nombre' => 'Volquete']);
+        $id = DB::table('cotizacion')->insertGetId(['tipo_cotizacion' => 'MAQUINARIA', 'control_oc_activo' => true, 'obra' => 'Obra']);
+        $base = ['id_chofer' => 1, 'id_maquinaria' => 1, 'fecha' => '2026-09-01', 'hora_minima' => 1, 'precio_hora' => 10, 'cobrar_fila' => '1'];
+
+        $this->postJson("/cotizaciones/{$id}/rows", $base + ['hora_inicio' => 34, 'hora_fin' => 45])->assertOk();
+        $this->postJson("/cotizaciones/{$id}/rows", $base + ['hora_inicio' => 45, 'hora_fin' => 55])->assertOk();
+
+        // Solapamiento: la anterior termina en 55 y la nueva inicia en 45.
+        $this->postJson("/cotizaciones/{$id}/rows", $base + ['hora_inicio' => 45, 'hora_fin' => 60])->assertUnprocessable();
+
+        // Salto sin completar el intervalo.
+        $this->postJson("/cotizaciones/{$id}/rows", $base + ['hora_inicio' => 60, 'hora_fin' => 70])->assertUnprocessable();
+
+        // Con completar_salto se crea el ajuste y la fila queda continua.
+        $this->postJson("/cotizaciones/{$id}/rows", $base + ['hora_inicio' => 60, 'hora_fin' => 70, 'completar_salto' => 1])->assertOk();
+        $this->assertSame(1, DB::table('maquinaria_cotizacion')->where('es_ajuste_horometro', true)->count());
+    }
+
     private function oc(int $id, string $numero, float $horas): int
     {
         return DB::table('cotizacion_orden_compra')->insertGetId([
