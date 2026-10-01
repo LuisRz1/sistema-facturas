@@ -186,12 +186,20 @@ Route::middleware('auth')->group(function () {
         ->whereNumber('id')->whereNumber('ocId')->name('cotizaciones.ordenes.update');
     Route::get('/cotizaciones/{id}/ordenes/{ocId}/documento', [CotizacionControlController::class, 'documentoOc'])
         ->whereNumber('id')->whereNumber('ocId')->name('cotizaciones.ordenes.documento');
+    Route::delete('/cotizaciones/{id}/ordenes/{ocId}', [CotizacionControlController::class, 'destroyOc'])
+        ->whereNumber('id')->whereNumber('ocId')->name('cotizaciones.ordenes.destroy');
     Route::post('/cotizaciones/{id}/hes', [CotizacionControlController::class, 'assignHes'])
         ->whereNumber('id')->name('cotizaciones.hes.assign');
     Route::delete('/cotizaciones/{id}/rows/{rowId}/hes', [CotizacionControlController::class, 'unassignHes'])
         ->whereNumber('id')->whereNumber('rowId')->name('cotizaciones.hes.unassign');
+    Route::post('/cotizaciones/{id}/rows/{rowId}/oc', [CotizacionControlController::class, 'assignOcToRow'])
+        ->whereNumber('id')->whereNumber('rowId')->name('cotizaciones.rows.oc.assign');
+    Route::delete('/cotizaciones/{id}/rows/{rowId}/oc', [CotizacionControlController::class, 'unassignOcFromRow'])
+        ->whereNumber('id')->whereNumber('rowId')->name('cotizaciones.rows.oc.unassign');
     Route::get('/cotizaciones/{id}/hes/{hesId}/documento', [CotizacionControlController::class, 'documentoHes'])
         ->whereNumber('id')->whereNumber('hesId')->name('cotizaciones.hes.documento');
+    Route::delete('/cotizaciones/{id}/hes/{hesId}', [CotizacionControlController::class, 'destroyHes'])
+        ->whereNumber('id')->whereNumber('hesId')->name('cotizaciones.hes.destroy');
 
     // Rows AJAX
     Route::post('/cotizaciones/{id}/rows',

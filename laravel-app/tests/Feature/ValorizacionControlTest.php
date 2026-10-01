@@ -92,6 +92,8 @@ class ValorizacionControlTest extends TestCase
             $t->dateTime('fecha_actualizacion')->nullable();
         });
         (require database_path('migrations/2026_09_19_010000_add_oc_hes_to_cotizaciones.php'))->up();
+        (require database_path('migrations/2026_09_23_030000_add_oc_per_row_to_cotizaciones.php'))->up();
+        (require database_path('migrations/2026_09_23_030100_make_oc_hes_unique_globally.php'))->up();
     }
 
     public function test_maquinaria_nueva_exige_oc_con_horas_y_permite_adjuntar_archivo_luego(): void
@@ -116,31 +118,27 @@ class ValorizacionControlTest extends TestCase
         $this->assertNull(DB::table('cotizacion_orden_compra')->value('ruta_documento'));
     }
 
-    public function test_reparto_y_regularizacion_de_horas_sin_oc(): void
+    public function test_asignacion_manual_de_oc_por_fila_y_horas_sin_oc(): void
     {
-        $id = DB::table('cotizacion')->insertGetId(['tipo_cotizacion' => 'MAQUINARIA', 'control_oc_activo' => true, 'usa_hes' => false]);
-        $this->oc($id, 'OC-120', 120);
-        $this->filaMaq($id, 118, 3);
-        $fila2 = $this->filaMaq($id, 5, 3);
-        $this->filaMaq($id, 29, 3);
-        $this->filaMaq($id, 10, 3, false);
+        $this->withoutMiddleware();
+        $id = DB::table('cotizacion')->insertGetId(['tipo_cotizacion' => 'MAQUINARIA', 'control_oc_activo' => true]);
+        $ocId = $this->oc($id, 'OC-120', 120);
+        $fila1 = $this->filaMaq($id, 118, 3);
+        $this->filaMaq($id, 5, 3);
         $service = app(ValorizacionOcService::class);
-        $service->recalcular($id);
-        $this->assertSame(32.0, (float)$service->resumen($id)['horas_sin_oc']);
 
-        $this->oc($id, 'OC-30', 30);
-        $service->recalcular($id);
-        $asignaciones = DB::table('maquinaria_cotizacion_oc')->where('id_cotizacion_maqu', $fila2)
-            ->orderBy('id_orden_compra')->pluck('horas_asignadas')->map(fn($n) => (float)$n)->all();
-        $this->assertEquals([2.0, 3.0], $asignaciones);
-        $this->assertSame(2.0, (float)$service->resumen($id)['horas_sin_oc']);
+        $this->assertSame(123.0, (float) $service->resumen($id)['horas_sin_oc']);
 
-        DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $fila2)->update(['activo' => false]);
-        $service->recalcular($id);
-        $this->assertSame(0, DB::table('maquinaria_cotizacion_oc')->where('id_cotizacion_maqu', $fila2)->count());
+        $this->postJson("/cotizaciones/{$id}/rows/{$fila1}/oc", ['id_orden_compra' => $ocId])->assertOk();
+        $resumen = $service->resumen($id);
+        $this->assertSame(118.0, (float) $resumen['ordenes']->first()->horas_consumidas);
+        $this->assertSame(5.0, (float) $resumen['horas_sin_oc']);
+
+        $this->deleteJson("/cotizaciones/{$id}/rows/{$fila1}/oc")->assertOk();
+        $this->assertSame(123.0, (float) $service->resumen($id)['horas_sin_oc']);
     }
 
-    public function test_al_guardar_salto_crea_ajuste_sin_cobro_y_oc_adicional_atomica(): void
+    public function test_al_guardar_salto_crea_ajuste_sin_cobro(): void
     {
         Storage::fake('s3');
         $this->withoutMiddleware();
@@ -156,24 +154,16 @@ class ValorizacionControlTest extends TestCase
             'hora_minima' => 3, 'precio_hora' => 10, 'cobrar_fila' => '1',
         ];
         $this->postJson("/cotizaciones/{$id}/rows", $base + ['hora_inicio' => 0, 'hora_fin' => 2])->assertOk();
-        $this->post("/cotizaciones/{$id}/rows", $base + [
+        $this->postJson("/cotizaciones/{$id}/rows", $base + [
             'hora_inicio' => 4, 'hora_fin' => 6, 'completar_salto' => 1,
-            'nueva_oc_numero' => 'OC-EXTRA', 'nueva_oc_horas' => 3,
-            'nueva_oc_archivo' => UploadedFile::fake()->image('oc.png'),
-        ], ['Accept' => 'application/json'])->assertOk();
+        ])->assertOk();
 
         $this->assertSame(3, DB::table('maquinaria_cotizacion')->where('id_cotizacion', $id)->count());
         $ajuste = DB::table('maquinaria_cotizacion')->where('es_ajuste_horometro', true)->first();
         $this->assertSame(0, (int)$ajuste->es_facturable);
         $this->assertSame(0.0, (float)$ajuste->total_fila);
-        $this->assertSame(0, DB::table('maquinaria_cotizacion_oc')->where('id_cotizacion_maqu', $ajuste->id_cotizacion_maqu)->count());
-        $this->assertSame(0.0, (float)app(ValorizacionOcService::class)->resumen($id)['horas_sin_oc']);
-
-        $fila = DB::table('maquinaria_cotizacion')->where('hora_inicio', 4)->first();
-        $this->putJson("/cotizaciones/{$id}/rows/{$fila->id_cotizacion_maqu}", array_merge($base, [
-            'hora_inicio' => 4, 'hora_fin' => 6, 'cobrar_fila' => '0',
-        ]))->assertOk();
-        $this->assertSame(0, DB::table('maquinaria_cotizacion_oc')->where('id_cotizacion_maqu', $fila->id_cotizacion_maqu)->count());
+        // Dos filas facturables de 3 h = 6 h sin OC (el ajuste no cuenta).
+        $this->assertSame(6.0, (float) app(ValorizacionOcService::class)->resumen($id)['horas_sin_oc']);
     }
 
     public function test_hes_agrupa_filas_no_consecutivas_y_no_duplica_asignaciones(): void
@@ -237,16 +227,65 @@ class ValorizacionControlTest extends TestCase
         $this->get("/cotizaciones/{$segunda}/hes/{$hes}/documento")->assertNotFound();
     }
 
+    public function test_unicidad_global_de_oc_y_hes(): void
+    {
+        Storage::fake('s3');
+        $this->withoutMiddleware();
+        $a = DB::table('cotizacion')->insertGetId(['tipo_cotizacion' => 'MAQUINARIA', 'control_oc_activo' => true, 'usa_hes' => true]);
+        $b = DB::table('cotizacion')->insertGetId(['tipo_cotizacion' => 'MAQUINARIA', 'control_oc_activo' => true, 'usa_hes' => true]);
+        $this->oc($a, 'OC-1', 10);
+
+        // OC repetida en otra valorización
+        $this->postJson("/cotizaciones/{$b}/ordenes", ['numero' => 'OC-1', 'horas_autorizadas' => 5])
+            ->assertUnprocessable();
+
+        // HES repetido en otra valorización
+        $rowA = $this->filaMaq($a, 2, 2);
+        $rowB = $this->filaMaq($b, 2, 2);
+        $this->post("/cotizaciones/{$a}/hes", [
+            'row_ids' => [$rowA], 'codigo' => 'HES-1', 'archivo_hes' => UploadedFile::fake()->image('h.png'),
+        ], ['Accept' => 'application/json'])->assertOk();
+        $this->post("/cotizaciones/{$b}/hes", [
+            'row_ids' => [$rowB], 'codigo' => 'HES-1', 'archivo_hes' => UploadedFile::fake()->image('h.png'),
+        ], ['Accept' => 'application/json'])->assertUnprocessable();
+    }
+
+    public function test_no_se_puede_borrar_oc_o_hes_en_uso(): void
+    {
+        Storage::fake('s3');
+        $this->withoutMiddleware();
+        $id = DB::table('cotizacion')->insertGetId(['tipo_cotizacion' => 'MAQUINARIA', 'control_oc_activo' => true, 'usa_hes' => true]);
+        $ocId = $this->oc($id, 'OC-X', 10);
+        $row = $this->filaMaq($id, 2, 2);
+
+        $this->postJson("/cotizaciones/{$id}/rows/{$row}/oc", ['id_orden_compra' => $ocId])->assertOk();
+        $this->deleteJson("/cotizaciones/{$id}/ordenes/{$ocId}")->assertUnprocessable();
+        $this->deleteJson("/cotizaciones/{$id}/rows/{$row}/oc")->assertOk();
+        $this->deleteJson("/cotizaciones/{$id}/ordenes/{$ocId}")->assertOk();
+        $this->assertSame(0, DB::table('cotizacion_orden_compra')->count());
+
+        $row2 = $this->filaMaq($id, 2, 2);
+        $this->post("/cotizaciones/{$id}/hes", [
+            'row_ids' => [$row2], 'codigo' => 'HES-X', 'archivo_hes' => UploadedFile::fake()->image('h.png'),
+        ], ['Accept' => 'application/json'])->assertOk();
+        $hesId = DB::table('cotizacion_hes')->value('id_hes');
+        $this->deleteJson("/cotizaciones/{$id}/hes/{$hesId}")->assertUnprocessable();
+        $this->deleteJson("/cotizaciones/{$id}/rows/{$row2}/hes")->assertOk();
+        $this->deleteJson("/cotizaciones/{$id}/hes/{$hesId}")->assertOk();
+        $this->assertSame(0, DB::table('cotizacion_hes')->count());
+    }
+
     public function test_excel_y_pdf_incluyen_oc_y_hes(): void
     {
         $id = DB::table('cotizacion')->insertGetId(['tipo_cotizacion' => 'MAQUINARIA', 'control_oc_activo' => true, 'usa_hes' => true]);
-        $this->oc($id, 'OC-120', 120);
+        $ocId = $this->oc($id, 'OC-120', 120);
         $filaId = $this->filaMaq($id, 4, 3);
+        DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $filaId)->update([
+            'id_orden_compra' => $ocId, 'hora_fin' => 4, 'precio_hora' => 10,
+        ]);
         $service = app(ValorizacionOcService::class);
-        $service->recalcular($id);
         $fila = DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $filaId)->first();
-        $fila->hora_fin = 4;
-        $fila->precio_hora = 10;
+        $fila->oc_numero = 'OC-120';
         $fila->chofer_nombre = 'Chofer';
         $fila->maquinaria_nombre = 'Maquinaria';
         $fila->codigo_hes = 'HES-001';
@@ -276,9 +315,9 @@ class ValorizacionControlTest extends TestCase
         $this->assertStringContainsString('HES-001', $html);
     }
 
-    private function oc(int $id, string $numero, float $horas): void
+    private function oc(int $id, string $numero, float $horas): int
     {
-        DB::table('cotizacion_orden_compra')->insert([
+        return DB::table('cotizacion_orden_compra')->insertGetId([
             'id_cotizacion' => $id, 'numero' => $numero,
             'horas_autorizadas' => $horas, 'created_at' => now(), 'updated_at' => now(),
         ]);

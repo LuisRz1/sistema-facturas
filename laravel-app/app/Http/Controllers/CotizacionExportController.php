@@ -664,11 +664,12 @@ class CotizacionExportController extends Controller
         if ($cotizacion->tipo_cotizacion === 'MAQUINARIA') {
             $filas = DB::table('maquinaria_cotizacion as mc')
                 ->leftJoin('cotizacion_hes as hes', 'hes.id_hes', '=', 'mc.id_hes')
+                ->leftJoin('cotizacion_orden_compra as oc', 'oc.id_orden_compra', '=', 'mc.id_orden_compra')
                 ->join('chofer as ch', 'ch.id_chofer', '=', 'mc.id_chofer')
                 ->join('maquinaria as m', 'm.id_maquinaria', '=', 'mc.id_maquinaria')
                 ->where('mc.id_cotizacion', $cotizacion->id_cotizacion)
                 ->where('mc.activo', 1)
-                ->select('mc.*', 'hes.codigo as codigo_hes', 'ch.nombres as chofer_nombre', 'm.nombre as maquinaria_nombre')
+                ->select('mc.*', 'hes.codigo as codigo_hes', 'oc.numero as oc_numero', 'ch.nombres as chofer_nombre', 'm.nombre as maquinaria_nombre')
                 ->orderBy('mc.fecha')->orderBy('mc.hora_inicio')
                 ->get();
             return app(ValorizacionOcService::class)->detallarFilas($filas, (bool)$cotizacion->control_oc_activo);

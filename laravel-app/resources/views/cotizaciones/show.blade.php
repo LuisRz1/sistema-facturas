@@ -253,9 +253,10 @@
                             {{ number_format($oc->horas_consumidas, 2) }} / {{ number_format($oc->horas_autorizadas, 2) }} h
                             · Disponible {{ number_format(max(0, $oc->horas_autorizadas - $oc->horas_consumidas), 2) }} h
                             @if($oc->ruta_documento)
-                                · <a href="{{ route('cotizaciones.ordenes.documento', [$cotizacion->id_cotizacion, $oc->id_orden_compra]) }}" target="_blank" rel="noopener">Ver OC</a>
+                                · <a href="#" onclick='verDocumento(@json(route("cotizaciones.ordenes.documento", [$cotizacion->id_cotizacion, $oc->id_orden_compra])), @json($oc->ruta_documento)); return false;'>Ver OC</a>
                             @endif
                             <button type="button" class="btn-doc btn-doc-dl" onclick="abrirOrden({{ $oc->id_orden_compra }})">Editar</button>
+                            <button type="button" class="btn-doc" onclick='eliminarOrden({{ $oc->id_orden_compra }}, @json($oc->numero))'>Eliminar</button>
                         </div>
                     @endforeach
                     <div class="control-chip"><strong>Total: {{ number_format($ocResumen['horas_consumidas'], 2) }} / {{ number_format($ocResumen['horas_autorizadas'], 2) }} h</strong>
@@ -285,7 +286,8 @@
                         @if($filasHes->isNotEmpty())
                             · {{ $filasHes->min('fecha') }} a {{ $filasHes->max('fecha') }}
                         @endif
-                        · <a href="{{ route('cotizaciones.hes.documento', [$cotizacion->id_cotizacion, $hes->id_hes]) }}" target="_blank" rel="noopener">Ver HES</a>
+                        · <a href="#" onclick='verDocumento(@json(route("cotizaciones.hes.documento", [$cotizacion->id_cotizacion, $hes->id_hes])), @json($hes->ruta_documento)); return false;'>Ver HES</a>
+                        <button type="button" class="btn-doc" onclick='eliminarHes({{ $hes->id_hes }}, @json($hes->codigo))'>Eliminar</button>
                     </div>
                 @empty
                     <span style="font-size:12px;color:#64748b;">Todavía no hay HES asignados.</span>
@@ -460,16 +462,21 @@
                         @endif
                         @if($controlOc)
                             <td style="font-size:11px;white-space:nowrap;">
-                                @foreach($f->oc_asignaciones as $asignacion)
-                                    <div>{{ $asignacion->numero }}: {{ number_format($asignacion->horas_asignadas, 2) }} h</div>
-                                @endforeach
-                                @if($f->horas_sin_oc > 0)<strong class="control-warning">Sin OC: {{ number_format($f->horas_sin_oc, 2) }} h</strong>@endif
+                                @if($f->id_orden_compra)
+                                    <button type="button" class="tbl-btn" title="Cambiar OC" onclick="abrirAsignarOc({{ $f->_row_id }})">
+                                        {{ $f->oc_numero }}: {{ number_format($f->oc_asignaciones->first()->horas_asignadas ?? 0, 2) }} h
+                                    </button>
+                                    <button type="button" class="tbl-btn" title="Quitar OC" onclick="quitarOc({{ $f->_row_id }})">×</button>
+                                @else
+                                    <button type="button" class="tbl-btn" title="Asignar OC" onclick="abrirAsignarOc({{ $f->_row_id }})">Asignar OC</button>
+                                    @if($facturable)<strong class="control-warning">Sin OC</strong>@endif
+                                @endif
                             </td>
                         @endif
                         @if($usaHes)
                             <td style="font-size:11px;white-space:nowrap;">
                                 @if($f->id_hes)
-                                    <a href="{{ route('cotizaciones.hes.documento', [$cotizacion->id_cotizacion, $f->id_hes]) }}" target="_blank" rel="noopener">{{ $f->codigo_hes }}</a>
+                                    <a href="#" onclick='verDocumento(@json(route("cotizaciones.hes.documento", [$cotizacion->id_cotizacion, $f->id_hes]))); return false;'>{{ $f->codigo_hes }}</a>
                                     <button type="button" class="tbl-btn" title="Desasignar HES" onclick="desasignarHes({{ $f->_row_id }})">×</button>
                                 @elseif($facturable)<span style="color:#be123c;">Pendiente</span>
                                 @else<span>—</span>@endif
@@ -768,7 +775,29 @@
     </div>
     @endif
 
-    {{-- ══ MODAL ELIMINAR FILA ══ --}}
+    @if($controlOc)
+    <div class="modal-overlay control-modal" id="modalAsignarOc" role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal" style="max-width:520px;">
+            <div class="modal-header"><h2>Asignar orden de compra</h2><p id="asignarOcSubtitle">Elige la OC para esta fila.</p></div>
+            <div class="modal-body" style="padding:24px;">
+                <div class="form-group">
+                    <label class="form-label">Orden de compra</label>
+                    <select class="form-input" id="asignarOcSelect" onchange="avisoAsignarOc()">
+                        <option value="">— Sin OC —</option>
+                        @foreach($ocResumen['ordenes'] as $oc)
+                            <option value="{{ $oc->id_orden_compra }}" data-disponible="{{ max(0, $oc->horas_autorizadas - $oc->horas_consumidas) }}">{{ $oc->numero }} · disponible {{ number_format(max(0, $oc->horas_autorizadas - $oc->horas_consumidas), 2) }} h</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div id="asignarOcAviso" style="display:none;margin-top:6px;font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-ghost" onclick="cerrarModal('modalAsignarOc')">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="guardarAsignarOc()">Guardar</button>
+            </div>
+        </div>
+    </div>
+    @endif
     <div class="modal-overlay" id="modalDelFila">
         <div class="modal" style="max-width:400px;">
             <div class="modal-header" style="background:#7f1d1d;"><h2>Eliminar Fila</h2><p>Esta acción no se puede deshacer.</p>
@@ -979,13 +1008,7 @@
         }
 
         function showToast(msg, ok = true) {
-            const t = document.getElementById('toast');
-            document.getElementById('toastTxt').textContent = msg;
-            t.style.background = ok ? '#d1fae5' : '#fee2e2';
-            t.style.color      = ok ? '#065f46' : '#7f1d1d';
-            t.style.border     = ok ? '1px solid #6ee7b7' : '1px solid #fca5a5';
-            t.style.transform  = 'translateY(0)'; t.style.opacity = '1';
-            setTimeout(() => { t.style.transform = 'translateY(80px)'; t.style.opacity = '0'; }, 3500);
+            CRC.feedback({ tipo: ok ? 'ok' : 'error', titulo: ok ? 'Listo' : 'Aviso', mensaje: msg });
         }
 
         let editandoOrdenId = null;
@@ -1057,6 +1080,109 @@
                 if (!res.ok) throw new Error('No se pudo desasignar HES.');
                 location.reload();
             } catch (error) { showToast(error.message, false); }
+        }
+
+        // ── Documentos en modal ───────────────────────────────────────────
+        function verDocumento(url, ruta = '') {
+            if (!url) { CRC.feedback({ tipo: 'error', titulo: 'Sin archivo', mensaje: 'No se encontró el documento.' }); return; }
+            const esImagen = /\.(png|jpe?g|webp|gif)($|\?)/i.test(ruta || url);
+            openAdjuntoModal(url, esImagen ? 'img' : 'pdf');
+        }
+
+        // ── Asignación manual de OC por fila ──────────────────────────────
+        let asignarOcRowId = null;
+
+        function abrirAsignarOc(rowId) {
+            asignarOcRowId = rowId;
+            const row = ROWS_DATA.find(r => Number(r.id_cotizacion_maqu) === Number(rowId));
+            const select = document.getElementById('asignarOcSelect');
+            select.value = (row && row.id_orden_compra) ? String(row.id_orden_compra) : '';
+            document.getElementById('asignarOcSubtitle').textContent = row
+                ? `Fila del ${String(row.fecha || '').substring(0, 10)} · ${Number(row.horas_trabajadas || 0).toFixed(2)} h`
+                : 'Elige la OC para esta fila.';
+            avisoAsignarOc();
+            abrirModal('modalAsignarOc');
+        }
+
+        function avisoAsignarOc() {
+            const select = document.getElementById('asignarOcSelect');
+            const aviso  = document.getElementById('asignarOcAviso');
+            const row    = ROWS_DATA.find(r => Number(r.id_cotizacion_maqu) === Number(asignarOcRowId));
+            const horas  = row ? Math.max(Number(row.horas_trabajadas || 0), Number(row.hora_minima || 0)) : 0;
+            const opt    = select.options[select.selectedIndex];
+            const disp   = opt ? Number(opt.dataset.disponible || 0) : 0;
+
+            if (select.value && horas > disp + 0.005) {
+                aviso.style.display = 'block';
+                aviso.textContent = `Esta fila tiene ${horas.toFixed(2)} h y la OC solo dispone de ${disp.toFixed(2)} h. Se permitirá, pero quedará fuera del cupo.`;
+            } else {
+                aviso.style.display = 'none';
+                aviso.textContent = '';
+            }
+        }
+
+        async function guardarAsignarOc() {
+            if (!asignarOcRowId) return;
+            const idOc = document.getElementById('asignarOcSelect').value;
+            const fd = new FormData();
+            fd.append('_token', CSRF);
+            if (idOc) fd.append('id_orden_compra', idOc);
+            try {
+                const res = await fetch(`/cotizaciones/${COT_ID}/rows/${asignarOcRowId}/oc`, {
+                    method: 'POST', body: fd, headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo asignar la OC.');
+                cerrarModal('modalAsignarOc');
+                CRC.feedback({ tipo: 'ok', titulo: 'OC asignada', mensaje: 'La orden de compra se actualizó.', onClose: () => location.reload() });
+            } catch (error) {
+                CRC.feedback({ tipo: 'error', titulo: 'No se pudo asignar', mensaje: error.message });
+            }
+        }
+
+        function quitarOc(rowId) {
+            CRC.confirm('¿Quitar la orden de compra de esta fila?', async () => {
+                try {
+                    const res = await fetch(`/cotizaciones/${COT_ID}/rows/${rowId}/oc`, {
+                        method: 'DELETE', headers: { 'X-CSRF-TOKEN': CSRF, Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.message || 'No se pudo quitar la OC.');
+                    CRC.feedback({ tipo: 'ok', titulo: 'OC quitada', mensaje: 'La fila quedó sin OC.', onClose: () => location.reload() });
+                } catch (error) {
+                    CRC.feedback({ tipo: 'error', titulo: 'No se pudo quitar', mensaje: error.message });
+                }
+            }, { titulo: 'Quitar OC', textoOk: 'Quitar' });
+        }
+
+        function eliminarOrden(ocId, numero) {
+            CRC.confirm(`¿Eliminar la orden de compra ${numero}?`, async () => {
+                try {
+                    const res = await fetch(`/cotizaciones/${COT_ID}/ordenes/${ocId}`, {
+                        method: 'DELETE', headers: { 'X-CSRF-TOKEN': CSRF, Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo eliminar la OC.');
+                    CRC.feedback({ tipo: 'ok', titulo: 'OC eliminada', mensaje: 'La orden de compra se eliminó.', onClose: () => location.reload() });
+                } catch (error) {
+                    CRC.feedback({ tipo: 'error', titulo: 'No se pudo eliminar', mensaje: error.message });
+                }
+            }, { titulo: 'Eliminar OC', textoOk: 'Eliminar' });
+        }
+
+        function eliminarHes(hesId, codigo) {
+            CRC.confirm(`¿Eliminar el HES ${codigo}?`, async () => {
+                try {
+                    const res = await fetch(`/cotizaciones/${COT_ID}/hes/${hesId}`, {
+                        method: 'DELETE', headers: { 'X-CSRF-TOKEN': CSRF, Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.message || Object.values(data.errors || {}).flat()[0] || 'No se pudo eliminar el HES.');
+                    CRC.feedback({ tipo: 'ok', titulo: 'HES eliminado', mensaje: 'El HES se eliminó.', onClose: () => location.reload() });
+                } catch (error) {
+                    CRC.feedback({ tipo: 'error', titulo: 'No se pudo eliminar', mensaje: error.message });
+                }
+            }, { titulo: 'Eliminar HES', textoOk: 'Eliminar' });
         }
 
         // ── Enviar Partes Diarios por WhatsApp ────────────────────────────
@@ -1248,20 +1374,6 @@
             if (avisoHorometro()) return;
             const fd = new FormData(document.getElementById('addRowForm'));
             if (completarSalto) fd.set('completar_salto', '1');
-            if (ES_MAQUINARIA && CONTROL_OC && fd.get('cobrar_fila') !== '0') {
-                const nueva = Math.max(Number(fd.get('hora_fin')) - Number(fd.get('hora_inicio')), Number(fd.get('hora_minima')));
-                const actual = ROWS_DATA.reduce((sum, row) => sum + ((row.es_facturable === null ? Number(row.total_fila) > 0 : Boolean(Number(row.es_facturable))) && !Number(row.es_ajuste_horometro)
-                    ? Math.max(Number(row.horas_trabajadas), Number(row.hora_minima)) : 0), 0);
-                const clave = `${actual}|${nueva}|${fd.get('fecha')}|${fd.get('hora_inicio')}`;
-                if (actual + nueva > Number(OC_RESUMEN.horas_autorizadas) + .005 && clave !== excesoConfirmado) {
-                    pendingRowFd = fd;
-                    pendingRowUrl = null;
-                    document.getElementById('modalExcesoOc').dataset.clave = clave;
-                    document.getElementById('excesoOcDesc').textContent = `Cupo: ${Number(OC_RESUMEN.horas_autorizadas).toFixed(2)} h · Uso proyectado: ${(actual + nueva).toFixed(2)} h · Exceso: ${(actual + nueva - Number(OC_RESUMEN.horas_autorizadas)).toFixed(2)} h`;
-                    abrirModal('modalExcesoOc');
-                    return;
-                }
-            }
             await sendRowForm(fd);
         }
 
@@ -1588,22 +1700,6 @@
             fd.append('_method', 'PUT');
             fd.append('_token', CSRF);
             if (completarSalto) fd.set('completar_salto', '1');
-            if (ES_MAQUINARIA && CONTROL_OC && fd.get('cobrar_fila') !== '0') {
-                const anterior = ROWS_DATA.find(r => Number(r.id_cotizacion_maqu) === Number(editRowId));
-                const demandaOtros = ROWS_DATA.filter(r => Number(r.id_cotizacion_maqu) !== Number(editRowId))
-                    .reduce((sum, r) => sum + ((r.es_facturable === null ? Number(r.total_fila) > 0 : Boolean(Number(r.es_facturable))) && !Number(r.es_ajuste_horometro)
-                        ? Math.max(Number(r.horas_trabajadas), Number(r.hora_minima)) : 0), 0);
-                const nueva = anterior?.es_ajuste_horometro ? 0 : Math.max(Number(fd.get('hora_fin')) - Number(fd.get('hora_inicio')), Number(fd.get('hora_minima')));
-                const clave = `edit|${editRowId}|${demandaOtros}|${nueva}`;
-                if (demandaOtros + nueva > Number(OC_RESUMEN.horas_autorizadas) + .005 && clave !== excesoConfirmado) {
-                    pendingRowFd = fd;
-                    pendingRowUrl = `${BASE_URL}/${editRowId}`;
-                    document.getElementById('modalExcesoOc').dataset.clave = clave;
-                    document.getElementById('excesoOcDesc').textContent = `Cupo: ${Number(OC_RESUMEN.horas_autorizadas).toFixed(2)} h · Uso proyectado: ${(demandaOtros + nueva).toFixed(2)} h · Exceso: ${(demandaOtros + nueva - Number(OC_RESUMEN.horas_autorizadas)).toFixed(2)} h`;
-                    abrirModal('modalExcesoOc');
-                    return;
-                }
-            }
             await submitEditFd(fd);
         }
 

@@ -148,6 +148,13 @@ class CotizacionController extends Controller
             'periodo_fin'       => 'required|date|after_or_equal:periodo_inicio',
         ]);
 
+        if ($validated['tipo_cotizacion'] === 'MAQUINARIA'
+            && DB::table('cotizacion_orden_compra')->where('numero', $validated['orden_compra'])->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'orden_compra' => 'Ese número de orden de compra ya está registrado en otra valorización.',
+            ]);
+        }
+
         $rutaOc = $this->uploadToS3($request, 'archivo_oc', 'cotizaciones/ordenes');
         try {
             $id = DB::transaction(function () use ($validated, $rutaOc) {
@@ -364,9 +371,6 @@ class CotizacionController extends Controller
             'precio_hora'    => 'required|numeric|min:0',
             'cobrar_fila'    => 'nullable|in:0,1',
             'completar_salto' => 'nullable|boolean',
-            'nueva_oc_numero' => ['nullable', 'required_with:nueva_oc_horas,nueva_oc_archivo', 'string', 'max:100', \Illuminate\Validation\Rule::unique('cotizacion_orden_compra', 'numero')->where('id_cotizacion', $cotizacion->id_cotizacion)],
-            'nueva_oc_horas' => 'nullable|required_with:nueva_oc_numero,nueva_oc_archivo|numeric|gt:0',
-            'nueva_oc_archivo' => 'nullable|required_with:nueva_oc_numero,nueva_oc_horas|file|mimes:pdf,jpg,jpeg,png,webp|max:20480',
             'n_parte_diario' => 'nullable|string|max:50',
             'numero_factura' => 'nullable|string|max:50',
             'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
@@ -384,7 +388,7 @@ class CotizacionController extends Controller
             'imagen_parte_diario',
             "cotizaciones/partes/{$cotizacion->id_cotizacion}"
         );
-        $rutaNuevaOc = $this->uploadToS3($request, 'nueva_oc_archivo', "cotizaciones/ordenes/{$cotizacion->id_cotizacion}");
+        $rutaNuevaOc = null;
 
         $insertData = [
             'id_cotizacion'    => $cotizacion->id_cotizacion,
@@ -412,18 +416,8 @@ class CotizacionController extends Controller
         }
 
         try {
-            $rowId = DB::transaction(function () use ($cotizacion, $insertData, $v, $rutaNuevaOc) {
+            $rowId = DB::transaction(function () use ($cotizacion, $insertData, $v) {
                 DB::table('cotizacion')->where('id_cotizacion', $cotizacion->id_cotizacion)->lockForUpdate()->first();
-                if (!empty($v['nueva_oc_numero'])) {
-                    if (!$cotizacion->control_oc_activo || !$rutaNuevaOc) {
-                        throw \Illuminate\Validation\ValidationException::withMessages(['nueva_oc_archivo' => 'La OC adicional requiere un documento.']);
-                    }
-                    DB::table('cotizacion_orden_compra')->insert([
-                        'id_cotizacion' => $cotizacion->id_cotizacion,
-                        'numero' => $v['nueva_oc_numero'], 'horas_autorizadas' => $v['nueva_oc_horas'],
-                        'ruta_documento' => $rutaNuevaOc, 'created_at' => now(), 'updated_at' => now(),
-                    ]);
-                }
                 if (!empty($v['completar_salto'])) {
                     $anterior = DB::table('maquinaria_cotizacion')
                         ->where('id_cotizacion', $cotizacion->id_cotizacion)
@@ -454,15 +448,11 @@ class CotizacionController extends Controller
                     }
                 }
                 $rowId = DB::table('maquinaria_cotizacion')->insertGetId($insertData);
-                if ($cotizacion->control_oc_activo) {
-                    app(ValorizacionOcService::class)->recalcular($cotizacion->id_cotizacion);
-                }
                 $this->recalcularTotales($cotizacion->id_cotizacion);
                 return $rowId;
             });
         } catch (\Throwable $e) {
             if ($rutaParteDiario) Storage::disk('s3')->delete($rutaParteDiario);
-            if ($rutaNuevaOc) Storage::disk('s3')->delete($rutaNuevaOc);
             throw $e;
         }
 
@@ -607,9 +597,6 @@ class CotizacionController extends Controller
                 'precio_hora'    => 'required|numeric',
                 'cobrar_fila'    => 'nullable|in:0,1',
                 'completar_salto' => 'nullable|boolean',
-                'nueva_oc_numero' => ['nullable', 'required_with:nueva_oc_horas,nueva_oc_archivo', 'string', 'max:100', \Illuminate\Validation\Rule::unique('cotizacion_orden_compra', 'numero')->where('id_cotizacion', $idCotizacion)],
-                'nueva_oc_horas' => 'nullable|required_with:nueva_oc_numero,nueva_oc_archivo|numeric|gt:0',
-                'nueva_oc_archivo' => 'nullable|required_with:nueva_oc_numero,nueva_oc_horas|file|mimes:pdf,jpg,jpeg,png,webp|max:20480',
                 'n_parte_diario' => 'nullable|string|max:50',
                 'numero_factura' => 'nullable|string|max:50',
                 'imagen_parte_diario' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:20480',
@@ -619,7 +606,7 @@ class CotizacionController extends Controller
             $horasEfectivas  = max($horasTrabajadas, (float) $v['hora_minima']);
             $debeCobrar      = (($v['cobrar_fila'] ?? '1') === '1') && !$currentRow->es_ajuste_horometro;
             $totalFila       = $debeCobrar ? round($horasEfectivas * $v['precio_hora'], 2) : 0;
-            $rutaNuevaOc = $this->uploadToS3($request, 'nueva_oc_archivo', "cotizaciones/ordenes/{$idCotizacion}");
+            $rutaNuevaOc = null;
 
             $updateData = array_merge($v, [
                 'horas_trabajadas'    => $horasTrabajadas,
@@ -641,23 +628,13 @@ class CotizacionController extends Controller
             }
 
             // Quitar la clave del archivo del array de actualización (no es columna)
-            unset($updateData['imagen_parte_diario'], $updateData['cobrar_fila'], $updateData['completar_salto'], $updateData['nueva_oc_numero'], $updateData['nueva_oc_horas'], $updateData['nueva_oc_archivo']);
+            unset($updateData['imagen_parte_diario'], $updateData['cobrar_fila'], $updateData['completar_salto']);
 
             try {
-                DB::transaction(function () use ($idCotizacion, $rowId, $updateData, $cotizacion, $v, $rutaNuevaOc) {
+                DB::transaction(function () use ($idCotizacion, $rowId, $updateData, $cotizacion, $v) {
                     DB::table('cotizacion')->where('id_cotizacion', $idCotizacion)->lockForUpdate()->first();
                     abort_unless(DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $rowId)
                         ->where('id_cotizacion', $idCotizacion)->where('activo', 1)->lockForUpdate()->first(), 404);
-                    if (!empty($v['nueva_oc_numero'])) {
-                        if (!$cotizacion->control_oc_activo || !$rutaNuevaOc) {
-                            throw \Illuminate\Validation\ValidationException::withMessages(['nueva_oc_archivo' => 'La OC adicional requiere un documento.']);
-                        }
-                        DB::table('cotizacion_orden_compra')->insert([
-                            'id_cotizacion' => $idCotizacion, 'numero' => $v['nueva_oc_numero'],
-                            'horas_autorizadas' => $v['nueva_oc_horas'], 'ruta_documento' => $rutaNuevaOc,
-                            'created_at' => now(), 'updated_at' => now(),
-                        ]);
-                    }
                     if (!empty($v['completar_salto'])) {
                         $anterior = DB::table('maquinaria_cotizacion')
                             ->where('id_cotizacion', $idCotizacion)->where('id_maquinaria', $v['id_maquinaria'])
@@ -683,11 +660,9 @@ class CotizacionController extends Controller
                     }
                     DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $rowId)
                         ->where('id_cotizacion', $idCotizacion)->where('activo', 1)->update($updateData);
-                    if ($cotizacion->control_oc_activo) app(ValorizacionOcService::class)->recalcular($idCotizacion);
                     $this->recalcularTotales($idCotizacion);
                 });
             } catch (\Throwable $e) {
-                if ($rutaNuevaOc) Storage::disk('s3')->delete($rutaNuevaOc);
                 throw $e;
             }
 
@@ -770,7 +745,6 @@ class CotizacionController extends Controller
             $changed = DB::table($table)->where($pkCol, $rowId)->where('id_cotizacion', $idCotizacion)
                 ->where('activo', 1)->update(['activo' => 0, 'id_hes' => null, 'fecha_actualizacion' => now()]);
             abort_unless($changed, 404);
-            if ($cotizacion->control_oc_activo) app(ValorizacionOcService::class)->recalcular($idCotizacion);
             $this->recalcularTotales($idCotizacion);
         });
         $totales = $this->getTotales($idCotizacion);
@@ -789,12 +763,13 @@ class CotizacionController extends Controller
 
             $query = DB::table('maquinaria_cotizacion as mc')
                 ->leftJoin('cotizacion_hes as hes', 'hes.id_hes', '=', 'mc.id_hes')
+                ->leftJoin('cotizacion_orden_compra as oc', 'oc.id_orden_compra', '=', 'mc.id_orden_compra')
                 ->join('chofer as ch', 'ch.id_chofer', '=', 'mc.id_chofer')
                 ->join('maquinaria as m', 'm.id_maquinaria', '=', 'mc.id_maquinaria')
                 ->where('mc.id_cotizacion', $cotizacion->id_cotizacion)
                 ->where('mc.activo', 1)
                 ->select(
-                    'mc.*', 'hes.codigo as codigo_hes',
+                    'mc.*', 'hes.codigo as codigo_hes', 'oc.numero as oc_numero',
                     DB::raw("TRIM(CONCAT(ch.nombres,' ',COALESCE(ch.apellido_paterno,''),' ',COALESCE(ch.apellido_materno,''))) as chofer_nombre"),
                     DB::raw("CONCAT(m.nombre, CASE WHEN m.numero_maquina IS NOT NULL AND m.numero_maquina != '' THEN CONCAT(' — ', m.numero_maquina) ELSE '' END) as maquinaria_nombre"),
                     DB::raw("'MAQUINARIA' as _tipo"),

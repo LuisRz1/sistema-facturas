@@ -37,9 +37,11 @@
 - Los modales no se cierran al pulsar el fondo ni con Escape. Se cierran mediante la X o al finalizar correctamente su operación.
 - Los comprobantes persistentes usan almacenamiento S3 compatible. No depender del disco efímero del contenedor.
 - Las valorizaciones nuevas de maquinaria requieren una OC numerada con horas autorizadas; su archivo inicial puede adjuntarse después. Toda OC adicional requiere PDF o imagen. `cotizacion.orden_compra` se conserva como referencia heredada; las OCs con cupo viven en `cotizacion_orden_compra`.
-- En maquinaria, horas facturables por fila = `max(horas_trabajadas, hora_minima)` si `es_facturable` y no es ajuste de horómetro. El cupo conjunto es la suma de OCs. `maquinaria_cotizacion_oc` conserva la distribución por OC; el excedente puede quedar sin asignar y se recalcula al agregar/editar órdenes o filas.
+- Una valorización admite varias OCs, pero una OC y un HES son **únicos globalmente**: el mismo `numero`/`codigo` no puede existir en dos valorizaciones. No se pueden eliminar una OC con filas asignadas ni un HES con filas (bloqueo con aviso).
+- En maquinaria, horas facturables por fila = `max(horas_trabajadas, hora_minima)` si `es_facturable` y no es ajuste de horómetro. La OC se asigna **manualmente, una por fila**, en `maquinaria_cotizacion.id_orden_compra` (asignación a través de modal); ya no hay reparto automático. El excedente sobre el cupo se permita con aviso y cuenta como horas sin OC; `maquinaria_cotizacion_oc` quedó eliminada.
 - HES es opcional por valorización (`usa_hes`), tanto para maquinaria como agregados. Una fila facturable admite un solo `id_hes`; las no facturables no consumen OC ni requieren HES. El HES puede agrupar fechas no consecutivas y se documenta en S3.
 - Los saltos positivos de horómetro pueden completarse con una fila de ajuste no facturable; los solapamientos solo se advierten. Las escrituras de OCs, HES y filas deben bloquear la cabecera en una transacción.
+- Los documentos de OC y HES se visualizan en un modal (`openAdjuntoModal`), no en pestaña nueva. Las notificaciones de creación, modificación y eliminación se muestran en modales (`CRC.feedback`), y toda eliminación pide confirmación (`CRC.confirm`).
 - El worker de WhatsApp no tiene volumen persistente en Railway; un reinicio puede requerir volver a vincular la sesión. Sus endpoints tampoco tienen autenticación propia en el código actual, por lo que no se deben ampliar ni exponer sin protección.
 
 ## Base de datos
@@ -51,6 +53,7 @@
 - Existen dos identidades: `App\Models\Usuario` sobre `usuario`, usada por la autenticación del sistema, y `App\Models\User` sobre `users`. No intercambiarlas accidentalmente.
 - La migración `2026_09_23_010000_add_actor_audit_for_notifications_and_actions` añade `notificacion_factura.id_usuario` y la tabla aditiva `auditoria_accion`. Registrar las acciones relevantes sobre facturas después del commit y mostrar en el historial el usuario y la fecha/hora; no almacenar secretos ni contenido de archivos en `detalle`.
 - La migración aditiva `2026_09_23_020000_add_moneda_pago_to_pago_factura` agrega `moneda_pago`, `monto_original` y `monto_cambio_pago` a `pago_factura`. `monto_pagado` sigue siendo la suma que alimenta `monto_abonado` y ya está expresada en la moneda de la factura.
+- La migración `2026_09_23_030000_add_oc_per_row_to_cotizaciones` agrega `maquinaria_cotizacion.id_orden_compra` (con backfill de la OC dominante por fila) y elimina `maquinaria_cotizacion_oc`. La migración `2026_09_23_030100_make_oc_hes_unique_globally` mueve la unicidad de `numero` (OC) y `codigo` (HES) a nivel global. Antes de aplicarlas, comprobar que no existan `numero`/`codigo` duplicados entre valorizaciones.
 - La cola usa la base de datos. En producción no hay un proceso worker dedicado documentado; cualquier cambio que despache jobs debe incluir estrategia de ejecución y supervisión.
 
 ## Flujo de trabajo

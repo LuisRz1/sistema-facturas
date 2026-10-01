@@ -27,31 +27,43 @@ class ValorizacionOcServiceTest extends TestCase
         $this->assertSame(0, ValorizacionOcService::horasFacturables($this->fila(4, 5, 3, true, true)));
     }
 
-    public function test_reparte_una_fila_entre_dos_oc_y_deja_exceso_sin_asignar(): void
+    public function test_detallar_filas_marca_la_oc_unica_y_las_horas_sin_oc(): void
     {
-        $ordenes = collect([
-            (object) ['id_orden_compra' => 10, 'horas_autorizadas' => 120],
-            (object) ['id_orden_compra' => 20, 'horas_autorizadas' => 30],
-        ]);
-        $filas = collect([
-            $this->fila(1, 118, 3),
-            $this->fila(2, 5, 3),
-            $this->fila(3, 29, 3),
-            $this->fila(4, 10, 3, false),
-        ]);
+        $service = new ValorizacionOcService();
 
-        $this->assertSame([
-            ['id_cotizacion_maqu' => 1, 'id_orden_compra' => 10, 'horas_asignadas' => 118],
-            ['id_cotizacion_maqu' => 2, 'id_orden_compra' => 10, 'horas_asignadas' => 2],
-            ['id_cotizacion_maqu' => 2, 'id_orden_compra' => 20, 'horas_asignadas' => 3],
-            ['id_cotizacion_maqu' => 3, 'id_orden_compra' => 20, 'horas_asignadas' => 27],
-        ], ValorizacionOcService::repartir($ordenes, $filas));
+        $conOc = (object) [
+            'id_orden_compra' => 5, 'oc_numero' => 'OC-1',
+            'horas_trabajadas' => 2, 'hora_minima' => 3,
+            'total_fila' => 100, 'es_facturable' => true, 'es_ajuste_horometro' => false,
+        ];
+        $sinOc = (object) [
+            'id_orden_compra' => null,
+            'horas_trabajadas' => 4, 'hora_minima' => 0,
+            'total_fila' => 100, 'es_facturable' => true, 'es_ajuste_horometro' => false,
+        ];
+
+        $filas = $service->detallarFilas(collect([$conOc, $sinOc]), true);
+
+        $this->assertSame('OC-1', $filas[0]->oc_asignaciones->first()->numero);
+        $this->assertSame(3.0, (float) $filas[0]->oc_asignaciones->first()->horas_asignadas);
+        $this->assertSame(0.0, (float) $filas[0]->horas_sin_oc);
+
+        $this->assertTrue($filas[1]->oc_asignaciones->isEmpty());
+        $this->assertSame(4.0, (float) $filas[1]->horas_sin_oc);
     }
 
-    public function test_recalcula_los_decimales_sin_deriva(): void
+    public function test_control_inactivo_no_reporta_horas_sin_oc(): void
     {
-        $ordenes = collect([(object) ['id_orden_compra' => 1, 'horas_autorizadas' => 0.3]]);
-        $filas = collect([$this->fila(1, 0.1, 0), $this->fila(2, 0.2, 0)]);
-        $this->assertSame(30, (int) round(array_sum(array_column(ValorizacionOcService::repartir($ordenes, $filas), 'horas_asignadas')) * 100));
+        $service = new ValorizacionOcService();
+        $fila = (object) [
+            'id_orden_compra' => null,
+            'horas_trabajadas' => 4, 'hora_minima' => 0,
+            'total_fila' => 100, 'es_facturable' => true, 'es_ajuste_horometro' => false,
+        ];
+
+        $resultado = $service->detallarFilas(collect([$fila]), false);
+
+        $this->assertSame(0.0, (float) $resultado[0]->horas_sin_oc);
+        $this->assertTrue($resultado[0]->oc_asignaciones->isEmpty());
     }
 }
