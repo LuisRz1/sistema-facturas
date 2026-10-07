@@ -118,6 +118,45 @@ class ValorizacionControlTest extends TestCase
         $this->assertNull(DB::table('cotizacion_orden_compra')->value('ruta_documento'));
     }
 
+    public function test_editar_cabecera_acepta_put_guarda_hes_y_conserva_oc_controlada(): void
+    {
+        $this->withoutMiddleware();
+        DB::table('cliente')->insert(['id_cliente' => 1]);
+        DB::table('maquinaria')->insert(['id_maquinaria' => 1, 'nombre' => 'Volquete']);
+        $id = DB::table('cotizacion')->insertGetId([
+            'id_cliente' => 1,
+            'id_maquinaria' => 1,
+            'tipo_cotizacion' => 'MAQUINARIA',
+            'numero_valorizacion' => '01',
+            'orden_compra' => 'OC-LEGADA',
+            'control_oc_activo' => true,
+            'usa_hes' => false,
+            'obra' => 'Obra anterior',
+            'periodo_inicio' => '2026-09-01',
+            'periodo_fin' => '2026-09-30',
+            'activo' => true,
+        ]);
+
+        $this->putJson("/cotizaciones/{$id}", [
+            'tipo_cotizacion' => 'MAQUINARIA',
+            'id_cliente' => 1,
+            'id_maquinaria' => 1,
+            'numero_valorizacion' => '02',
+            'orden_compra' => 'OC-EDITADA',
+            'usa_hes' => 1,
+            'obra' => 'Obra actualizada',
+            'periodo_inicio' => '2026-10-01',
+            'periodo_fin' => '2026-10-31',
+        ])->assertOk()->assertJsonPath('success', true);
+
+        $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $id)->first();
+        $this->assertSame('02', $cotizacion->numero_valorizacion);
+        $this->assertSame('Obra actualizada', $cotizacion->obra);
+        $this->assertSame('2026-10-01', $cotizacion->periodo_inicio);
+        $this->assertSame(1, (int) $cotizacion->usa_hes);
+        $this->assertSame('OC-LEGADA', $cotizacion->orden_compra);
+    }
+
     public function test_asignacion_manual_de_oc_por_fila_y_horas_sin_oc(): void
     {
         $this->withoutMiddleware();
@@ -308,6 +347,9 @@ class ValorizacionControlTest extends TestCase
         $this->assertSame('HES', $sheet->getCell('P12')->getValue());
         $this->assertStringContainsString('OC-120', $sheet->getCell('O13')->getValue());
         $this->assertSame('HES-001', $sheet->getCell('P13')->getValue());
+        $this->assertTrue($sheet->getColumnDimension('D')->getAutoSize());
+        $this->assertTrue($sheet->getColumnDimension('O')->getAutoSize());
+        $this->assertTrue($sheet->getColumnDimension('P')->getAutoSize());
 
         $ocResumen = $service->resumen($id);
         $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'ocResumen'))->render();

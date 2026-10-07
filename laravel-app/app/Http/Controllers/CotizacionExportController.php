@@ -258,7 +258,7 @@ class CotizacionExportController extends Controller
             $lastCol = $usaHes ? 'M' : 'L';
         }
         foreach ($colDefs as $col => $w) {
-            $sheet->getColumnDimension($col)->setWidth($w);
+            $sheet->getColumnDimension($col)->setWidth($w)->setAutoSize(true);
         }
         $sheet->getColumnDimension('A')->setWidth(3);
 
@@ -578,7 +578,9 @@ class CotizacionExportController extends Controller
         foreach (range(1, $highestColIdx) as $colIdx) {
             $col = Coordinate::stringFromColumnIndex($colIdx);
             $width = $tmpSheet->getColumnDimension($col)->getWidth();
-            if ($width > 0) {
+            if ($tmpSheet->getColumnDimension($col)->getAutoSize()) {
+                $targetSheet->getColumnDimension($col)->setWidth($width)->setAutoSize(true);
+            } elseif ($width > 0) {
                 $targetSheet->getColumnDimension($col)->setWidth($width);
             }
         }

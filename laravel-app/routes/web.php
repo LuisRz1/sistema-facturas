@@ -171,7 +171,7 @@ Route::middleware('auth')->group(function () {
         [CotizacionController::class, 'store'])->name('cotizaciones.store');
     Route::get('/cotizaciones/{id}',
         [CotizacionController::class, 'show'])->whereNumber('id')->name('cotizaciones.show');
-    Route::post('/cotizaciones/{id}',
+    Route::match(['POST', 'PUT', 'PATCH'], '/cotizaciones/{id}',
         [CotizacionController::class, 'update'])->whereNumber('id')->name('cotizaciones.update');
     Route::post('/cotizaciones/{id}/cliente',
         [CotizacionController::class, 'updateCliente'])->whereNumber('id')->name('cotizaciones.cliente.update');

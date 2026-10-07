@@ -263,32 +263,45 @@ class CotizacionController extends Controller
             'periodo_fin'         => 'required|date|after_or_equal:periodo_inicio',
         ]);
 
-        $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $id)->where('activo', 1)->first();
-        abort_unless($cotizacion, 404);
-        if ($cotizacion->tipo_cotizacion !== $validated['tipo_cotizacion']) {
-            return response()->json(['success' => false, 'message' => 'No se puede cambiar el tipo de una valorización existente.'], 422);
+        $resultado = DB::transaction(function () use ($validated, $id) {
+            $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $id)
+                ->where('activo', 1)->lockForUpdate()->first();
+            abort_unless($cotizacion, 404);
+
+            if ($cotizacion->tipo_cotizacion !== $validated['tipo_cotizacion']) {
+                return 'No se puede cambiar el tipo de una valorización existente.';
+            }
+
+            $usaHes = (bool) ($validated['usa_hes'] ?? $cotizacion->usa_hes);
+            $tablaFilas = $cotizacion->tipo_cotizacion === 'MAQUINARIA' ? 'maquinaria_cotizacion' : 'agregado_cotizacion';
+            if (!$usaHes && $cotizacion->usa_hes && DB::table($tablaFilas)
+                ->where('id_cotizacion', $id)->whereNotNull('id_hes')->exists()) {
+                return 'Desasigna primero todas las filas HES.';
+            }
+
+            DB::table('cotizacion')->where('id_cotizacion', $id)->update([
+                'id_cliente'          => $validated['id_cliente'],
+                'id_maquinaria'       => $validated['tipo_cotizacion'] === 'MAQUINARIA' ? ($validated['id_maquinaria'] ?? null) : null,
+                'id_agregado'         => $validated['tipo_cotizacion'] === 'AGREGADO' ? ($validated['id_agregado'] ?? null) : null,
+                'tipo_cotizacion'     => $validated['tipo_cotizacion'],
+                'numero_valorizacion' => $validated['numero_valorizacion'],
+                // Las nuevas órdenes se gestionan en cotizacion_orden_compra.
+                'orden_compra'        => $cotizacion->control_oc_activo
+                    ? $cotizacion->orden_compra
+                    : ($validated['orden_compra'] ?? null),
+                'usa_hes'             => $usaHes,
+                'obra'                => $validated['obra'],
+                'periodo_inicio'      => $validated['periodo_inicio'],
+                'periodo_fin'         => $validated['periodo_fin'],
+                'fecha_actualizacion' => now(),
+            ]);
+
+            return null;
+        });
+
+        if ($resultado !== null) {
+            return response()->json(['success' => false, 'message' => $resultado], 422);
         }
-        if ($cotizacion->control_oc_activo && $validated['orden_compra'] !== $cotizacion->orden_compra) {
-            return response()->json(['success' => false, 'message' => 'Edita cada orden de compra desde el panel de OCs.'], 422);
-        }
-        $usaHes = (bool) ($validated['usa_hes'] ?? $cotizacion->usa_hes);
-        $tablaFilas = $cotizacion->tipo_cotizacion === 'MAQUINARIA' ? 'maquinaria_cotizacion' : 'agregado_cotizacion';
-        if (!$usaHes && $cotizacion->usa_hes && DB::table($tablaFilas)->where('id_cotizacion', $id)->whereNotNull('id_hes')->exists()) {
-            return response()->json(['success' => false, 'message' => 'Desasigna primero todas las filas HES.'], 422);
-        }
-        DB::table('cotizacion')->where('id_cotizacion', $id)->update([
-            'id_cliente'          => $validated['id_cliente'],
-            'id_maquinaria'       => $validated['tipo_cotizacion'] === 'MAQUINARIA' ? ($validated['id_maquinaria'] ?? null) : null,
-            'id_agregado'         => $validated['tipo_cotizacion'] === 'AGREGADO'   ? ($validated['id_agregado'] ?? null) : null,
-            'tipo_cotizacion'     => $validated['tipo_cotizacion'],
-            'numero_valorizacion' => $validated['numero_valorizacion'],
-            'orden_compra'       => $validated['orden_compra'] ?? null,
-            'usa_hes'            => $usaHes,
-            'obra'                => $validated['obra'],
-            'periodo_inicio'      => $validated['periodo_inicio'],
-            'periodo_fin'         => $validated['periodo_fin'],
-            'fecha_actualizacion' => now(),
-        ]);
 
         return response()->json(['success' => true, 'message' => 'Cotización actualizada.']);
     }

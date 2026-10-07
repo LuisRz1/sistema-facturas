@@ -833,7 +833,7 @@
             <div class="modal-header"><h2>Editar Encabezado</h2><p>Modifica los datos generales de la valorización</p>
                 <button onclick="document.getElementById('modalEditHeader').classList.remove('open')" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
             </div>
-            <form onsubmit="guardarHeader(event)">
+            <form id="formEditHeader" onsubmit="guardarHeader(event)">
                 <div class="modal-body" style="padding:24px;">
                     <input type="hidden" id="editHeaderTipo" name="tipo_cotizacion" value="{{ $cotizacion->tipo_cotizacion }}">
                     <div class="field-row cols2" style="margin-bottom:14px;">
@@ -887,7 +887,7 @@
                     </div>
                     <div class="form-group" style="margin-bottom:14px;">
                         <input type="hidden" name="usa_hes" value="0">
-                        <label class="form-label"><input type="checkbox" name="usa_hes" value="1" {{ $usaHes ? 'checked' : '' }}> Requiere HES por fila</label>
+                        <label class="form-label"><input type="checkbox" id="editHeaderUsaHes" name="usa_hes" value="1" {{ $usaHes ? 'checked' : '' }}> Requiere HES por fila</label>
                         <small>Para desactivar, primero desasigna todas las filas HES.</small>
                     </div>
                     <div class="field-row cols2">
@@ -1784,20 +1784,31 @@
 
         async function guardarHeader(event) {
             event.preventDefault();
-            const fd   = new FormData(event.target);
+            const fd   = new FormData(event.currentTarget);
             const body = new URLSearchParams(fd);
-            body.append('_method', 'PUT');
-            const res  = await fetch(`/cotizaciones/{{ $cotizacion->id_cotizacion }}`, {
-                method:  'POST',
-                headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
-                body:    body.toString()
-            });
-            const data = await res.json();
-            if (data.success) {
+            body.set('usa_hes', document.getElementById('editHeaderUsaHes').checked ? '1' : '0');
+            try {
+                const res = await fetch(`/cotizaciones/{{ $cotizacion->id_cotizacion }}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': CSRF,
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: body.toString()
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    const validationMessage = Object.values(data.errors || {}).flat()[0];
+                    throw new Error(validationMessage || data.message || 'No se pudo guardar la cabecera.');
+                }
                 showToast('Encabezado actualizado.');
                 document.getElementById('modalEditHeader').classList.remove('open');
                 setTimeout(() => recargar(), 800);
-            } else showToast('Error al guardar.', false);
+            } catch (error) {
+                showToast(error.message || 'Error de red al guardar la cabecera.', false);
+            }
         }
 
         function fmtFecha(f) {
