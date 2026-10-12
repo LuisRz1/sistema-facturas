@@ -531,120 +531,8 @@
             padding-left: 38px;
         }
 
-        /* ── MODAL ── */
-        .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(15,23,42,.6);
-            backdrop-filter: blur(4px);
-            z-index: 200;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity .28s cubic-bezier(.16,1,.3,1), backdrop-filter .28s ease;
-        }
-
-        .modal-overlay.open { opacity: 1; pointer-events: all; }
-
-        .modal {
-            background: #fff;
-            border-radius: 16px;
-            width: 100%;
-            max-width: 680px;
-            max-height: 90vh;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            box-shadow: var(--shadow-lg);
-            transform: translateY(16px) scale(.97);
-            opacity: 0;
-            transition: transform .28s cubic-bezier(.16,1,.3,1), opacity .28s ease;
-        }
-
-        .modal-overlay.open .modal { transform: translateY(0) scale(1); opacity: 1; }
-        @media (prefers-reduced-motion: reduce) {
-            .modal-overlay, .modal-overlay .modal { transition: none !important; }
-        }
-
-        .modal-header {
-            background: var(--sidebar-bg);
-            color: #fff;
-            padding: 24px 28px;
-        }
-
-        .modal-header h2 { font-size: 22px; font-weight: 700; }
-        .modal-header p { font-size: 13px; color: #94a3b8; margin-top: 4px; }
-
-        .modal-body {
-            padding: 28px;
-            overflow-y: auto;
-            flex: 1;
-        }
-
-        .modal-footer {
-            padding: 20px 28px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            background: #fafbfd;
-        }
-
-        /* ── MODAL: variantes, cierre y accesibilidad (componente modal) ── */
-        .modal-header { position: relative; }
-        .modal-header .modal-titles { padding-right: 32px; }
-        .modal-close {
-            position: absolute;
-            right: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: transparent;
-            border: none;
-            color: inherit;
-            cursor: pointer;
-            font-size: 26px;
-            line-height: 1;
-            opacity: .7;
-            transition: opacity .15s;
-        }
-        .modal-close:hover { opacity: 1; }
-        .modal-header--gold { background: linear-gradient(135deg, #f5c842, #e0a800); color: #171204; }
-        .modal-header--gold p { color: #4a3c12; }
-        .modal-header--danger { background: linear-gradient(135deg, #b91c1c, #dc2626); color: #fff; }
-        .modal-header--danger p { color: #fecaca; }
-        .modal-header--plain { background: #fff; color: var(--text-primary); border-bottom: 1px solid var(--border); }
-        .modal-header--plain p { color: var(--text-muted); }
-
-        /* ── TOASTS globales ── */
-        .toast-stack {
-            position: fixed;
-            right: 20px;
-            bottom: 20px;
-            z-index: 400;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            pointer-events: none;
-        }
-        .crc-toast {
-            background: #0f172a;
-            color: #fff;
-            padding: 12px 16px;
-            border-radius: 10px;
-            box-shadow: var(--shadow-lg);
-            font-size: 13px;
-            font-weight: 600;
-            max-width: 380px;
-            pointer-events: auto;
-            animation: crcToastIn .2s ease;
-        }
-        .crc-toast.ok { background: #065f46; }
-        .crc-toast.error { background: #991b1b; }
-        .crc-toast.info { background: #1e3a8a; }
-        @keyframes crcToastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        /* Los estilos de modales y toasts viven en partials/ui-styles.blade.php
+           (fuente única). No redeclarar .modal* aquí. */
 
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
         .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
@@ -679,6 +567,7 @@
             .main-wrapper { margin-left: 0; }
         }
     </style>
+    @include('partials.ui-styles')
     @stack('styles')
 </head>
 <body>
@@ -909,6 +798,15 @@
 @endif
 @if(session('error'))
 <script>CRC.feedback({ tipo: 'error', titulo: 'Aviso', mensaje: @json(session('error')) });</script>
+@endif
+@if(isset($errors) && $errors->any())
+<script>
+    CRC.validacion({
+        titulo: 'Faltan datos',
+        subtitulo: 'Completa los casilleros marcados en el formulario.',
+        faltantes: @json($errors->all()),
+    });
+</script>
 @endif
 
 @stack('scripts')

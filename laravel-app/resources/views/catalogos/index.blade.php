@@ -237,40 +237,34 @@
     </div>
 
     {{-- ── MODAL EDITAR ── --}}
-    <div class="modal-overlay" id="modalEdit">
-        <div class="modal" style="max-width:460px;">
-            <div class="modal-header">
-                <h2 id="modalEditTitle">Editar</h2>
-                <p id="modalEditDesc"></p>
-                <button onclick="document.getElementById('modalEdit').classList.remove('open')"
-                        style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body" style="padding:24px;" id="modalEditBody"></div>
-            <div class="modal-footer">
-                <button class="btn btn-ghost" onclick="document.getElementById('modalEdit').classList.remove('open')">Cancelar</button>
-                <button class="btn btn-primary" id="btnGuardarEdit" onclick="guardarEdit()">Guardar</button>
-            </div>
-        </div>
-    </div>
+    <x-modal id="modalEdit" theme="dark">
+        <x-slot:header>
+            <h2 id="modalEditTitle">Editar</h2>
+            <p id="modalEditDesc"></p>
+        </x-slot:header>
+
+        <div id="modalEditBody"></div>
+
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnGuardarEdit" onclick="guardarEdit()">Guardar</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ── MODAL ELIMINAR ── --}}
-    <div class="modal-overlay" id="modalDel">
-        <div class="modal" style="max-width:400px;">
-            <div class="modal-header" style="background:#7f1d1d;">
-                <h2>Eliminar registro</h2>
-                <p id="modalDelDesc"></p>
-                <button onclick="document.getElementById('modalDel').classList.remove('open')"
-                        style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body" style="padding:20px 24px;">
-                <p style="font-size:14px;">¿Confirmas que deseas eliminar este registro?</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-ghost" onclick="document.getElementById('modalDel').classList.remove('open')">Cancelar</button>
-                <button class="btn" style="background:#dc2626;color:#fff;" id="btnConfDel">Eliminar</button>
-            </div>
-        </div>
-    </div>
+    <x-modal id="modalDel" size="sm" theme="danger">
+        <x-slot:header>
+            <h2>Eliminar registro</h2>
+            <p id="modalDelDesc"></p>
+        </x-slot:header>
+
+        <p style="font-size:14px;">¿Confirmas que deseas eliminar este registro?</p>
+
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" class="btn btn-danger" id="btnConfDel">Eliminar</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- Toast --}}
     <div id="toast" style="position:fixed;bottom:24px;right:24px;z-index:9999;padding:13px 20px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);transform:translateY(80px);opacity:0;transition:all .3s;max-width:380px;">
@@ -308,7 +302,45 @@
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' },
                 body: JSON.stringify(data)
             });
-            return res.json();
+            let json = {};
+            try { json = await res.json(); } catch (e) { json = {}; }
+            return { ok: res.ok, status: res.status, data: json };
+        }
+
+        // Aplana los mensajes de error de Laravel (data.errors) a una lista plana.
+        function mensajesDeError(data) {
+            const errores = data && data.errors;
+            if (!errores) return [];
+            return Object.values(errores).flat().map(String).filter(Boolean);
+        }
+
+        // Helper único para los formularios de alta/edición de catálogos:
+        // 422 → modal de validación con los mensajes del servidor; éxito → onSuccess.
+        async function enviarCatalogo(url, payload, onSuccess) {
+            const r = await apiPost(url, payload);
+
+            if (r.status === 422) {
+                const faltantes = mensajesDeError(r.data);
+                const detalle = faltantes.length ? faltantes : [r.data.message || 'Revisa los datos ingresados.'];
+                if (window.CRC && typeof CRC.validacion === 'function') {
+                    CRC.validacion({
+                        titulo: 'Faltan datos',
+                        subtitulo: 'Completa los casilleros marcados.',
+                        faltantes: detalle
+                    });
+                } else {
+                    showToast(detalle.join(' · '), false);
+                }
+                return false;
+            }
+
+            if (r.ok && r.data && r.data.success) {
+                if (typeof onSuccess === 'function') onSuccess(r.data);
+                return true;
+            }
+
+            showToast((r.data && r.data.message) || 'Error', false);
+            return false;
         }
         async function apiDelete(url) {
             const res = await fetch(url, {
@@ -321,17 +353,15 @@
 
         // ─────────────── CHOFER ───────────────────────────────────────────────────
         async function guardarChofer() {
-            const nombres = document.getElementById('cNombres').value.trim();
-            if (!nombres) { showToast('Ingresa el nombre del chofer.', false); return; }
-            const data = await apiPost('/catalogos/choferes', {
-                nombres, apellido_paterno: document.getElementById('cApPaterno').value.trim(),
+            await enviarCatalogo('/catalogos/choferes', {
+                nombres: document.getElementById('cNombres').value.trim(),
+                apellido_paterno: document.getElementById('cApPaterno').value.trim(),
                 apellido_materno: document.getElementById('cApMaterno').value.trim()
-            });
-            if (data.success) {
+            }, (data) => {
                 showToast(data.message);
                 ['cNombres','cApPaterno','cApMaterno'].forEach(id => document.getElementById(id).value = '');
                 location.reload();
-            } else showToast(data.message || 'Error', false);
+            });
         }
 
         let editCtx = null;
@@ -353,13 +383,13 @@
 
         // ─────────────── MAQUINARIA ───────────────────────────────────────────────
         async function guardarMaq() {
-            const nombre = document.getElementById('mNombre').value.trim();
-            if (!nombre) { showToast('Ingresa el nombre de la maquinaria.', false); return; }
-            const data = await apiPost('/catalogos/maquinarias', {
-                nombre, numero_maquina: document.getElementById('mNumero').value.trim()
+            await enviarCatalogo('/catalogos/maquinarias', {
+                nombre: document.getElementById('mNombre').value.trim(),
+                numero_maquina: document.getElementById('mNumero').value.trim()
+            }, (data) => {
+                showToast(data.message);
+                location.reload();
             });
-            if (data.success) { showToast(data.message); location.reload(); }
-            else showToast(data.message || 'Error', false);
         }
 
         function editarMaq(id, nombre, num) {
@@ -376,13 +406,13 @@
 
         // ─────────────── AGREGADO ─────────────────────────────────────────────────
         async function guardarAgr() {
-            const nombre = document.getElementById('aNombre').value.trim();
-            if (!nombre) { showToast('Ingresa el nombre del agregado.', false); return; }
-            const data = await apiPost('/catalogos/agregados', {
-                nombre, numero_agregado: document.getElementById('aNumero').value.trim()
+            await enviarCatalogo('/catalogos/agregados', {
+                nombre: document.getElementById('aNombre').value.trim(),
+                numero_agregado: document.getElementById('aNumero').value.trim()
+            }, (data) => {
+                showToast(data.message);
+                location.reload();
             });
-            if (data.success) { showToast(data.message); location.reload(); }
-            else showToast(data.message || 'Error', false);
         }
 
         function editarAgr(id, nombre, num) {
@@ -426,15 +456,14 @@
             const btn = document.getElementById('btnGuardarEdit');
             btn.disabled = true;
             btn.textContent = 'Guardando...';
-            const data = await apiPost(url, payload);
-            if (data.success) {
+            const guardado = await enviarCatalogo(url, payload, (data) => {
                 document.getElementById('modalEdit').classList.remove('open');
                 showToast(data.message || '✓ Actualizado correctamente.');
                 setTimeout(() => location.reload(), 1400);
-            } else {
+            });
+            if (!guardado) {
                 btn.disabled = false;
                 btn.textContent = 'Guardar';
-                showToast(data.message || 'Error al guardar.', false);
             }
         }
 
@@ -454,11 +483,5 @@
             else showToast(data.message || 'Error al eliminar.', false);
             delCtx = null;
         });
-
-        ['modalEdit','modalDel'].forEach(id =>
-            document.getElementById(id).addEventListener('click', e => {
-                if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
-            })
-        );
     </script>
 @endpush

@@ -99,21 +99,10 @@
         .action-btn svg { width: 13px; height: 13px; }
         .empty-state { text-align: center; padding: 56px 24px; color: var(--text-s); }
         .empty-state svg { color: var(--gold-b); margin: 0 auto 16px; display: block; }
-        .modal-overlay { position: fixed; inset: 0; background: rgba(28,22,0,.35); display: flex; align-items: center; justify-content: center; z-index: 50; opacity: 0; pointer-events: none; transition: opacity .25s; padding: 24px; }
-        .modal-overlay.open { opacity: 1; pointer-events: all; }
-        .modal { background: var(--white); border-radius: 22px; border: 1px solid var(--gold-b); width: 100%; max-width: 520px; transform: translateY(24px) scale(.97); transition: transform .3s cubic-bezier(.16,1,.3,1); overflow: hidden; }
-        .modal-overlay.open .modal { transform: translateY(0) scale(1); }
-        .modal-header { background: var(--gold-l); padding: 22px 28px 18px; border-bottom: 1px solid var(--gold-b); position: relative; }
-        .modal-header::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--gold); border-radius: 22px 22px 0 0; }
-        .modal-header h2 { font-size: 16px !important; font-weight: 800 !important; color: var(--text) !important; }
-        .modal-header p { font-size: 13px; color: var(--text-m); margin-top: 3px; }
-        .modal .modal-body { padding: 22px 28px; }
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         .form-full { grid-column: 1 / -1; }
         .form-group { margin-bottom: 0; }
         .form-label { display: block; font-size: 11px !important; font-weight: 700 !important; letter-spacing: .6px !important; text-transform: uppercase !important; color: var(--text-s) !important; margin-bottom: 6px !important; }
-        .modal .form-input { height: 42px !important; font-size: 13.5px !important; }
-        .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 28px; border-top: 1px solid #fef9e0; }
         .btn-outline, .btn.btn-outline { height: 40px; padding: 0 18px; border: 1.5px solid var(--gold-b) !important; border-radius: 10px !important; background: var(--white) !important; color: var(--text-m) !important; font-size: 13px !important; font-weight: 600 !important; cursor: pointer; transition: all .15s; }
         .btn-outline:hover, .btn.btn-outline:hover { background: var(--gold-l) !important; border-color: var(--gold-m) !important; }
         .btn.btn-primary#btnSubmit { height: 40px; }
@@ -386,14 +375,13 @@
     </div>
 
     {{-- MODAL --}}
-    <div class="modal-overlay" id="modalOverlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2 id="modalTitle">Nuevo Cliente</h2>
-                <p id="modalDesc">Ingresa los datos del nuevo cliente o proveedor.</p>
-            </div>
+    <x-modal id="modalOverlay" theme="dark">
+        <x-slot:header>
+            <h2 id="modalTitle">Nuevo Cliente</h2>
+            <p id="modalDesc">Ingresa los datos del nuevo cliente o proveedor.</p>
+        </x-slot:header>
 
-            <form id="clienteForm" method="POST" action="{{ route('clientes.store') }}">
+        <form id="clienteForm" method="POST" action="{{ route('clientes.store') }}">
                 @csrf
                 <input type="hidden" name="_method" id="formMethod" value="POST">
 
@@ -406,8 +394,7 @@
                     </div>
                 @endif
 
-                <div class="modal-body">
-                    <div class="form-grid">
+                <div class="form-grid">
                         <div class="form-group form-full">
                             <label class="form-label">Razón Social *</label>
                             <input type="text" name="razon_social" id="f_razon" class="form-input" placeholder="Ej. Constructora ABC S.A.C." value="{{ old('razon_social') }}" required>
@@ -429,31 +416,27 @@
                             <input type="text" name="direccion_fiscal" id="f_direccion" class="form-input" placeholder="Av. Los Tulipanes 123, Lima" value="{{ old('direccion_fiscal') }}">
                         </div>
                     </div>
-                </div>
-
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline" onclick="cerrarModal()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" id="btnSubmit">Guardar Cliente</button>
-                </div>
             </form>
-        </div>
-    </div>
 
-    <div class="modal-overlay" id="modalDeleteClienteOverlay">
-        <div class="modal" style="max-width:440px;border-color:#fca5a5;">
-            <div class="modal-header" style="background:#7f1d1d;border-bottom-color:#fecaca;">
-                <h2 style="color:#fff;">Eliminar Cliente</h2>
-                <p id="deleteClienteText" style="color:#fecaca;">Esta acción no se puede deshacer.</p>
-            </div>
-            <div class="modal-body">
-                <p style="font-size:14px;color:#7f1d1d;font-weight:600;">Se eliminará el cliente seleccionado y su información de contacto.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" onclick="cerrarModalEliminarCliente()">Cancelar</button>
-                <button type="button" class="btn btn-primary" onclick="confirmarEliminarCliente()" style="background:#dc2626 !important;color:#fff !important;">Sí, eliminar</button>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button>
+            <button type="submit" class="btn btn-primary" id="btnSubmit" form="clienteForm">Guardar Cliente</button>
+        </x-slot:footer>
+    </x-modal>
+
+    <x-modal id="modalDeleteClienteOverlay" size="sm" theme="danger">
+        <x-slot:header>
+            <h2>Eliminar Cliente</h2>
+            <p id="deleteClienteText">Esta acción no se puede deshacer.</p>
+        </x-slot:header>
+
+        <p style="font-size:14px;color:#7f1d1d;font-weight:600;">Se eliminará el cliente seleccionado y su información de contacto.</p>
+
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" onclick="cerrarModalEliminarCliente()">Cancelar</button>
+            <button type="button" class="btn btn-danger" onclick="confirmarEliminarCliente()">Sí, eliminar</button>
+        </x-slot:footer>
+    </x-modal>
 
     @push('scripts')
         <script>

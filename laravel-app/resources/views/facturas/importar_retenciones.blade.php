@@ -101,30 +101,23 @@
     @if(session('resumen_tipo') === 'retencion_preview' && session('ret_preview'))
         @php $preview = session('ret_preview'); @endphp
 
-        <div class="modal-overlay" id="modalRetPreview" style="z-index:900;align-items:flex-start;padding:24px 12px;overflow-y:auto;">
-            <div class="modal" style="max-width:1160px;width:min(1160px,98vw);margin:auto;border-radius:14px;overflow:visible;">
-                {{-- Header --}}
-                <div style="padding:18px 24px;border-bottom:1px solid #ede9fe;background:linear-gradient(135deg,#4c1d95,#6d28d9);border-radius:14px 14px 0 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:relative;">
-                    <div>
-                        <p style="font-weight:800;font-size:15px;color:#fff;margin:0;">🔍 Vista Previa de Retenciones — Revisa y Edita antes de Confirmar</p>
-                        <p style="font-size:12px;color:#ddd6fe;margin:4px 0 0;">
-                            {{ collect($preview)->where('encontrada', true)->count() }} facturas encontradas ·
-                            {{ collect($preview)->where('encontrada', false)->count() }} no encontradas.
-                            Puedes corregir serie, número y montos antes de importar.
-                        </p>
-                    </div>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <span style="background:#d1fae5;color:#065f46;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;">
-                            ✓ {{ collect($preview)->where('encontrada', true)->count() }} OK
-                        </span>
-                        <span style="background:#fee2e2;color:#7f1d1d;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;">
-                            ✗ {{ collect($preview)->where('encontrada', false)->count() }} No encontradas
-                        </span>
-                        <a href="{{ route('facturas.importar.retenciones') }}"
-                           style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:4px 10px;font-size:20px;line-height:1;text-decoration:none;cursor:pointer;transition:background .15s;"
-                           title="Cancelar y cerrar">×</a>
-                    </div>
+        <x-modal id="modalRetPreview" size="xl">
+            <x-slot:header>
+                <h2>🔍 Vista Previa de Retenciones — Revisa y Edita antes de Confirmar</h2>
+                <p>
+                    {{ collect($preview)->where('encontrada', true)->count() }} facturas encontradas ·
+                    {{ collect($preview)->where('encontrada', false)->count() }} no encontradas.
+                    Puedes corregir serie, número y montos antes de importar.
+                </p>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+                    <span style="background:#d1fae5;color:#065f46;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;">
+                        ✓ {{ collect($preview)->where('encontrada', true)->count() }} OK
+                    </span>
+                    <span style="background:#fee2e2;color:#7f1d1d;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;">
+                        ✗ {{ collect($preview)->where('encontrada', false)->count() }} No encontradas
+                    </span>
                 </div>
+            </x-slot:header>
 
                 <form method="POST" action="{{ route('facturas.importar.retenciones.confirmar') }}">
                     @csrf
@@ -235,12 +228,11 @@
                         </div>
                     </div>
                 </form>
-            </div>
-        </div>
+        </x-modal>
 
         <script>
             document.addEventListener('DOMContentLoaded', function () {
-                document.getElementById('modalRetPreview').classList.add('open');
+                CRC.open('modalRetPreview');
             });
         </script>
     @endif

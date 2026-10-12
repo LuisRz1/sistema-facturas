@@ -36,6 +36,20 @@
         .action-btn.danger:hover { background:#fee2e2; border-color:#fca5a5; color:#dc2626; }
 
         .empty-state { text-align:center; padding:48px 24px; color:var(--text-muted); }
+
+        .estado-badge {
+            display:inline-flex; align-items:center; gap:5px;
+            padding:3px 10px; border-radius:20px; font-size:10px; font-weight:800;
+            text-transform:uppercase; letter-spacing:.5px; white-space:nowrap;
+        }
+        .estado-completo  { background:var(--green-light); color:#065f46; border:1px solid var(--green); }
+        .estado-pendiente { background:#fef3c7; color:#92400e; border:1px solid var(--gold); }
+        .estado-select {
+            height:26px; font-size:11px; font-weight:600; border-radius:7px;
+            border:1.5px solid var(--gold-b); background:#fff; padding:0 6px; outline:none;
+            color:var(--text-muted); cursor:pointer; transition:border-color .15s;
+        }
+        .estado-select:focus { border-color:var(--gold-m); box-shadow:0 0 0 3px #f5c84220; }
     </style>
 @endpush
 
@@ -101,6 +115,11 @@
                     <option value="MAQUINARIA" {{ $tipo === 'MAQUINARIA' ? 'selected' : '' }}>Maquinaria</option>
                     <option value="AGREGADO"   {{ $tipo === 'AGREGADO'   ? 'selected' : '' }}>Agregados</option>
                 </select>
+                <select name="estado" style="min-width:150px;">
+                    <option value="">Todos los estados</option>
+                    <option value="COMPLETO"  {{ $estado === 'COMPLETO'  ? 'selected' : '' }}>Completas</option>
+                    <option value="PENDIENTE" {{ $estado === 'PENDIENTE' ? 'selected' : '' }}>Pendientes</option>
+                </select>
                 <select name="id_cliente" style="min-width:200px;">
                     <option value="">Todos los clientes</option>
                     @foreach($clientes as $c)
@@ -156,6 +175,7 @@
                     <th style="text-align:right;">Base</th>
                     <th style="text-align:right;">IGV</th>
                     <th style="text-align:right;">Total</th>
+                    <th>Estado</th>
                     <th style="text-align:right;">Acciones</th>
                 </tr>
                 </thead>
@@ -194,6 +214,21 @@
                             S/ {{ number_format($cot->total,2) }}
                         </td>
                         <td>
+                            @php $esCompleto = ($cot->estado_valorizacion ?? 'PENDIENTE') === 'COMPLETO'; @endphp
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span class="estado-badge {{ $esCompleto ? 'estado-completo' : 'estado-pendiente' }}"
+                                      id="estadoBadge-{{ $cot->id_cotizacion }}">
+                                    {{ $esCompleto ? 'Completo' : 'Pendiente' }}
+                                </span>
+                                <select class="estado-select"
+                                        data-prev="{{ $esCompleto ? 'COMPLETO' : 'PENDIENTE' }}"
+                                        onchange="cambiarEstado({{ $cot->id_cotizacion }}, this.value, this)">
+                                    <option value="COMPLETO"  {{ $esCompleto ? 'selected' : '' }}>Completo</option>
+                                    <option value="PENDIENTE" {{ $esCompleto ? '' : 'selected' }}>Pendiente</option>
+                                </select>
+                            </div>
+                        </td>
+                        <td>
                             <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;">
                                 <a href="{{ route('cotizaciones.show', $cot->id_cotizacion) }}" class="action-btn" title="Ver / Gestionar filas">
                                     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
@@ -212,7 +247,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="10">
+                    <tr><td colspan="11">
                             <div class="empty-state">
                                 <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#cbd5e1" stroke-width="1.2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                 <p style="font-weight:600;font-size:15px;color:var(--text-primary);margin-top:10px;">Sin valorizaciones registradas</p>
@@ -226,23 +261,19 @@
     </div>
 
     {{-- Modal confirmar eliminar --}}
-    <div class="modal-overlay" id="modalEliminar">
-        <div class="modal" style="max-width:420px;">
-            <div class="modal-header" style="background:#7f1d1d;">
-                <h2>Eliminar Valorización</h2>
-                <p id="modalEliminarDesc">¿Estás seguro?</p>
-                <button onclick="document.getElementById('modalEliminar').classList.remove('open')"
-                        style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body" style="padding:24px;">
-                <p style="font-size:14px;color:var(--text-primary);">Esta acción desactivará la valorización y no podrá recuperarse fácilmente.</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-ghost" onclick="document.getElementById('modalEliminar').classList.remove('open')">Cancelar</button>
-                <button class="btn" style="background:#dc2626;color:#fff;" id="btnConfirmarEliminar">Eliminar</button>
-            </div>
-        </div>
-    </div>
+    <x-modal id="modalEliminar" size="sm" theme="danger">
+        <x-slot:header>
+            <h2>Eliminar Valorización</h2>
+            <p id="modalEliminarDesc">¿Estás seguro?</p>
+        </x-slot:header>
+
+        <p style="font-size:14px;color:var(--text-primary);">Esta acción desactivará la valorización y no podrá recuperarse fácilmente.</p>
+
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" class="btn btn-danger" id="btnConfirmarEliminar">Eliminar</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- Toast --}}
     <div id="toast" style="position:fixed;bottom:24px;right:24px;z-index:9999;padding:13px 20px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);transform:translateY(80px);opacity:0;transition:all .3s;max-width:380px;">
@@ -266,6 +297,71 @@
         }
 
         let eliminarId = null;
+
+        function actualizarBadgeEstado(id, estado) {
+            const badge = document.getElementById('estadoBadge-' + id);
+            if (!badge) return;
+            const completo = estado === 'COMPLETO';
+            badge.textContent = completo ? 'Completo' : 'Pendiente';
+            badge.classList.toggle('estado-completo', completo);
+            badge.classList.toggle('estado-pendiente', !completo);
+        }
+
+        async function cambiarEstado(id, nuevoEstado, elemento, confirmado = false) {
+            const previo = elemento.dataset.prev || elemento.value;
+            let body = 'estado=' + encodeURIComponent(nuevoEstado);
+            if (confirmado) body += '&confirmado=1';
+
+            try {
+                const res = await fetch(`${window.location.origin}/cotizaciones/${id}/estado`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRF-TOKEN': CSRF,
+                        'Accept': 'application/json'
+                    },
+                    body
+                });
+
+                let data = {};
+                try { data = await res.json(); } catch (e) { data = {}; }
+
+                if (!res.ok) {
+                    CRC.toast((data && data.message) || 'No se pudo actualizar el estado.', 'error');
+                    elemento.value = previo;
+                    return;
+                }
+
+                if (data.success) {
+                    const aplicado = data.estado || nuevoEstado;
+                    CRC.toast(data.message || 'Estado actualizado.', 'ok');
+                    actualizarBadgeEstado(id, aplicado);
+                    elemento.dataset.prev = aplicado;
+                    elemento.value = aplicado;
+                    return;
+                }
+
+                if (data.requiere_confirmacion) {
+                    elemento.value = previo;
+                    CRC.validacion({
+                        titulo: 'Datos incompletos',
+                        subtitulo: 'Puedes marcarla como completa igualmente.',
+                        faltantes: data.faltantes || [],
+                        textoOk: 'Marcar completo igualmente',
+                        textoCancelar: 'Revisar',
+                        onContinuar: () => cambiarEstado(id, 'COMPLETO', elemento, true)
+                    });
+                    return;
+                }
+
+                CRC.toast((data && data.message) || 'No se pudo actualizar el estado.', 'error');
+                elemento.value = previo;
+            } catch (e) {
+                CRC.toast('Error de red al actualizar el estado.', 'error');
+                elemento.value = previo;
+            }
+        }
+
         function confirmarEliminar(id, num) {
             eliminarId = id;
             document.getElementById('modalEliminarDesc').textContent = `¿Eliminar valorización "${num}"?`;
@@ -281,9 +377,6 @@
             document.getElementById('modalEliminar').classList.remove('open');
             if (data.success) { showToast('Valorización eliminada.'); setTimeout(() => location.reload(), 1200); }
             else showToast(data.message || 'Error', false);
-        });
-        document.getElementById('modalEliminar').addEventListener('click', e => {
-            if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
         });
     </script>
 @endpush

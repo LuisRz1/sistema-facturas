@@ -31,54 +31,6 @@
         .toast-notif.ok    { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
         .toast-notif.error { background:#fee2e2; color:#7f1d1d; border:1px solid #fca5a5; }
 
-        /* Modales de usuario en estilo dorado */
-        .usuario-modal {
-            overflow-y: auto;
-            align-items: flex-start;
-            padding: 18px;
-        }
-        .usuario-modal .modal {
-            margin: 10px auto;
-            max-width: 840px;
-            width: min(840px, 96vw);
-            max-height: calc(100vh - 36px);
-            border: 1.5px solid #fce8a8;
-            box-shadow: 0 20px 56px rgba(15,23,42,.22);
-        }
-        .usuario-modal .modal-header {
-            background: linear-gradient(135deg, #f5c842 0%, #e8b820 100%);
-            border-top: 3px solid #9a6e10;
-            color: #111827;
-            cursor: move;
-            user-select: none;
-            position: relative;
-        }
-        .usuario-modal .modal-header h2 { color: #111827; }
-        .usuario-modal .modal-header p { color: rgba(17,24,39,.72); }
-        .usuario-modal .modal-body {
-            padding: 24px;
-        }
-        .usuario-modal .modal-footer {
-            background: #fff;
-            border-top: 1px solid #f3e8c1;
-        }
-        .warning-modal .modal {
-            max-width: 460px;
-            border: 1.5px solid #fca5a5;
-        }
-        .warning-modal .modal-header {
-            background: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 100%);
-            border-top: none;
-            cursor: default;
-        }
-        .warning-modal .modal-header h2,
-        .warning-modal .modal-header p {
-            color: #fff;
-        }
-        .warning-modal .modal-footer {
-            background: #fff;
-            border-top: 1px solid #fecaca;
-        }
         .usuario-form {
             display: flex;
             flex-direction: column;
@@ -92,16 +44,7 @@
         }
 
         @media (max-width: 768px) {
-            .usuario-modal { padding: 10px; }
-            .usuario-modal .modal {
-                width: 100%;
-                max-height: calc(100vh - 20px);
-                margin: 0;
-            }
-            .usuario-modal .modal-header { cursor: default; }
             .usuario-form-grid { grid-template-columns: 1fr; gap: 12px; }
-            .usuario-modal .modal-body,
-            .usuario-modal .modal-footer { padding: 16px; }
         }
     </style>
 @endpush
@@ -213,88 +156,71 @@
     </div>
 
     {{-- ═══ MODAL CREAR ═══ --}}
-    <div class="modal-overlay usuario-modal" id="modalCrearOverlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Crear Usuario</h2>
-                <p>Agrega un nuevo usuario al sistema</p>
-                <button onclick="cerrarModalCrear()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#111827;cursor:pointer;font-size:24px;opacity:.75;">×</button>
+    <x-modal id="modalCrearOverlay" title="Crear Usuario" subtitle="Agrega un nuevo usuario al sistema" size="lg" theme="dark">
+        <form method="POST" action="{{ route('usuarios.store') }}" id="formCrearUsuario" onsubmit="return validarFormCrear(event)" class="usuario-form">
+            @csrf
+            <div class="usuario-form-grid">
+                <div class="form-group"><label class="form-label">Nombre *</label><input type="text" name="nombre" id="cNombre" class="form-input" required></div>
+                <div class="form-group"><label class="form-label">Apellido *</label><input type="text" name="apellido" id="cApellido" class="form-input" required></div>
+                <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Nombre de Usuario *</label><input type="text" name="nombre_usuario" id="cNombreUsr" class="form-input" placeholder="jperez" required></div>
+                <div class="form-group"><label class="form-label">Contraseña * <small style="font-weight:400;">(mín. 6)</small></label><input type="password" name="clave_usuario" id="cClave" class="form-input" required></div>
+                <div class="form-group"><label class="form-label">Correo</label><input type="email" name="correo" id="cCorreo" class="form-input"></div>
+                <div class="form-group"><label class="form-label">Celular</label><input type="text" name="celular" id="cCelular" class="form-input" maxlength="15"></div>
+                <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Rol *</label>
+                    <select name="id_rol" id="cRol" class="form-input" required>
+                        <option value="">— Seleccionar —</option>
+                        <option value="1">Administrador</option>
+                        <option value="2">Usuario</option>
+                    </select>
+                </div>
             </div>
-            <form method="POST" action="{{ route('usuarios.store') }}" onsubmit="return validarFormCrear(event)" class="usuario-form">
-                @csrf
-                <div class="modal-body usuario-form-grid">
-                    <div class="form-group"><label class="form-label">Nombre *</label><input type="text" name="nombre" id="cNombre" class="form-input" required></div>
-                    <div class="form-group"><label class="form-label">Apellido *</label><input type="text" name="apellido" id="cApellido" class="form-input" required></div>
-                    <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Nombre de Usuario *</label><input type="text" name="nombre_usuario" id="cNombreUsr" class="form-input" placeholder="jperez" required></div>
-                    <div class="form-group"><label class="form-label">Contraseña * <small style="font-weight:400;">(mín. 6)</small></label><input type="password" name="clave_usuario" id="cClave" class="form-input" required></div>
-                    <div class="form-group"><label class="form-label">Correo</label><input type="email" name="correo" id="cCorreo" class="form-input"></div>
-                    <div class="form-group"><label class="form-label">Celular</label><input type="text" name="celular" id="cCelular" class="form-input" maxlength="15"></div>
-                    <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Rol *</label>
-                        <select name="id_rol" id="cRol" class="form-input" required>
-                            <option value="">— Seleccionar —</option>
-                            <option value="1">Administrador</option>
-                            <option value="2">Usuario</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" onclick="cerrarModalCrear()" class="btn btn-ghost">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Crear Usuario</button>
-                </div>
-            </form>
-        </div>
-    </div>
+        </form>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="submit" form="formCrearUsuario" class="btn btn-primary">Crear Usuario</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ═══ MODAL EDITAR ═══ --}}
-    <div class="modal-overlay usuario-modal" id="modalEditarOverlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Editar Usuario</h2>
-                <p id="subtitleEditar">Actualiza los datos del usuario</p>
-                <button onclick="cerrarModalEditar()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#111827;cursor:pointer;font-size:24px;opacity:.75;">×</button>
+    <x-modal id="modalEditarOverlay" title="Editar Usuario" size="lg" theme="dark">
+        <x-slot:header>
+            <p id="subtitleEditar">Actualiza los datos del usuario</p>
+        </x-slot:header>
+        <form id="formEditarUsuario" onsubmit="guardarUsuario(event)" class="usuario-form">
+            <div class="usuario-form-grid">
+                <div class="form-group"><label class="form-label">Nombre *</label><input type="text" id="eNombre" class="form-input" required></div>
+                <div class="form-group"><label class="form-label">Apellido *</label><input type="text" id="eApellido" class="form-input" required></div>
+                <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Nombre de Usuario *</label><input type="text" id="eNombreUsr" class="form-input" required></div>
+                <div class="form-group" style="grid-column:1/-1;">
+                    <label class="form-label">Nueva Contraseña <small style="font-weight:400;text-transform:none;">(vacío = sin cambio)</small></label>
+                    <input type="password" id="eClave" class="form-input" placeholder="Mínimo 6 caracteres">
+                </div>
+                <div class="form-group"><label class="form-label">Correo</label><input type="email" id="eCorreo" class="form-input"></div>
+                <div class="form-group"><label class="form-label">Celular</label><input type="text" id="eCelular" class="form-input" maxlength="15"></div>
+                <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Rol *</label>
+                    <select id="eRol" class="form-input" required>
+                        <option value="1">Administrador</option>
+                        <option value="2">Usuario</option>
+                    </select>
+                </div>
             </div>
-            <form id="formEditarUsuario" onsubmit="guardarUsuario(event)" class="usuario-form">
-                <div class="modal-body usuario-form-grid">
-                    <div class="form-group"><label class="form-label">Nombre *</label><input type="text" id="eNombre" class="form-input" required></div>
-                    <div class="form-group"><label class="form-label">Apellido *</label><input type="text" id="eApellido" class="form-input" required></div>
-                    <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Nombre de Usuario *</label><input type="text" id="eNombreUsr" class="form-input" required></div>
-                    <div class="form-group" style="grid-column:1/-1;">
-                        <label class="form-label">Nueva Contraseña <small style="font-weight:400;text-transform:none;">(vacío = sin cambio)</small></label>
-                        <input type="password" id="eClave" class="form-input" placeholder="Mínimo 6 caracteres">
-                    </div>
-                    <div class="form-group"><label class="form-label">Correo</label><input type="email" id="eCorreo" class="form-input"></div>
-                    <div class="form-group"><label class="form-label">Celular</label><input type="text" id="eCelular" class="form-input" maxlength="15"></div>
-                    <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Rol *</label>
-                        <select id="eRol" class="form-input" required>
-                            <option value="1">Administrador</option>
-                            <option value="2">Usuario</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" onclick="cerrarModalEditar()" class="btn btn-ghost">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" id="btnGuardarEditar">Guardar Cambios</button>
-                </div>
-            </form>
-        </div>
-    </div>
+        </form>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="submit" form="formEditarUsuario" class="btn btn-primary" id="btnGuardarEditar">Guardar Cambios</button>
+        </x-slot:footer>
+    </x-modal>
 
-    <div class="modal-overlay warning-modal" id="modalEliminarUsuarioOverlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Eliminar Usuario</h2>
-                <p id="deleteUsuarioText">Esta acción no se puede deshacer.</p>
-                <button onclick="cerrarModalEliminarUsuario()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;opacity:.85;">×</button>
-            </div>
-            <div class="modal-body">
-                <p style="font-size:14px;color:#7f1d1d;font-weight:600;">Se eliminará el usuario seleccionado y perderá acceso al sistema.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" onclick="cerrarModalEliminarUsuario()" class="btn btn-ghost">Cancelar</button>
-                <button type="button" onclick="confirmarEliminarUsuario()" class="btn" style="background:#dc2626;color:#fff;">Sí, eliminar</button>
-            </div>
-        </div>
-    </div>
+    <x-modal id="modalEliminarUsuarioOverlay" title="Eliminar Usuario" theme="danger" size="sm">
+        <x-slot:header>
+            <p id="deleteUsuarioText">Esta acción no se puede deshacer.</p>
+        </x-slot:header>
+        <p style="font-size:14px;color:#7f1d1d;font-weight:600;">Se eliminará el usuario seleccionado y perderá acceso al sistema.</p>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" onclick="confirmarEliminarUsuario()" class="btn btn-danger">Sí, eliminar</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- Toast --}}
     <div class="toast-notif" id="toastNotif">
@@ -392,11 +318,6 @@
                 resetModalPosition('modalCrearOverlay');
                 document.getElementById('modalCrearOverlay').classList.add('open');
             }
-            function cerrarModalCrear() {
-                const overlay = document.getElementById('modalCrearOverlay');
-                overlay.classList.remove('open');
-                overlay.dispatchEvent(new Event('close-modal-users'));
-            }
             function validarFormCrear(e) {
                 const pw = document.getElementById('cClave').value;
                 if (pw.length < 6) { e.preventDefault(); showToast('La contraseña debe tener mínimo 6 caracteres', false); return false; }
@@ -481,22 +402,19 @@
                 document.getElementById('modalEliminarUsuarioOverlay').classList.add('open');
             }
 
-            function cerrarModalEliminarUsuario() {
-                deleteUserId = null;
-                document.getElementById('modalEliminarUsuarioOverlay').classList.remove('open');
-            }
-
             function confirmarEliminarUsuario() {
                 if (!deleteUserId) return;
                 const form = document.getElementById(`delete-user-form-${deleteUserId}`);
                 if (form) form.submit();
             }
 
-            // ── Cerrar modales al click fuera ─────────────────────────────────────
+            // ── Cierre declarativo ([data-modal-close]) ───────────────────────────
+            // Los modales solo se cierran con la X o un botón de cierre explícito;
+            // al cerrarse se restablece la posición arrastrada del diálogo.
             ['modalCrearOverlay', 'modalEditarOverlay', 'modalEliminarUsuarioOverlay'].forEach(id => {
                 document.getElementById(id)?.addEventListener('click', e => {
-                    if (e.target === e.currentTarget) {
-                        e.currentTarget.classList.remove('open');
+                    if (e.target.closest('[data-modal-close]')) {
+                        if (id === 'modalEliminarUsuarioOverlay') deleteUserId = null;
                         e.currentTarget.dispatchEvent(new Event('close-modal-users'));
                     }
                 });

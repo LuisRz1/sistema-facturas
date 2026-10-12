@@ -94,6 +94,7 @@ class ValorizacionControlTest extends TestCase
         (require database_path('migrations/2026_09_19_010000_add_oc_hes_to_cotizaciones.php'))->up();
         (require database_path('migrations/2026_09_23_030000_add_oc_per_row_to_cotizaciones.php'))->up();
         (require database_path('migrations/2026_09_23_030100_make_oc_hes_unique_globally.php'))->up();
+        (require database_path('migrations/2026_10_12_000000_add_estado_to_cotizacion.php'))->up();
     }
 
     public function test_maquinaria_nueva_exige_oc_con_horas_y_permite_adjuntar_archivo_luego(): void

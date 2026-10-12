@@ -92,41 +92,6 @@
     .empty-state svg { margin:0 auto 16px; opacity:.4; }
     .empty-state p  { font-size:14px; font-weight:500; }
 
-    /* ── MODAL ── */
-    .modal-overlay {
-        position:fixed; inset:0; background:rgba(15,23,42,.6); backdrop-filter:blur(4px);
-        z-index:200; display:flex; align-items:center; justify-content:center; padding:24px;
-        opacity:0; pointer-events:none; transition:opacity .2s;
-    }
-    .modal-overlay.open { opacity:1; pointer-events:all; }
-
-    .modal {
-        background:#fff; border-radius:16px; width:100%; max-width:720px; max-height:90vh;
-        overflow:hidden; display:flex; flex-direction:column;
-        box-shadow:0 8px 32px rgba(0,0,0,.12);
-        transform:translateY(20px); transition:transform .25s ease;
-    }
-    .modal-overlay.open .modal { transform:translateY(0); }
-
-    .modal-header {
-        background:linear-gradient(135deg, var(--gold) 0%, var(--gold-h) 100%);
-        border-top:3px solid var(--gold-xd);
-        padding:24px 28px;
-    }
-    .modal-header h2 { font-size:20px; font-weight:700; color:#000; }
-    .modal-header p  { font-size:13px; color:rgba(0,0,0,.7); margin-top:4px; }
-    .modal-header .btn-close {
-        background:none; border:none; cursor:pointer; color:#000; opacity:.6;
-        font-size:20px; line-height:1; padding:4px;
-    }
-    .modal-header .btn-close:hover { opacity:1; }
-
-    .modal-body { padding:28px; overflow-y:auto; flex:1; }
-    .modal-footer {
-        padding:20px 28px; border-top:1px solid var(--gold-b);
-        display:flex; justify-content:flex-end; gap:10px; background:var(--gold-l);
-    }
-
     .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
     .form-full { grid-column:1 / -1; }
 
@@ -287,84 +252,77 @@
 @endforelse
 
 {{-- MODAL: Nueva/Editar Configuracion --}}
-<div class="modal-overlay" id="modalConfig">
-    <div class="modal">
-        <form method="POST" action="{{ route('conciliacion.configuracion.parsers.guardar') }}" id="formParser">
-            @csrf
-            <input type="hidden" name="id_config" id="configId">
+<x-modal id="modalConfig" maxWidth="720px">
+    <x-slot:header>
+        <h2 id="modalConfigLabel">Nueva Configuracion de Parser</h2>
+        <p>Define las reglas de parseo y tolerancias para conciliacion automatica</p>
+    </x-slot:header>
 
-            <div class="modal-header">
-                <div style="flex:1;">
-                    <h2 id="modalConfigLabel">Nueva Configuracion de Parser</h2>
-                    <p>Define las reglas de parseo y tolerancias para conciliacion automatica</p>
-                </div>
-                <button type="button" class="btn-close" onclick="cerrarModal()">&times;</button>
+    <form method="POST" action="{{ route('conciliacion.configuracion.parsers.guardar') }}" id="formParser">
+        @csrf
+        <input type="hidden" name="id_config" id="configId">
+
+        <div class="form-grid">
+            <div>
+                <label class="form-label">Banco <span class="text-danger">*</span></label>
+                <select name="banco" id="campoBanco" class="form-select" required>
+                    <option value="">Seleccionar banco</option>
+                    @foreach($bancos as $b)
+                        <option value="{{ $b }}">{{ $b }}</option>
+                    @endforeach
+                </select>
+                <input type="text" class="form-input" id="bancoManual" placeholder="Escribir un banco nuevo..."
+                       style="display:none;margin-top:6px;">
+                <a href="#" class="banco-toggle" id="toggleBancoManual" onclick="toggleBancoInput(); return false;">
+                    + Agregar nuevo banco
+                </a>
             </div>
-
-            <div class="modal-body">
-                <div class="form-grid">
+            <div>
+                <label class="form-label">Version <span class="text-danger">*</span></label>
+                <input type="text" name="version" id="campoVersion" class="form-input" placeholder="Ej: 1.0.0" required>
+            </div>
+            <div>
+                <label class="form-label">Tolerancia Monto (S/) <span class="text-danger">*</span></label>
+                <input type="number" name="tolerancia_monto" id="campoToleranciaMonto" class="form-input"
+                       step="0.01" min="0" placeholder="0.00" required>
+            </div>
+            <div>
+                <label class="form-label">Tolerancia Dias <span class="text-danger">*</span></label>
+                <input type="number" name="tolerancia_dias" id="campoToleranciaDias" class="form-input"
+                       min="0" placeholder="0" required>
+            </div>
+            <div class="form-full">
+                <label class="form-label">Mapeo de Columnas (JSON) <span class="text-danger">*</span></label>
+                <textarea name="mapeo_columnas" id="campoMapeo" class="form-textarea" rows="5"
+                          placeholder='{"fecha": "col_A", "descripcion": "col_B", "importe": "col_C"}'
+                          required></textarea>
+                <span class="form-helper">Formato JSON: mapea campos logicos a nombres de columna del archivo bancario.</span>
+            </div>
+            <div class="form-full">
+                <label class="form-label">Tipos Ignorables (JSON)</label>
+                <textarea name="tipos_ignorables" id="campoTiposIgnorables" class="form-textarea" rows="3"
+                          placeholder='["COMISION", "MANTENIMIENTO", "ITF"]'></textarea>
+                <span class="form-helper">Formato JSON: lista de tipos de movimiento a ignorar durante la conciliacion.</span>
+            </div>
+            <div class="form-full">
+                <div class="form-check">
+                    <input type="checkbox" name="activo" value="1" id="campoActivo">
                     <div>
-                        <label class="form-label">Banco <span class="text-danger">*</span></label>
-                        <select name="banco" id="campoBanco" class="form-select" required>
-                            <option value="">Seleccionar banco</option>
-                            @foreach($bancos as $b)
-                                <option value="{{ $b }}">{{ $b }}</option>
-                            @endforeach
-                        </select>
-                        <input type="text" class="form-input" id="bancoManual" placeholder="Escribir un banco nuevo..."
-                               style="display:none;margin-top:6px;">
-                        <a href="#" class="banco-toggle" id="toggleBancoManual" onclick="toggleBancoInput(); return false;">
-                            + Agregar nuevo banco
-                        </a>
-                    </div>
-                    <div>
-                        <label class="form-label">Version <span class="text-danger">*</span></label>
-                        <input type="text" name="version" id="campoVersion" class="form-input" placeholder="Ej: 1.0.0" required>
-                    </div>
-                    <div>
-                        <label class="form-label">Tolerancia Monto (S/) <span class="text-danger">*</span></label>
-                        <input type="number" name="tolerancia_monto" id="campoToleranciaMonto" class="form-input"
-                               step="0.01" min="0" placeholder="0.00" required>
-                    </div>
-                    <div>
-                        <label class="form-label">Tolerancia Dias <span class="text-danger">*</span></label>
-                        <input type="number" name="tolerancia_dias" id="campoToleranciaDias" class="form-input"
-                               min="0" placeholder="0" required>
-                    </div>
-                    <div class="form-full">
-                        <label class="form-label">Mapeo de Columnas (JSON) <span class="text-danger">*</span></label>
-                        <textarea name="mapeo_columnas" id="campoMapeo" class="form-textarea" rows="5"
-                                  placeholder='{"fecha": "col_A", "descripcion": "col_B", "importe": "col_C"}'
-                                  required></textarea>
-                        <span class="form-helper">Formato JSON: mapea campos logicos a nombres de columna del archivo bancario.</span>
-                    </div>
-                    <div class="form-full">
-                        <label class="form-label">Tipos Ignorables (JSON)</label>
-                        <textarea name="tipos_ignorables" id="campoTiposIgnorables" class="form-textarea" rows="3"
-                                  placeholder='["COMISION", "MANTENIMIENTO", "ITF"]'></textarea>
-                        <span class="form-helper">Formato JSON: lista de tipos de movimiento a ignorar durante la conciliacion.</span>
-                    </div>
-                    <div class="form-full">
-                        <div class="form-check">
-                            <input type="checkbox" name="activo" value="1" id="campoActivo">
-                            <div>
-                                <label for="campoActivo" style="display:block;cursor:pointer;">
-                                    Activo — Marcar como configuracion activa para este banco
-                                </label>
-                                <span class="form-helper">Solo una configuracion puede estar activa por banco.</span>
-                            </div>
-                        </div>
+                        <label for="campoActivo" style="display:block;cursor:pointer;">
+                            Activo — Marcar como configuracion activa para este banco
+                        </label>
+                        <span class="form-helper">Solo una configuracion puede estar activa por banco.</span>
                     </div>
                 </div>
             </div>
+        </div>
+    </form>
 
-            <div class="modal-footer">
-                <button type="button" class="btn btn-outline" onclick="cerrarModal()">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Guardar Configuracion</button>
-            </div>
-        </form>
-    </div>
-</div>
+    <x-slot:footer>
+        <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+        <button type="submit" form="formParser" class="btn btn-primary">Guardar Configuracion</button>
+    </x-slot:footer>
+</x-modal>
 
 @stop
 
@@ -377,11 +335,7 @@
         document.getElementById('configId').value = '';
         document.getElementById('modalConfigLabel').textContent = 'Nueva Configuracion de Parser';
         resetBancoManual();
-        document.getElementById('modalConfig').classList.add('open');
-    }
-
-    function cerrarModal() {
-        document.getElementById('modalConfig').classList.remove('open');
+        CRC.open('modalConfig');
     }
 
     function toggleBancoInput() {
@@ -487,7 +441,7 @@
         document.getElementById('campoActivo').checked = cfg.activo == 1;
         document.getElementById('modalConfigLabel').textContent = 'Editar Configuracion — ' + cfg.banco;
 
-        document.getElementById('modalConfig').classList.add('open');
+        CRC.open('modalConfig');
     }
 
 </script>

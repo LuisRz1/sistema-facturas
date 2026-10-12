@@ -147,8 +147,6 @@
         .btn-generar-reporte { background:var(--gold); color:#000; border:none; font-weight:700; }
         .btn-generar-reporte:hover { background:var(--gold-h); }
 
-        #modalPagoOverlay .modal-body { min-height:0; max-height:calc(90vh - 160px); overflow-y:auto; }
-
         .reporte-tipo-grid  { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px; }
         .reporte-tipo-card  { position:relative; border:2px solid var(--gold-b); border-radius:10px; padding:18px 14px 14px; cursor:pointer; transition:all .18s; background:#fff; }
         .reporte-tipo-card:hover { border-color:var(--gold); background:var(--gold-l); }
@@ -178,12 +176,6 @@
         .usuario-option.selected .u-check { border-color:var(--gold); background:var(--gold); color:#000; }
         .btn-pdf-filtros { background:var(--gold); color:#000; border:none; font-weight:700; }
         .btn-pdf-filtros:hover { background:var(--gold-h); }
-
-        .modal-header { background:linear-gradient(135deg, var(--gold) 0%, var(--gold-h) 100%); border-top:3px solid var(--gold-xd); }
-        .modal-header h2 { color:#000; font-weight:700; }
-        .modal-header p  { color:rgba(0,0,0,.7); }
-        .modal-header button { color:#000; opacity:.7; }
-        .modal-header button:hover { opacity:1; }
 
         #validarDetraccionWrap { display:none; margin-bottom:12px; padding:10px 14px; background:var(--gold-l); border-radius:8px; border:1px solid var(--gold-b); color:var(--gold-xd); }
         #validarDetraccionWrap label { color:var(--gold-xd); font-weight:600; }
@@ -898,75 +890,57 @@
     @endif
 
     {{-- ═══════════ MODAL DETALLE IMPORTACIÓN ═══════════ --}}
-    <div class="modal-overlay" id="modalSincOverlay">
-        <div class="modal" style="max-width:860px;width:min(860px,96vw);max-height:88vh;display:flex;flex-direction:column;">
-            <div class="modal-header">
-                <h2 id="modalSincTitulo">Facturas de importación</h2>
-                <p id="modalSincDesc">—</p>
-                <button onclick="cerrarModalSinc()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 24px 24px;">
-                <div id="modalSincBody">Cargando...</div>
-            </div>
-        </div>
-    </div>
+    <x-modal id="modalSincOverlay" size="lg" theme="dark">
+        <x-slot:header>
+            <h2 id="modalSincTitulo">Facturas de importación</h2>
+            <p id="modalSincDesc">—</p>
+        </x-slot:header>
+        <div id="modalSincBody">Cargando...</div>
+    </x-modal>
 
     {{-- Confirmación previa: se revisa destinatario y contenido antes de encolar cualquier envío. --}}
-    <div class="modal-overlay" id="modalConfirmarWhatsAppOverlay" role="dialog" aria-modal="true" aria-labelledby="tituloConfirmarWhatsApp">
-        <div class="modal" style="max-width:650px;width:min(650px,94vw);">
-            <div class="modal-header" style="background:#0f766e;color:#fff;">
-                <h2 id="tituloConfirmarWhatsApp">Revisar envío por WhatsApp</h2>
-                <p>Confirme el destinatario y el mensaje antes de programarlo.</p>
-                <button type="button" onclick="cerrarConfirmacionNotificacion('WHATSAPP')" aria-label="Cerrar" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body">
+    <x-modal id="modalConfirmarWhatsAppOverlay" size="md" theme="dark">
+        <x-slot:header>
+            <h2 id="tituloConfirmarWhatsApp">Revisar envío por WhatsApp</h2>
+            <p>Confirme el destinatario y el mensaje antes de programarlo.</p>
+        </x-slot:header>
                 <p style="margin:0 0 12px;"><strong>Se enviará a:</strong> <span id="confirmarWhatsAppDestinatario">Cargando…</span></p>
                 <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Mensaje que se enviará</label>
                 <pre id="confirmarWhatsAppMensaje" style="white-space:pre-wrap;overflow:auto;max-height:320px;margin:0;padding:14px;background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;font:13px/1.55 system-ui;color:#134e4a;">Cargando…</pre>
-            </div>
-            <div class="modal-footer">
-                <form id="formConfirmarWhatsApp" method="POST">
-                    @csrf
-                    <input type="hidden" name="confirmado_envio" value="1">
-                    <button type="submit" class="btn btn-primary" id="confirmarWhatsAppBtn" disabled style="background:#0f766e;border-color:#0f766e;">Confirmar y programar WhatsApp</button>
-                </form>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <form id="formConfirmarWhatsApp" method="POST">
+                @csrf
+                <input type="hidden" name="confirmado_envio" value="1">
+                <button type="submit" class="btn btn-primary" id="confirmarWhatsAppBtn" disabled>Confirmar y programar WhatsApp</button>
+            </form>
+        </x-slot:footer>
+    </x-modal>
 
-    <div class="modal-overlay" id="modalConfirmarCorreoOverlay" role="dialog" aria-modal="true" aria-labelledby="tituloConfirmarCorreo">
-        <div class="modal" style="max-width:650px;width:min(650px,94vw);">
-            <div class="modal-header" style="background:#1d4ed8;color:#fff;">
-                <h2 id="tituloConfirmarCorreo">Revisar envío por correo</h2>
-                <p>Confirme el destinatario, asunto y mensaje antes de programarlo.</p>
-                <button type="button" onclick="cerrarConfirmacionNotificacion('CORREO')" aria-label="Cerrar" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body">
+    <x-modal id="modalConfirmarCorreoOverlay" size="md" theme="dark">
+        <x-slot:header>
+            <h2 id="tituloConfirmarCorreo">Revisar envío por correo</h2>
+            <p>Confirme el destinatario, asunto y mensaje antes de programarlo.</p>
+        </x-slot:header>
                 <p style="margin:0 0 8px;"><strong>Se enviará a:</strong> <span id="confirmarCorreoDestinatario">Cargando…</span></p>
                 <p style="margin:0 0 12px;"><strong>Asunto:</strong> <span id="confirmarCorreoAsunto">—</span></p>
                 <label style="display:block;font-weight:700;font-size:13px;margin-bottom:6px;">Mensaje que se enviará</label>
                 <pre id="confirmarCorreoMensaje" style="white-space:pre-wrap;overflow:auto;max-height:320px;margin:0;padding:14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font:13px/1.55 system-ui;color:#1e3a8a;">Cargando…</pre>
-            </div>
-            <div class="modal-footer">
-                <form id="formConfirmarCorreo" method="POST">
-                    @csrf
-                    <input type="hidden" name="confirmado_envio" value="1">
-                    <button type="submit" class="btn btn-primary" id="confirmarCorreoBtn" disabled style="background:#1d4ed8;border-color:#1d4ed8;">Confirmar y programar correo</button>
-                </form>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <form id="formConfirmarCorreo" method="POST">
+                @csrf
+                <input type="hidden" name="confirmado_envio" value="1">
+                <button type="submit" class="btn btn-primary" id="confirmarCorreoBtn" disabled>Confirmar y programar correo</button>
+            </form>
+        </x-slot:footer>
+    </x-modal>
 
-    <div class="modal-overlay" id="modalHistorialAccionesOverlay" role="dialog" aria-modal="true" aria-labelledby="tituloHistorialAcciones">
-        <div class="modal" style="max-width:720px;width:min(720px,94vw);">
-            <div class="modal-header">
-                <h2 id="tituloHistorialAcciones">Historial de acciones</h2>
-                <p>Usuario, acción y fecha/hora de los últimos cambios de la factura.</p>
-                <button type="button" onclick="cerrarHistorialAcciones()" aria-label="Cerrar" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body" id="historialAccionesBody" style="max-height:420px;overflow:auto;">Cargando…</div>
-        </div>
-    </div>
+    <x-modal id="modalHistorialAccionesOverlay" size="lg" theme="dark">
+        <x-slot:header>
+            <h2 id="tituloHistorialAcciones">Historial de acciones</h2>
+            <p>Usuario, acción y fecha/hora de los últimos cambios de la factura.</p>
+        </x-slot:header>
+        <div id="historialAccionesBody" style="max-height:420px;overflow:auto;">Cargando…</div>
+    </x-modal>
 
     {{-- ═══════════ TOAST ═══════════ --}}
     <div class="inline-alert" id="toastFactura">
@@ -975,16 +949,9 @@
     </div>
 
     {{-- ═══════════ MODAL PAGO MASIVO ═══════════ --}}
-    <div class="modal-overlay" id="modalPagoMasivoOverlay">
-        <div class="modal" style="max-width:900px;width:min(900px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
-            <div class="modal-header">
-                <h2>Registrar Pago Masivo</h2>
-                <p>Distribuye una sola transferencia en múltiples facturas del mismo cliente</p>
-                <button onclick="cerrarModalPagoMasivo()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <form id="formPagoMasivo" onsubmit="guardarPagoMasivo(event)" style="display:flex;flex-direction:column;min-height:0;flex:1;">
-                @csrf
-                <div class="modal-body" style="padding:24px;overflow-y:auto;min-height:0;flex:1;">
+    <x-modal id="modalPagoMasivoOverlay" title="Registrar Pago Masivo" subtitle="Distribuye una sola transferencia en múltiples facturas del mismo cliente" size="xl" theme="dark">
+        <form id="formPagoMasivo" onsubmit="guardarPagoMasivo(event)">
+            @csrf
                     <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:12px;">
                         <div class="form-group">
                             <label class="form-label">Cliente</label>
@@ -1089,23 +1056,15 @@
                         <div class="masivo-kpi"><div class="lbl">Diferencia</div><div class="val" id="pmKpiDiferencia">S/ 0.00</div></div>
                     </div>
                 </div>
-                <div class="modal-footer" style="border-top:1px solid #f3e8c1;background:#fff;position:sticky;bottom:0;">
-                    <button type="button" onclick="cerrarModalPagoMasivo()" class="btn btn-ghost">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" id="btnGuardarPagoMasivo">Guardar Pago Masivo</button>
-                </div>
-            </form>
-        </div>
-    </div>
+        </form>
+        <x-slot:footer>
+            <button type="button" onclick="cerrarModalPagoMasivo()" class="btn btn-ghost">Cancelar</button>
+            <button type="submit" form="formPagoMasivo" class="btn btn-primary" id="btnGuardarPagoMasivo">Guardar Pago Masivo</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ═══════════ MODAL RESUMEN PAGO MASIVO ═══════════ --}}
-    <div class="modal-overlay" id="modalPagoMasivoResumenOverlay">
-        <div class="modal" style="max-width:980px;width:min(980px,96vw);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
-            <div class="modal-header">
-                <h2>Resumen de Pago Masivo</h2>
-                <p>Facturas actualizadas en esta operación</p>
-                <button onclick="cerrarResumenPagoMasivo()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body" style="padding:20px;overflow-y:auto;min-height:0;flex:1;">
+    <x-modal id="modalPagoMasivoResumenOverlay" title="Resumen de Pago Masivo" subtitle="Facturas actualizadas en esta operación" size="xl" theme="gold">
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
                     <div class="masivo-kpi"><div class="lbl">Facturas actualizadas</div><div class="val" id="pmrKpiFacturas">0</div></div>
                     <div class="masivo-kpi"><div class="lbl">Monto aplicado</div><div class="val" id="pmrKpiAplicado">S/ 0.00</div></div>
@@ -1129,23 +1088,17 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
-            <div class="modal-footer" style="border-top:1px solid #f3e8c1;background:#fff;">
-                <button type="button" onclick="cerrarResumenPagoMasivo()" class="btn btn-ghost">Cerrar</button>
-                <button type="button" onclick="cerrarResumenPagoMasivo(true)" class="btn btn-primary">Cerrar y Recargar</button>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" onclick="cerrarResumenPagoMasivo()" class="btn btn-ghost">Cerrar</button>
+            <button type="button" onclick="cerrarResumenPagoMasivo(true)" class="btn btn-primary">Cerrar y Recargar</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ═══════════ MODAL VER PAGOS (solo lectura) ═══════════ --}}
-    <div class="modal-overlay" id="modalVerPagosOverlay">
-        <div class="modal" style="max-width:600px;width:min(600px,96vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;">
-            <div class="modal-header" style="background:linear-gradient(135deg,#059669,#047857);">
-                <h2>Historial de Pagos</h2>
-                <p id="modalVerPagosSubtitle" style="font-size:13px;opacity:.85;"></p>
-                <button onclick="cerrarModalVerPagos()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;line-height:1;">×</button>
-            </div>
-            <div class="modal-body" style="padding:20px 24px;overflow-y:auto;flex:1;min-height:0;">
+    <x-modal id="modalVerPagosOverlay" title="Historial de Pagos" size="md" theme="plain">
+        <x-slot:header>
+            <p id="modalVerPagosSubtitle" style="font-size:13px;opacity:.85;"></p>
+        </x-slot:header>
                 <div id="verPagosLoading" style="display:none;text-align:center;color:#6b7280;padding:20px;">Cargando...</div>
                 <div id="verPagosVacio" style="display:none;text-align:center;color:#9ca3af;padding:24px;">
                     No hay pagos registrados para esta factura.
@@ -1173,115 +1126,17 @@
                         </tr>
                     </tfoot>
                 </table>
-            </div>
-            <div class="modal-footer">
-                <button type="button" onclick="cerrarModalVerPagos()" class="btn btn-ghost">Cerrar</button>
-            </div>
-        </div>
-    </div>
-
-    {{-- ═══════════ MODAL EDITAR ABONO ═══════════ --}}
-    <div class="modal-overlay" id="modalEditarPagoOverlay" style="z-index:600;">
-        <div class="modal" style="max-width:520px;width:min(520px,96vw);">
-            <div class="modal-header" style="background:linear-gradient(135deg,#1d4ed8,#1e40af);">
-                <h2>Editar Abono</h2>
-                <p style="font-size:13px;opacity:.85;">Actualiza los datos del abono registrado</p>
-                <button onclick="cerrarModalEditarPago()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;line-height:1;">×</button>
-            </div>
-            <div class="modal-body" style="padding:24px;">
-                <input type="hidden" id="editPagoId">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-                    <div class="form-group">
-                        <label class="form-label">Monto (moneda del pago) *</label>
-                        <input type="number" id="editPagoMonto" step="0.01" min="0.01" class="form-input" placeholder="0.00">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Moneda del pago *</label>
-                        <select id="editPagoMoneda" class="form-input" onchange="onEditPagoMonedaChange()">
-                            <option value="PEN">Soles (S/)</option>
-                            <option value="USD">Dólares (US$)</option>
-                        </select>
-                    </div>
-                    <div class="form-group" id="editPagoTcGrp" style="display:none;">
-                        <label class="form-label">Tipo de cambio (S/ por 1 USD)</label>
-                        <input type="number" id="editPagoTc" step="0.001" min="0.001" class="form-input" placeholder="3.750">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Fecha *</label>
-                        <input type="date" id="editPagoFecha" class="form-input">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Banco de Origen</label>
-                        <select id="editPagoBanco" class="form-input" onchange="onEditBancoChange()">
-                            <option value="">Seleccionar...</option>
-                            <option value="BBVA SOLES">BBVA Soles</option>
-                            <option value="BBVA DOLARES">BBVA Dólares</option>
-                            <option value="BCP SOLES">BCP Soles</option>
-                            <option value="BCP DOLARES">BCP Dólares</option>
-                            <option value="INTERBANK SOLES">Interbank Soles</option>
-                            <option value="INTERBANK DOLARES">Interbank Dólares</option>
-                            <option value="EFECTIVO">Efectivo</option>
-                            <option value="YAPE">Yape</option>
-                            <option value="PLIN">Plin</option>
-                            <option value="OTROS">Otros</option>
-                        </select>
-                        <input type="text" id="editPagoBancoOtro" class="form-input" placeholder="Especificar banco" style="display:none;margin-top:6px;">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Cuenta Destino</label>
-                        <select id="editPagoCuenta" class="form-input" onchange="onEditCuentaChange()">
-                            <option value="">Seleccionar...</option>
-                            <option value="BBVA SOLES">BBVA Soles</option>
-                            <option value="BBVA DOLARES">BBVA Dólares</option>
-                            <option value="BCP SOLES">BCP Soles</option>
-                            <option value="BCP DOLARES">BCP Dólares</option>
-                            <option value="INTERBANK SOLES">Interbank Soles</option>
-                            <option value="INTERBANK DOLARES">Interbank Dólares</option>
-                            <option value="EFECTIVO">Efectivo</option>
-                            <option value="YAPE">Yape</option>
-                            <option value="PLIN">Plin</option>
-                            <option value="OTROS">Otros</option>
-                        </select>
-                        <input type="text" id="editPagoCuentaOtro" class="form-input" placeholder="Especificar cuenta" style="display:none;margin-top:6px;">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">N° Operación</label>
-                        <input type="text" id="editPagoNumOp" class="form-input" placeholder="Número de operación">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Forma de Pago</label>
-                        <select id="editPagoForma" class="form-input">
-                            <option value="">Seleccionar...</option>
-                            <option value="Transferencia">Transferencia</option>
-                            <option value="Efectivo">Efectivo</option>
-                            <option value="Cheque">Cheque</option>
-                            <option value="Yape">Yape</option>
-                            <option value="Plin">Plin</option>
-                            <option value="Detracción">Detracción</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="grid-column:1/-1;">
-                        <label class="form-label">Observación</label>
-                        <input type="text" id="editPagoObs" class="form-input" placeholder="Observación o referencia">
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer" style="gap:10px;">
-                <button type="button" onclick="cerrarModalEditarPago()" class="btn btn-ghost">Cancelar</button>
-                <button type="button" id="btnGuardarEditarPago" onclick="guardarEditarPago()" class="btn btn-primary">Guardar cambios</button>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cerrar</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ═══════════ MODAL PAGOS (múltiples abonos por factura) ═══════════ --}}
-    <div class="modal-overlay" id="modalPagoOverlay">
-        <div class="modal" style="max-width:860px;width:min(860px,96vw);max-height:93vh;display:flex;flex-direction:column;overflow:hidden;">
-            <div class="modal-header">
-                <h2>Registro de Pagos</h2>
-                <p id="modalPagoSubtitle" style="font-size:13px;opacity:.85;">Factura · Administra los abonos</p>
-                <button onclick="cerrarModalPago()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;line-height:1;">×</button>
-            </div>
-            <div class="modal-body" style="padding:20px 24px 24px;overflow-y:auto;flex:1;min-height:0;">
+    <x-modal id="modalPagoOverlay" size="lg" theme="dark">
+        <x-slot:header>
+            <h2>Registro de Pagos</h2>
+            <p id="modalPagoSubtitle" style="font-size:13px;opacity:.85;">Factura · Administra los abonos</p>
+        </x-slot:header>
 
                 {{-- ── Barra de progreso ── --}}
                 <div style="background:#fff;border:1.5px solid var(--gold-b);border-radius:12px;padding:16px 18px;margin-bottom:16px;">
@@ -1440,26 +1295,110 @@
                     </div>
                 </div>
 
-            </div>
-            <div class="modal-footer" style="gap:10px;">
-                <button type="button" onclick="cerrarModalPago()" class="btn btn-ghost">Cerrar</button>
-                <button type="button" id="btnGuardarPago" onclick="guardarPago()" class="btn btn-primary" style="min-width:160px;">
-                    <span id="btnGuardarPagoTxt">Guardar pagos</span>
-                </button>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" onclick="cerrarModalPago()" class="btn btn-ghost">Cerrar</button>
+            <button type="button" id="btnGuardarPago" onclick="guardarPago()" class="btn btn-primary" style="min-width:160px;">
+                <span id="btnGuardarPagoTxt">Guardar pagos</span>
+            </button>
+        </x-slot:footer>
+    </x-modal>
+
+    {{-- ═══════════ MODAL EDITAR ABONO ═══════════ --}}
+    <x-modal id="modalEditarPagoOverlay" size="sm" theme="dark">
+        <x-slot:header>
+            <h2>Editar Abono</h2>
+            <p style="font-size:13px;opacity:.85;">Actualiza los datos del abono registrado</p>
+        </x-slot:header>
+                <input type="hidden" id="editPagoId">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+                    <div class="form-group">
+                        <label class="form-label">Monto (moneda del pago) *</label>
+                        <input type="number" id="editPagoMonto" step="0.01" min="0.01" class="form-input" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Moneda del pago *</label>
+                        <select id="editPagoMoneda" class="form-input" onchange="onEditPagoMonedaChange()">
+                            <option value="PEN">Soles (S/)</option>
+                            <option value="USD">Dólares (US$)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="editPagoTcGrp" style="display:none;">
+                        <label class="form-label">Tipo de cambio (S/ por 1 USD)</label>
+                        <input type="number" id="editPagoTc" step="0.001" min="0.001" class="form-input" placeholder="3.750">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Fecha *</label>
+                        <input type="date" id="editPagoFecha" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Banco de Origen</label>
+                        <select id="editPagoBanco" class="form-input" onchange="onEditBancoChange()">
+                            <option value="">Seleccionar...</option>
+                            <option value="BBVA SOLES">BBVA Soles</option>
+                            <option value="BBVA DOLARES">BBVA Dólares</option>
+                            <option value="BCP SOLES">BCP Soles</option>
+                            <option value="BCP DOLARES">BCP Dólares</option>
+                            <option value="INTERBANK SOLES">Interbank Soles</option>
+                            <option value="INTERBANK DOLARES">Interbank Dólares</option>
+                            <option value="EFECTIVO">Efectivo</option>
+                            <option value="YAPE">Yape</option>
+                            <option value="PLIN">Plin</option>
+                            <option value="OTROS">Otros</option>
+                        </select>
+                        <input type="text" id="editPagoBancoOtro" class="form-input" placeholder="Especificar banco" style="display:none;margin-top:6px;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Cuenta Destino</label>
+                        <select id="editPagoCuenta" class="form-input" onchange="onEditCuentaChange()">
+                            <option value="">Seleccionar...</option>
+                            <option value="BBVA SOLES">BBVA Soles</option>
+                            <option value="BBVA DOLARES">BBVA Dólares</option>
+                            <option value="BCP SOLES">BCP Soles</option>
+                            <option value="BCP DOLARES">BCP Dólares</option>
+                            <option value="INTERBANK SOLES">Interbank Soles</option>
+                            <option value="INTERBANK DOLARES">Interbank Dólares</option>
+                            <option value="EFECTIVO">Efectivo</option>
+                            <option value="YAPE">Yape</option>
+                            <option value="PLIN">Plin</option>
+                            <option value="OTROS">Otros</option>
+                        </select>
+                        <input type="text" id="editPagoCuentaOtro" class="form-input" placeholder="Especificar cuenta" style="display:none;margin-top:6px;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">N° Operación</label>
+                        <input type="text" id="editPagoNumOp" class="form-input" placeholder="Número de operación">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Forma de Pago</label>
+                        <select id="editPagoForma" class="form-input">
+                            <option value="">Seleccionar...</option>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Yape">Yape</option>
+                            <option value="Plin">Plin</option>
+                            <option value="Detracción">Detracción</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label class="form-label">Observación</label>
+                        <input type="text" id="editPagoObs" class="form-input" placeholder="Observación o referencia">
+                    </div>
+                </div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" id="btnGuardarEditarPago" onclick="guardarEditarPago()" class="btn btn-primary">Guardar cambios</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ═══════════ MODAL EDITAR FACTURA ═══════════ --}}
-    <div class="modal-overlay" id="modalEditarOverlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Editar Factura</h2><p id="editModalSubtitle">Actualiza los datos de la factura</p>
-                <button onclick="cerrarModalEditar()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <form id="formEditarFactura" onsubmit="guardarFactura(event)" style="display:flex;flex-direction:column;max-height:calc(90vh - 80px);overflow:hidden;">
-                @csrf @method('PUT')
-                <div class="modal-body" style="overflow-y:auto;padding:24px;flex:1;">
+    <x-modal id="modalEditarOverlay" size="md" theme="dark">
+        <x-slot:header>
+            <h2>Editar Factura</h2>
+            <p id="editModalSubtitle">Actualiza los datos de la factura</p>
+        </x-slot:header>
+        <form id="formEditarFactura" onsubmit="guardarFactura(event)">
+            @csrf @method('PUT')
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                         <div class="form-group"><label class="form-label">Fecha Emisión</label><input type="date" name="fecha_emision" id="editFechaEmision" class="form-input"></div>
                         <div class="form-group"><label class="form-label">Fecha Vencimiento</label><input type="date" name="fecha_vencimiento" id="editFechaVencimiento" class="form-input"></div>
@@ -1485,47 +1424,39 @@
                             <span style="font-size:11px;color:var(--text-muted);margin-top:4px;display:block;">Se recalcula automáticamente</span>
                         </div>
                     </div>
-                </div>
-                <div class="modal-footer" style="flex-shrink:0;">
-                    <button type="button" onclick="cerrarModalEditar()" class="btn btn-ghost">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
-                </div>
             </form>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="submit" form="formEditarFactura" class="btn btn-primary">Guardar Cambios</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ═══════════ MODAL EDITAR CLIENTE ═══════════ --}}
-    <div class="modal-overlay" id="modalEditarClienteOverlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Editar Cliente</h2><p>Actualiza los datos del cliente</p>
-                <button onclick="cerrarModalEditarCliente()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <form id="formEditarCliente" onsubmit="guardarCliente(event)">
-                @csrf @method('PUT')
-                <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <x-modal id="modalEditarClienteOverlay" size="md" theme="dark">
+        <x-slot:header>
+            <h2>Editar Cliente</h2>
+            <p>Actualiza los datos del cliente</p>
+        </x-slot:header>
+        <form id="formEditarCliente" onsubmit="guardarCliente(event)" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            @csrf @method('PUT')
                     <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Razón Social</label><input type="text" name="razon_social" id="editRazonSocial" class="form-input" required></div>
                     <div class="form-group"><label class="form-label">RUC / DNI</label><input type="text" name="ruc" id="editRuc" class="form-input" maxlength="15" required></div>
                     <div class="form-group"><label class="form-label">Celular</label><input type="text" name="celular" id="editCelular" class="form-input" maxlength="15"></div>
                     <div class="form-group"><label class="form-label">Correo</label><input type="email" name="correo" id="editCorreo" class="form-input"></div>
                     <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Dirección Fiscal</label><input type="text" name="direccion_fiscal" id="editDireccionFiscal" class="form-input"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" onclick="cerrarModalEditarCliente()" class="btn btn-ghost">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Guardar Cliente</button>
-                </div>
             </form>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="submit" form="formEditarCliente" class="btn btn-primary">Guardar Cliente</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ═══════════ MODAL NUEVA FACTURA ═══════════ --}}
-    <div class="modal-overlay" id="modalNuevaFacturaOverlay" style="z-index:300;">
-        <div class="modal" style="max-width:660px;width:min(660px,96vw);">
-            <div class="modal-header" style="background:linear-gradient(135deg,#16a34a,#15803d);">
-                <h2>Nueva Factura</h2><p>Registra una factura de forma individual</p>
-                <button onclick="cerrarModalNuevaFactura()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body" style="max-height:calc(90vh - 160px);overflow-y:auto;">
+    <x-modal id="modalNuevaFacturaOverlay" size="md" theme="dark">
+        <x-slot:header>
+            <h2>Nueva Factura</h2>
+            <p>Registra una factura de forma individual</p>
+        </x-slot:header>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                     <div class="form-group" style="grid-column:1/-1;">
                         <label class="form-label">Cliente *</label>
@@ -1595,25 +1526,16 @@
                     </div>
                 </div>
                 <div id="nfError" style="display:none;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;color:#991b1b;font-size:13px;margin-top:12px;"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" onclick="cerrarModalNuevaFactura()" class="btn btn-ghost">Cancelar</button>
-                <button type="button" id="btnGuardarNuevaFactura" onclick="guardarNuevaFactura()" class="btn btn-primary" style="background:#16a34a;min-width:160px;">
-                    Crear Factura
-                </button>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" id="btnGuardarNuevaFactura" onclick="guardarNuevaFactura()" class="btn btn-primary" style="min-width:160px;">
+                Crear Factura
+            </button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ═══════════ MODAL GENERAR REPORTE ═══════════ --}}
-    <div class="modal-overlay" id="modalReporteOverlay">
-        <div class="modal" style="max-width:640px;">
-            <div class="modal-header">
-                <h2>Generar Reporte</h2>
-                <p>Configura el reporte — puedes seleccionar varios estados y varios destinatarios</p>
-                <button onclick="cerrarModalReporte()" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body" style="min-height:0;max-height:calc(90vh - 180px);overflow-y:auto;">
+    <x-modal id="modalReporteOverlay" title="Generar Reporte" subtitle="Configura el reporte — puedes seleccionar varios estados y varios destinatarios" size="md" theme="dark">
                 <div style="margin-bottom:20px;">
                     <label class="form-label" style="margin-bottom:6px;">① Tipo de Reporte</label>
                     <div class="reporte-tipo-grid">
@@ -1668,16 +1590,14 @@
                     </div>
                     <div id="rUsuariosResumen" style="font-size:12px;color:var(--gold-xd);font-weight:600;margin-top:8px;display:none;"></div>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" onclick="cerrarModalReporte()" class="btn btn-ghost">Cancelar</button>
-                <button type="button" onclick="generarReporte()" class="btn btn-primary">
-                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                    Abrir Reporte PDF
-                </button>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" onclick="generarReporte()" class="btn btn-primary">
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                Abrir Reporte PDF
+            </button>
+        </x-slot:footer>
+    </x-modal>
 
     @push('scripts')
         <script>
@@ -3494,15 +3414,7 @@
     @endpush
 
     {{-- ══ MODAL LEYENDA ══ --}}
-    <div class="modal-overlay" id="modalLeyenda">
-        <div class="modal" style="max-width:560px;">
-            <div class="modal-header" style="background:linear-gradient(135deg,#f5c842 0%,#e8b820 100%);">
-                <h2 style="color:#000;font-size:17px;">Leyenda de Estados</h2>
-                <p style="color:rgba(0,0,0,.6);">Significado de cada estado de factura en el sistema</p>
-                <button onclick="document.getElementById('modalLeyenda').classList.remove('open')"
-                        style="position:absolute;right:20px;top:20px;background:none;border:none;color:#000;cursor:pointer;font-size:24px;opacity:.6;">×</button>
-            </div>
-            <div class="modal-body" style="padding:24px;">
+    <x-modal id="modalLeyenda" title="Leyenda de Estados" subtitle="Significado de cada estado de factura en el sistema" size="sm" theme="gold">
                 <div style="display:flex;flex-direction:column;gap:12px;">
 
                     <div style="display:flex;align-items:flex-start;gap:14px;padding:12px 14px;background:#fef3c7;border-radius:10px;border:1px solid #fde68a;">
@@ -3554,13 +3466,8 @@
                     • <strong>Retención</strong>: El cliente retiene un % al momento del pago y lo declara a SUNAT.<br>
                     • <strong>Autodetracción</strong>: El propio emisor hace el depósito de detracción.
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-primary"
-                        onclick="document.getElementById('modalLeyenda').classList.remove('open')">
-                    Entendido
-                </button>
-            </div>
-        </div>
-    </div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-primary" data-modal-close>Entendido</button>
+        </x-slot:footer>
+    </x-modal>
 @endsection

@@ -8,6 +8,7 @@
             if (!el) return;
             el.classList.add('open');
             el.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('crc-modal-open');
             const focusable = el.querySelector('input:not([type=hidden]), select, textarea, button');
             if (focusable) setTimeout(() => focusable.focus(), 50);
         }
@@ -17,6 +18,7 @@
             if (!el) return;
             el.classList.remove('open');
             el.setAttribute('aria-hidden', 'true');
+            if (!document.querySelector('.modal-overlay.open')) document.body.classList.remove('crc-modal-open');
         }
 
         function topOpenModal() {
@@ -117,7 +119,7 @@
             wrap.className = 'modal-overlay open';
             wrap.setAttribute('data-modal', '');
             wrap.innerHTML = `
-                <div class="modal" style="max-width:520px;">
+                <div class="modal modal--sm">
                     <div class="modal-header modal-header--${theme}">
                         <div class="modal-titles">
                             <h2>${icono} ${escapeHtml(o.titulo || (tipo === 'ok' ? 'Operación realizada' : (tipo === 'error' ? 'No se pudo completar' : 'Información')))}</h2>
@@ -133,9 +135,11 @@
                     </div>
                 </div>`;
             document.body.appendChild(wrap);
+            document.body.classList.add('crc-modal-open');
 
             wrap.querySelectorAll('[data-crc-fb-close]').forEach(btn => btn.addEventListener('click', () => {
                 wrap.remove();
+                if (!document.querySelector('.modal-overlay.open')) document.body.classList.remove('crc-modal-open');
                 if (typeof o.onClose === 'function') o.onClose();
             }));
         }
@@ -149,22 +153,81 @@
             wrap.className = 'modal-overlay open';
             wrap.setAttribute('data-modal', '');
             wrap.innerHTML = `
-                <div class="modal" style="max-width:480px;">
+                <div class="modal modal--sm">
                     <div class="modal-header modal-header--danger">
                         <div class="modal-titles"><h2>${escapeHtml(opciones.titulo || 'Confirmar acción')}</h2></div>
                     </div>
                     <div class="modal-body"><p style="font-size:14px;line-height:1.6;">${escapeHtml(mensaje)}</p></div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-ghost" data-crc-cancel>Cancelar</button>
-                        <button type="button" class="btn btn-primary" style="background:#dc2626;border-color:#dc2626;" data-crc-ok>${escapeHtml(opciones.textoOk || 'Confirmar')}</button>
+                        <button type="button" class="btn btn-danger" data-crc-ok>${escapeHtml(opciones.textoOk || 'Confirmar')}</button>
                     </div>
                 </div>`;
             document.body.appendChild(wrap);
+            document.body.classList.add('crc-modal-open');
 
-            wrap.querySelector('[data-crc-cancel]').addEventListener('click', () => wrap.remove());
-            wrap.querySelector('[data-crc-ok]').addEventListener('click', () => {
+            const cerrarConfirm = () => {
                 wrap.remove();
+                if (!document.querySelector('.modal-overlay.open')) document.body.classList.remove('crc-modal-open');
+            };
+            wrap.querySelector('[data-crc-cancel]').addEventListener('click', cerrarConfirm);
+            wrap.querySelector('[data-crc-ok]').addEventListener('click', () => {
+                cerrarConfirm();
                 if (typeof onConfirm === 'function') onConfirm();
+            });
+        }
+
+        /**
+         * Modal de validación de datos incompletos (casilleros vacíos).
+         * opciones: { titulo, subtitulo, faltantes: [], textoOk, textoCancelar, onContinuar }
+         * Con `onContinuar` ofrece dos botones: revisar (cierra) y continuar igualmente.
+         */
+        function validacion(opciones) {
+            const o = opciones || {};
+            const id = 'crcValidacionDialog';
+            document.getElementById(id)?.remove();
+
+            const faltantes = Array.isArray(o.faltantes) ? o.faltantes.filter(Boolean) : [];
+            const listaHtml = faltantes.length
+                ? '<ul style="margin:14px 0 0;padding-left:18px;font-size:13px;line-height:1.7;color:#475569;">'
+                    + faltantes.map(f => `<li>${escapeHtml(f)}</li>`).join('') + '</ul>'
+                : '<p style="font-size:14px;line-height:1.65;">Revisa los datos antes de continuar.</p>';
+
+            const continuar = typeof o.onContinuar === 'function';
+
+            const wrap = document.createElement('div');
+            wrap.id = id;
+            wrap.className = 'modal-overlay open';
+            wrap.setAttribute('data-modal', '');
+            wrap.innerHTML = `
+                <div class="modal modal--sm">
+                    <div class="modal-header modal-header--danger">
+                        <div class="modal-titles">
+                            <h2>${escapeHtml(o.titulo || 'Faltan datos')}</h2>
+                            ${o.subtitulo ? `<p>${escapeHtml(o.subtitulo)}</p>` : ''}
+                        </div>
+                        <button type="button" class="modal-close" data-crc-val-close aria-label="Cerrar">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        ${listaHtml}
+                    </div>
+                    <div class="modal-footer">
+                        ${continuar ? `<button type="button" class="btn btn-ghost" data-crc-val-close>${escapeHtml(o.textoCancelar || 'Revisar')}</button>` : ''}
+                        <button type="button" class="btn btn-primary" data-crc-val-ok>${escapeHtml(o.textoOk || (continuar ? 'Continuar igualmente' : 'Entendido'))}</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(wrap);
+            document.body.classList.add('crc-modal-open');
+
+            const cerrar = () => {
+                wrap.remove();
+                if (!document.querySelector('.modal-overlay.open')) document.body.classList.remove('crc-modal-open');
+            };
+
+            wrap.querySelectorAll('[data-crc-val-close]').forEach(b => b.addEventListener('click', cerrar));
+            wrap.querySelector('[data-crc-val-ok]').addEventListener('click', () => {
+                cerrar();
+                if (continuar) o.onContinuar();
             });
         }
 
@@ -197,9 +260,32 @@
         });
 
         document.addEventListener('keydown', function (e) {
-            if (e.key !== 'Escape' || !topOpenModal()) return;
-            e.preventDefault();
-            e.stopPropagation();
+            const abierto = topOpenModal();
+            if (!abierto) return;
+
+            // Escape nunca cierra: el sistema exige acción explícita.
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+
+            // Mantiene el foco dentro del modal mientras está abierto.
+            if (e.key === 'Tab') {
+                const focusables = abierto.querySelectorAll(
+                    'a[href], button:not([disabled]), input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                );
+                if (!focusables.length) return;
+                const primero = focusables[0];
+                const ultimo = focusables[focusables.length - 1];
+                if (e.shiftKey && document.activeElement === primero) {
+                    e.preventDefault();
+                    ultimo.focus();
+                } else if (!e.shiftKey && document.activeElement === ultimo) {
+                    e.preventDefault();
+                    primero.focus();
+                }
+            }
         }, true);
 
         // Evita doble envío: al enviar un formulario, deshabilita su botón.
@@ -214,6 +300,6 @@
             }, 0);
         }, true);
 
-        return { open: openModal, close: closeModal, toast: toast, confirm: confirmDialog, feedback: feedback, loading: loading };
+        return { open: openModal, close: closeModal, toast: toast, confirm: confirmDialog, feedback: feedback, validacion: validacion, loading: loading };
     })();
 </script>

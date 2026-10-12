@@ -113,43 +113,17 @@
         .control-chip{background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:9px 12px;font-size:12px;}
         .control-chip strong{display:block;color:#0f172a;}
         .control-warning{color:#b45309;font-weight:800;}
-        .control-modal .modal{transform:translateY(16px) scale(.97);transition:transform .28s cubic-bezier(.16,1,.3,1),opacity .28s ease;opacity:0;}
-        .control-modal.open .modal{transform:translateY(0) scale(1);opacity:1;}
-        @media(prefers-reduced-motion:reduce){.control-modal,.control-modal .modal{transition:none!important;}}
 
-        /* ── Modal de imagen ── */
-        .img-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:500;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;}
-        .img-modal-overlay.open{opacity:1;pointer-events:all;}
-        .img-modal{max-width:90vw;max-height:90vh;border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);position:relative;}
-        .img-modal img{max-width:90vw;max-height:85vh;object-fit:contain;display:block;}
-        .img-modal-close{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.5);border:none;color:#fff;border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;}
-
-        /* ── Modal Editar Fila (estilo Facturas) ── */
-        #modalEditFila .cot-edit-modal{border:1.5px solid var(--gold-b);border-radius:16px;overflow:hidden;box-shadow:0 20px 56px rgba(15,23,42,.22);max-height:92vh;}
-        #modalEditFila #formEditFila{display:flex;flex-direction:column;max-height:calc(92vh - 4px);overflow:hidden;}
-        #modalEditFila .cot-edit-header{background:linear-gradient(135deg,var(--gold) 0%,#e8b820 100%);border-top:3px solid #9a6e10;position:relative;}
-        #modalEditFila .cot-edit-header h2{color:#000;font-size:18px;font-weight:700;letter-spacing:.2px;}
-        #modalEditFila .cot-edit-header p{color:rgba(0,0,0,.72);font-size:12px;}
-        #modalEditFila .cot-edit-close{position:absolute;right:20px;top:20px;background:none;border:none;color:#000;opacity:.72;cursor:pointer;font-size:24px;}
-        #modalEditFila .cot-edit-close:hover{opacity:1;}
-        #modalEditFila .modal-body{padding:24px;background:#fff;overflow-y:auto;min-height:0;flex:1;}
+        /* ── Formulario Editar Fila ── */
         #modalEditFila .edit-form-layout > div{background:var(--gold-l);border:1.5px solid var(--gold-b);border-radius:12px;padding:14px;box-shadow:none;}
         #modalEditFila .form-label{font-size:10px;font-weight:800;letter-spacing:.55px;text-transform:uppercase;color:#8a640d;}
         #modalEditFila .form-input{border:1.5px solid #ecd67a;background:#fff;}
         #modalEditFila .form-input:focus{border-color:#c79518;box-shadow:0 0 0 3px rgba(245,200,66,.2);}
-        #modalEditFila .modal-footer{background:#fff;border-top:1px solid #e5e7eb;flex-shrink:0;}
-        #modalEditFila .modal-footer .btn.btn-primary{background:#a97711;border-color:#a97711;color:#fff;}
-        #modalEditFila .modal-footer .btn.btn-primary:hover{background:#8a640d;border-color:#8a640d;}
 
-        /* ── Modal Adjunto (estilo Facturas) ── */
-        #modalAdjunto .modal{border:1.5px solid var(--gold-b);border-radius:16px;overflow:hidden;max-height:92vh;box-shadow:0 20px 56px rgba(15,23,42,.22);}
-        #modalAdjunto .modal-header{background:linear-gradient(135deg,var(--gold) 0%,#e8b820 100%);border-top:3px solid #9a6e10;}
-        #modalAdjunto .modal-header h2{color:#000;font-weight:700;}
-        #modalAdjunto .modal-header p{color:rgba(0,0,0,.72);}
-        #modalAdjunto .modal-body{background:#fff8de;padding:12px;min-height:65vh;display:flex;align-items:center;justify-content:center;overflow:auto;}
-        #modalAdjunto .modal-footer{background:#fff;border-top:1px solid #e5e7eb;}
-        #modalAdjunto .adj-close{background:none;border:none;color:#000;opacity:.72;cursor:pointer;font-size:24px;line-height:1;}
-        #modalAdjunto .adj-close:hover{opacity:1;}
+        /* ── Estado de valorización ── */
+        .estado-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;border:1.5px solid;}
+        .estado-badge.is-completo{background:#d1fae5;color:#065f46;border-color:#6ee7b7;}
+        .estado-badge.is-pendiente{background:#fef3c7;color:#92400e;border-color:#fde68a;}
     </style>
 @endpush
 
@@ -165,6 +139,18 @@
             <h1 class="page-title" style="font-size:22px;">
                 Valorización {{ $cotizacion->numero_valorizacion }}
             </h1>
+            @php $estadoVal = $cotizacion->estado_valorizacion ?? 'PENDIENTE'; @endphp
+            <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <span id="badgeEstadoValorizacion"
+                      class="estado-badge {{ $estadoVal === 'COMPLETO' ? 'is-completo' : 'is-pendiente' }}"
+                      data-estado="{{ $estadoVal }}">
+                    <span id="estadoValorizacionTxt">{{ $estadoVal }}</span>
+                </span>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="abrirEstadoValorizacion()"
+                        style="border:1px solid var(--border);">
+                    Cambiar estado
+                </button>
+            </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
             <a href="{{ route('cotizaciones.export-excel', $cotizacion->id_cotizacion) }}"
@@ -714,128 +700,106 @@
         </div>
     </div>
 
-    <div class="modal-overlay control-modal" id="modalHorometro" role="dialog" aria-modal="true" aria-labelledby="tituloHorometro" tabindex="-1">
-        <div class="modal" style="max-width:520px;">
-            <div class="modal-header" style="background:#7f1d1d;"><h2 id="tituloHorometro">Error de horómetro</h2><p style="color:#fecaca;">La numeración debe ser continua.</p></div>
-            <div class="modal-body" style="padding:24px;"><p id="horometroDesc"></p></div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-ghost" onclick="resolverHorometro(false)">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btnCompletarSalto" onclick="resolverHorometro(true)">Completar intervalo sin cobro</button>
-            </div>
-        </div>
-    </div>
+    <x-modal id="modalHorometro" title="Error de horómetro" subtitle="La numeración debe ser continua." size="md" theme="danger">
+        <p id="horometroDesc"></p>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" onclick="resolverHorometro(false)">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnCompletarSalto" onclick="resolverHorometro(true)">Completar intervalo sin cobro</button>
+        </x-slot:footer>
+    </x-modal>
 
-    <div class="modal-overlay control-modal" id="modalExcesoOc" role="dialog" aria-modal="true" aria-labelledby="tituloExcesoOc" tabindex="-1">
-        <div class="modal" style="max-width:520px;">
-            <div class="modal-header"><h2 id="tituloExcesoOc">Horas fuera del cupo OC</h2><p>El total supera las órdenes de compra registradas.</p></div>
-            <div class="modal-body" style="padding:24px;">
-                <p id="excesoOcDesc" style="font-size:13px;"></p>
-                <p style="font-size:12px;color:#64748b;margin-top:12px;">Puedes continuar; las horas que excedan el cupo quedarán como «sin OC» hasta que registres otra orden de compra.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-ghost" onclick="cerrarModal('modalExcesoOc')">Cancelar</button>
-                <button type="button" class="btn btn-primary" onclick="resolverExcesoOc()">Continuar</button>
-            </div>
-        </div>
-    </div>
+    <x-modal id="modalExcesoOc" title="Horas fuera del cupo OC" subtitle="El total supera las órdenes de compra registradas." size="md" theme="dark">
+        <p id="excesoOcDesc" style="font-size:13px;"></p>
+        <p style="font-size:12px;color:#64748b;margin-top:12px;">Puedes continuar; las horas que excedan el cupo quedarán como «sin OC» hasta que registres otra orden de compra.</p>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="resolverExcesoOc()">Continuar</button>
+        </x-slot:footer>
+    </x-modal>
 
-    <div class="modal-overlay control-modal" id="modalOrden" role="dialog" aria-modal="true" aria-labelledby="tituloOrden" tabindex="-1">
-        <div class="modal" style="max-width:500px;">
-            <div class="modal-header"><h2 id="tituloOrden">Orden de compra</h2><p>El cupo se suma al de las demás órdenes.</p></div>
-            <form id="formOrden" onsubmit="guardarOrden(event)" enctype="multipart/form-data">
-                <div class="modal-body" style="padding:24px;">
-                    <div class="form-group"><label class="form-label">Número de OC *</label><input class="form-input" name="numero" required maxlength="100"></div>
-                    <div class="form-group"><label class="form-label">Horas autorizadas *</label><input class="form-input" name="horas_autorizadas" type="number" min="0.01" step="0.01" required></div>
-                    <div class="form-group"><label class="form-label">PDF o imagen de OC <span id="ordenArchivoReq"></span></label><input class="form-input" name="archivo_oc" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style="height:auto;padding:8px;"></div>
-                </div>
-                <div class="modal-footer"><button type="button" class="btn btn-ghost" onclick="cerrarModal('modalOrden')">Cancelar</button><button type="submit" class="btn btn-primary">Guardar OC</button></div>
-            </form>
-        </div>
-    </div>
+    <x-modal id="modalOrden" size="md" theme="dark">
+        <x-slot:header>
+            <h2 id="tituloOrden">Orden de compra</h2>
+            <p>El cupo se suma al de las demás órdenes.</p>
+        </x-slot:header>
+        <form id="formOrden" onsubmit="guardarOrden(event)" enctype="multipart/form-data">
+            <div class="form-group"><label class="form-label">Número de OC *</label><input class="form-input" name="numero" required maxlength="100"></div>
+            <div class="form-group"><label class="form-label">Horas autorizadas *</label><input class="form-input" name="horas_autorizadas" type="number" min="0.01" step="0.01" required></div>
+            <div class="form-group"><label class="form-label">PDF o imagen de OC <span id="ordenArchivoReq"></span></label><input class="form-input" name="archivo_oc" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style="height:auto;padding:8px;"></div>
+        </form>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="submit" form="formOrden" class="btn btn-primary">Guardar OC</button>
+        </x-slot:footer>
+    </x-modal>
 
     @if($usaHes)
-    <div class="modal-overlay control-modal" id="modalHes" role="dialog" aria-modal="true" aria-labelledby="tituloHes" tabindex="-1">
-        <div class="modal" style="max-width:530px;">
-            <div class="modal-header"><h2 id="tituloHes">Asignar HES</h2><p id="hesModalResumen">Selecciona filas en la tabla.</p></div>
-            <form id="formHes" onsubmit="guardarHes(event)" enctype="multipart/form-data">
-                <div class="modal-body" style="padding:24px;">
-                    @if($hesList->isNotEmpty())
-                    <div class="form-group"><label class="form-label">Usar HES existente</label>
-                        <select class="form-input" name="id_hes" id="hesExistente" onchange="cambiarModoHes()"><option value="">— Crear nuevo HES —</option>
-                            @foreach($hesList as $hes)<option value="{{ $hes->id_hes }}">{{ $hes->codigo }}</option>@endforeach
-                        </select>
-                    </div>
-                    @endif
-                    <div class="form-group"><label class="form-label">Código HES *</label><input class="form-input" name="codigo" id="hesCodigo" maxlength="100" required></div>
-                    <div class="form-group"><label class="form-label">PDF o imagen HES *</label><input class="form-input" name="archivo_hes" id="hesArchivo" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style="height:auto;padding:8px;" required></div>
-                </div>
-                <div class="modal-footer"><button type="button" class="btn btn-ghost" onclick="cerrarModal('modalHes')">Cancelar</button><button type="submit" class="btn btn-primary">Asignar HES</button></div>
-            </form>
-        </div>
-    </div>
+    <x-modal id="modalHes" title="Asignar HES" size="md" theme="dark">
+        <x-slot:header>
+            <p id="hesModalResumen">Selecciona filas en la tabla.</p>
+        </x-slot:header>
+        <form id="formHes" onsubmit="guardarHes(event)" enctype="multipart/form-data">
+            @if($hesList->isNotEmpty())
+            <div class="form-group"><label class="form-label">Usar HES existente</label>
+                <select class="form-input" name="id_hes" id="hesExistente" onchange="cambiarModoHes()"><option value="">— Crear nuevo HES —</option>
+                    @foreach($hesList as $hes)<option value="{{ $hes->id_hes }}">{{ $hes->codigo }}</option>@endforeach
+                </select>
+            </div>
+            @endif
+            <div class="form-group"><label class="form-label">Código HES *</label><input class="form-input" name="codigo" id="hesCodigo" maxlength="100" required></div>
+            <div class="form-group"><label class="form-label">PDF o imagen HES *</label><input class="form-input" name="archivo_hes" id="hesArchivo" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" style="height:auto;padding:8px;" required></div>
+        </form>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="submit" form="formHes" class="btn btn-primary">Asignar HES</button>
+        </x-slot:footer>
+    </x-modal>
     @endif
 
     @if($controlOc)
-    <div class="modal-overlay control-modal" id="modalAsignarOc" role="dialog" aria-modal="true" tabindex="-1">
-        <div class="modal" style="max-width:520px;">
-            <div class="modal-header"><h2>Asignar orden de compra</h2><p id="asignarOcSubtitle">Elige la OC para esta fila.</p></div>
-            <div class="modal-body" style="padding:24px;">
-                <div class="form-group">
-                    <label class="form-label">Orden de compra</label>
-                    <select class="form-input" id="asignarOcSelect" onchange="avisoAsignarOc()">
-                        <option value="">— Sin OC —</option>
-                        @foreach($ocResumen['ordenes'] as $oc)
-                            <option value="{{ $oc->id_orden_compra }}" data-disponible="{{ max(0, $oc->horas_autorizadas - $oc->horas_consumidas) }}">{{ $oc->numero }} · disponible {{ number_format(max(0, $oc->horas_autorizadas - $oc->horas_consumidas), 2) }} h</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div id="asignarOcAviso" style="display:none;margin-top:6px;font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;"></div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-ghost" onclick="cerrarModal('modalAsignarOc')">Cancelar</button>
-                <button type="button" class="btn btn-primary" onclick="guardarAsignarOc()">Guardar</button>
-            </div>
+    <x-modal id="modalAsignarOc" title="Asignar orden de compra" size="md" theme="dark">
+        <x-slot:header>
+            <p id="asignarOcSubtitle">Elige la OC para esta fila.</p>
+        </x-slot:header>
+        <div class="form-group">
+            <label class="form-label">Orden de compra</label>
+            <select class="form-input" id="asignarOcSelect" onchange="avisoAsignarOc()">
+                <option value="">— Sin OC —</option>
+                @foreach($ocResumen['ordenes'] as $oc)
+                    <option value="{{ $oc->id_orden_compra }}" data-disponible="{{ max(0, $oc->horas_autorizadas - $oc->horas_consumidas) }}">{{ $oc->numero }} · disponible {{ number_format(max(0, $oc->horas_autorizadas - $oc->horas_consumidas), 2) }} h</option>
+                @endforeach
+            </select>
         </div>
-    </div>
+        <div id="asignarOcAviso" style="display:none;margin-top:6px;font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;"></div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="guardarAsignarOc()">Guardar</button>
+        </x-slot:footer>
+    </x-modal>
     @endif
-    <div class="modal-overlay" id="modalDelFila">
-        <div class="modal" style="max-width:400px;">
-            <div class="modal-header" style="background:#7f1d1d;"><h2>Eliminar Fila</h2><p>Esta acción no se puede deshacer.</p>
-                <button onclick="document.getElementById('modalDelFila').classList.remove('open')" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <div class="modal-body" style="padding:24px;"><p style="font-size:14px;">¿Confirmas que deseas eliminar esta fila?</p></div>
-            <div class="modal-footer">
-                <button class="btn btn-ghost" onclick="document.getElementById('modalDelFila').classList.remove('open')">Cancelar</button>
-                <button class="btn" style="background:#dc2626;color:#fff;" id="btnConfDelFila">Eliminar</button>
-            </div>
-        </div>
-    </div>
+    <x-modal id="modalDelFila" title="Eliminar Fila" subtitle="Esta acción no se puede deshacer." size="sm" theme="danger">
+        <p style="font-size:14px;">¿Confirmas que deseas eliminar esta fila?</p>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" class="btn btn-danger" id="btnConfDelFila">Eliminar</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ══ MODAL EDITAR FILA ══ --}}
-    <div class="modal-overlay" id="modalEditFila">
-        <div class="modal cot-edit-modal" style="max-width:760px;">
-            <div class="modal-header cot-edit-header"><h2>Editar Fila</h2><p>Modifica los datos de la fila seleccionada</p>
-                <button class="cot-edit-close" onclick="document.getElementById('modalEditFila').classList.remove('open')">×</button>
-            </div>
-            <form id="formEditFila" onsubmit="guardarEditFila(event)" enctype="multipart/form-data">
-                <div class="modal-body" id="editFilaBody"></div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-ghost" onclick="document.getElementById('modalEditFila').classList.remove('open')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Guardar Cambios</button>
-                </div>
-            </form>
-        </div>
-    </div>
+    <x-modal id="modalEditFila" title="Editar Fila" subtitle="Modifica los datos de la fila seleccionada" size="lg" theme="gold">
+        <form id="formEditFila" onsubmit="guardarEditFila(event)" enctype="multipart/form-data">
+            <div id="editFilaBody"></div>
+        </form>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="submit" form="formEditFila" class="btn btn-primary">Guardar Cambios</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ══ MODAL EDITAR HEADER ══ --}}
-    <div class="modal-overlay" id="modalEditHeader">
-        <div class="modal" style="max-width:640px;">
-            <div class="modal-header"><h2>Editar Encabezado</h2><p>Modifica los datos generales de la valorización</p>
-                <button onclick="document.getElementById('modalEditHeader').classList.remove('open')" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <form id="formEditHeader" onsubmit="guardarHeader(event)">
-                <div class="modal-body" style="padding:24px;">
-                    <input type="hidden" id="editHeaderTipo" name="tipo_cotizacion" value="{{ $cotizacion->tipo_cotizacion }}">
+    <x-modal id="modalEditHeader" title="Editar Encabezado" subtitle="Modifica los datos generales de la valorización" size="md" theme="dark">
+        <form id="formEditHeader" onsubmit="guardarHeader(event)">
+            <input type="hidden" id="editHeaderTipo" name="tipo_cotizacion" value="{{ $cotizacion->tipo_cotizacion }}">
                     <div class="field-row cols2" style="margin-bottom:14px;">
                         <div class="form-group">
                             <label class="form-label">Empresa *</label>
@@ -900,25 +864,17 @@
                             <input type="date" name="periodo_fin" class="form-input" id="editHeaderHasta" value="{{ $cotizacion->periodo_fin }}">
                         </div>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-ghost" onclick="document.getElementById('modalEditHeader').classList.remove('open')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Guardar</button>
-                </div>
-            </form>
-        </div>
-    </div>
+        </form>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="submit" form="formEditHeader" class="btn btn-primary">Guardar</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ══ MODAL EDITAR CLIENTE (COTIZACIÓN) ══ --}}
-    <div class="modal-overlay" id="modalEditClienteCot">
-        <div class="modal" style="max-width:640px;">
-            <div class="modal-header">
-                <h2>Editar Cliente</h2>
-                <p>Actualiza los datos del cliente de esta valorización</p>
-                <button onclick="document.getElementById('modalEditClienteCot').classList.remove('open')" style="position:absolute;right:20px;top:20px;background:none;border:none;color:#fff;cursor:pointer;font-size:24px;">×</button>
-            </div>
-            <form id="formEditClienteCot" onsubmit="guardarClienteCot(event)">
-                <div class="modal-body" style="padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    <x-modal id="modalEditClienteCot" title="Editar Cliente" subtitle="Actualiza los datos del cliente de esta valorización" size="md" theme="dark">
+        <form id="formEditClienteCot" onsubmit="guardarClienteCot(event)">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
                     <div class="form-group" style="grid-column:1/-1;">
                         <label class="form-label">Razón Social</label>
                         <input class="form-input" type="text" name="razon_social" id="cotCliRazon" value="{{ $cotizacion->razon_social }}" required>
@@ -939,31 +895,39 @@
                         <label class="form-label">Dirección Fiscal</label>
                         <input class="form-input" type="text" name="direccion_fiscal" id="cotCliDir" value="{{ $cotizacion->direccion_fiscal ?? '' }}">
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-ghost" onclick="document.getElementById('modalEditClienteCot').classList.remove('open')">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Guardar Cliente</button>
-                </div>
-            </form>
-        </div>
-    </div>
+            </div>
+        </form>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="submit" form="formEditClienteCot" class="btn btn-primary">Guardar Cliente</button>
+        </x-slot:footer>
+    </x-modal>
 
     {{-- ══ MODAL PREVIEW ADJUNTO ══ --}}
-    <div class="modal-overlay" id="modalAdjunto">
-        <div class="modal" style="max-width:920px;width:min(92vw,920px);max-height:88vh;overflow:hidden;">
-            <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-                <div>
-                    <h2>Vista de Adjunto</h2>
-                    <p>Previsualización de imagen o PDF</p>
-                </div>
-                <button class="adj-close" onclick="cerrarAdjuntoModal()">×</button>
-            </div>
-            <div class="modal-body" id="adjuntoBody" style="padding:12px;min-height:65vh;display:flex;align-items:center;justify-content:center;"></div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-ghost" onclick="cerrarAdjuntoModal()">Cerrar</button>
-            </div>
+    <x-modal id="modalAdjunto" title="Vista de Adjunto" subtitle="Previsualización de imagen o PDF" maxWidth="920px" theme="gold">
+        <div id="adjuntoBody"></div>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" onclick="cerrarAdjuntoModal()">Cerrar</button>
+        </x-slot:footer>
+    </x-modal>
+
+    {{-- ══ MODAL CAMBIAR ESTADO ══ --}}
+    <x-modal id="modalEstadoValorizacion" title="Cambiar estado" subtitle="Marca la valorización como completa o pendiente." size="sm" theme="dark">
+        <div class="form-group">
+            <label class="form-label" for="selectEstadoValorizacion">Estado</label>
+            <select class="form-input" id="selectEstadoValorizacion" style="width:100%;height:42px;">
+                <option value="COMPLETO">COMPLETO</option>
+                <option value="PENDIENTE">PENDIENTE</option>
+            </select>
         </div>
-    </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:10px;">
+            Al marcar COMPLETO con casilleros pendientes se pedirá una confirmación.
+        </p>
+        <x-slot:footer>
+            <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnGuardarEstado" onclick="guardarEstadoValorizacion(false)">Guardar</button>
+        </x-slot:footer>
+    </x-modal>
 
     <div id="toast" style="position:fixed;bottom:24px;right:24px;z-index:9999;padding:13px 20px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,.15);transform:translateY(80px);opacity:0;transition:all .3s;max-width:400px;">
         <span id="toastTxt"></span>
@@ -1014,6 +978,83 @@
 
         function showToast(msg, ok = true) {
             CRC.feedback({ tipo: ok ? 'ok' : 'error', titulo: ok ? 'Listo' : 'Aviso', mensaje: msg });
+        }
+
+        // ── Estado de valorización ─────────────────────────────────────────
+        function abrirEstadoValorizacion() {
+            const badge = document.getElementById('badgeEstadoValorizacion');
+            const select = document.getElementById('selectEstadoValorizacion');
+            if (select) select.value = badge?.dataset.estado || 'PENDIENTE';
+            abrirModal('modalEstadoValorizacion');
+        }
+
+        function pintarEstadoValorizacion(estado) {
+            const badge = document.getElementById('badgeEstadoValorizacion');
+            const txt   = document.getElementById('estadoValorizacionTxt');
+            if (!badge) return;
+            const completo = estado === 'COMPLETO';
+            badge.dataset.estado = estado;
+            badge.classList.toggle('is-completo', completo);
+            badge.classList.toggle('is-pendiente', !completo);
+            if (txt) txt.textContent = estado;
+        }
+
+        async function guardarEstadoValorizacion(confirmado) {
+            const estado = document.getElementById('selectEstadoValorizacion')?.value || 'PENDIENTE';
+            try {
+                const res = await fetch(`/cotizaciones/${COT_ID}/estado`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': CSRF,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: JSON.stringify(confirmado ? { estado, confirmado: 1 } : { estado })
+                });
+                const data = await res.json();
+
+                if (res.status === 422) {
+                    throw new Error(data?.message || Object.values(data?.errors || {}).flat().filter(Boolean)[0] || 'No se pudo cambiar el estado.');
+                }
+
+                if (data?.requiere_confirmacion) {
+                    CRC.validacion({
+                        titulo: 'La valorización tiene datos incompletos',
+                        subtitulo: 'Revisa los casilleros. Puedes continuar y marcarla como completa de todos modos.',
+                        faltantes: data.faltantes || [],
+                        textoOk: 'Continuar igualmente',
+                        textoCancelar: 'Revisar',
+                        onContinuar: () => guardarEstadoValorizacion(true)
+                    });
+                    return;
+                }
+
+                if (!res.ok || !data?.success) {
+                    throw new Error(data?.message || 'No se pudo cambiar el estado.');
+                }
+
+                pintarEstadoValorizacion(data.estado || estado);
+                cerrarModal('modalEstadoValorizacion');
+                showToast(data.message || 'Estado actualizado.');
+            } catch (e) {
+                CRC.feedback({ tipo: 'error', titulo: 'No se pudo cambiar el estado', mensaje: e.message });
+            }
+        }
+
+        // ── Errores de validación (422) en guardado de filas ───────────────
+        function faltantesDeErrores(data) {
+            const errores = data && data.errors ? data.errors : {};
+            return Object.values(errores).flat().filter(Boolean);
+        }
+
+        function mostrarErroresFila(data) {
+            const faltantes = faltantesDeErrores(data);
+            CRC.validacion({
+                titulo: 'Falta completar la fila',
+                subtitulo: 'Revisa los casilleros del formulario.',
+                faltantes: faltantes.length ? faltantes : [data?.message || 'Revisa los casilleros del formulario.']
+            });
         }
 
         let editandoOrdenId = null;
@@ -1328,7 +1369,7 @@
             modalAnterior?.focus();
         }
         document.addEventListener('keydown', event => {
-            const modal = document.querySelector('.control-modal.open');
+            const modal = document.querySelector('[data-modal].open');
             if (!modal) return;
             if (event.key === 'Tab') {
                 const focusables = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href]')]
@@ -1478,6 +1519,7 @@
                     throw new Error(msg || `HTTP ${res.status}`);
                 }
                 const data = await res.json();
+                if (res.status === 422) { mostrarErroresFila(data); return; }
                 if (!res.ok) {
                     const validationMsg = data?.message || Object.values(data?.errors || {})?.flat()?.[0] || 'Error al guardar.';
                     throw new Error(validationMsg);
@@ -1768,8 +1810,16 @@
 
         async function submitEditFd(fd) {
             try {
-                const res  = await fetch(`${BASE_URL}/${editRowId}`, { method: 'POST', body: fd });
+                const res  = await fetch(`${BASE_URL}/${editRowId}`, {
+                    method: 'POST',
+                    body: fd,
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
                 const data = await res.json();
+                if (res.status === 422) { mostrarErroresFila(data); return; }
                 if (res.ok && data.success) {
                     showToast('Fila actualizada.');
                     document.getElementById('modalEditFila').classList.remove('open');

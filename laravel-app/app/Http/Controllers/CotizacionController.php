@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\ValorizacionOcService;
+use App\Services\ValorizacionValidacionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -71,12 +72,14 @@ class CotizacionController extends Controller
         $desde    = $request->input('fecha_desde');
         $hasta    = $request->input('fecha_hasta');
         $search   = $request->input('search');
+        $estado   = $request->input('estado');
 
         $query = DB::table('cotizacion as c')
             ->join('cliente as cl', 'cl.id_cliente', '=', 'c.id_cliente')
             ->where('c.activo', 1)
             ->select([
                 'c.id_cotizacion', 'c.tipo_cotizacion', 'c.numero_valorizacion', 'c.orden_compra', 'c.control_oc_activo',
+                'c.estado_valorizacion',
                 'c.obra', 'c.periodo_inicio', 'c.periodo_fin',
                 'c.base_sin_igv', 'c.total_igv', 'c.total',
                 'c.fecha_creacion',
@@ -86,6 +89,7 @@ class CotizacionController extends Controller
 
         if ($tipo)    $query->where('c.tipo_cotizacion', $tipo);
         if ($cliente) $query->where('c.id_cliente', $cliente);
+        if ($estado)  $query->where('c.estado_valorizacion', $estado);
         if ($desde)   $query->where('c.periodo_inicio', '>=', $desde);
         if ($hasta)   $query->where('c.periodo_fin', '<=', $hasta);
         if ($search)  $query->where(function ($q) use ($search) {
@@ -114,7 +118,7 @@ class CotizacionController extends Controller
             ->orderBy('razon_social')->get(['id_cliente', 'razon_social']);
 
         return view('cotizaciones.index', compact('cotizaciones', 'clientes',
-            'tipo', 'cliente', 'desde', 'hasta', 'search'));
+            'tipo', 'cliente', 'desde', 'hasta', 'search', 'estado'));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -304,6 +308,58 @@ class CotizacionController extends Controller
         }
 
         return response()->json(['success' => true, 'message' => 'Cotización actualizada.']);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // ESTADO MANUAL (COMPLETO / PENDIENTE)
+    // ──────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Cambia el estado de la valorización en cualquier momento y en cualquier
+     * sentido. Al marcar COMPLETO con datos incompletos NO se bloquea: se
+     * responde con la lista de faltantes para que la UI pida confirmación y el
+     * usuario decida continuar.
+     */
+    public function updateEstado(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'estado'     => 'required|in:COMPLETO,PENDIENTE',
+            'confirmado' => 'nullable|boolean',
+        ]);
+
+        $cotizacion = DB::table('cotizacion')->where('id_cotizacion', $id)->where('activo', 1)->first();
+        abort_unless($cotizacion, 404);
+
+        $estadoActual = $cotizacion->estado_valorizacion ?? 'PENDIENTE';
+
+        if ($validated['estado'] === 'COMPLETO' && ! ($validated['confirmado'] ?? false)) {
+            $faltantes = app(ValorizacionValidacionService::class)->faltantes($id);
+            if ($faltantes) {
+                return response()->json([
+                    'success'               => false,
+                    'requiere_confirmacion' => true,
+                    'estado'                => $estadoActual,
+                    'faltantes'             => $faltantes,
+                    'message'               => 'La valorización tiene datos incompletos.',
+                ]);
+            }
+        }
+
+        DB::transaction(function () use ($id, $validated) {
+            DB::table('cotizacion')->where('id_cotizacion', $id)->lockForUpdate()->first();
+            DB::table('cotizacion')->where('id_cotizacion', $id)->update([
+                'estado_valorizacion' => $validated['estado'],
+                'fecha_actualizacion' => now(),
+            ]);
+        });
+
+        return response()->json([
+            'success' => true,
+            'estado'  => $validated['estado'],
+            'message' => $validated['estado'] === 'COMPLETO'
+                ? 'Valorización marcada como completa.'
+                : 'Valorización marcada como pendiente.',
+        ]);
     }
 
     public function updateCliente(Request $request, int $id)

@@ -175,6 +175,8 @@ Route::middleware('auth')->group(function () {
         [CotizacionController::class, 'update'])->whereNumber('id')->name('cotizaciones.update');
     Route::post('/cotizaciones/{id}/cliente',
         [CotizacionController::class, 'updateCliente'])->whereNumber('id')->name('cotizaciones.cliente.update');
+    Route::patch('/cotizaciones/{id}/estado',
+        [CotizacionController::class, 'updateEstado'])->whereNumber('id')->name('cotizaciones.estado.update');
     Route::delete('/cotizaciones/{id}',
         [CotizacionController::class, 'destroy'])->whereNumber('id')->name('cotizaciones.destroy');
     Route::get('/cotizaciones/{id}/print',

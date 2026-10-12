@@ -54,15 +54,6 @@
     .btn-react      { background: #d1fae5; border: none; color: #065f46; }
     .btn-react:hover  { background: #a7f3d0; }
 
-    /* Modal override */
-    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center; }
-    .modal-overlay.open { display:flex; }
-    .modal { background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.25); display:flex; flex-direction:column; }
-    .modal-header { padding:20px 24px 16px; border-bottom:1px solid #f1f5f9; position:relative; }
-    .modal-header h2 { font-size:16px; font-weight:700; color:var(--text-primary); margin:0; }
-    .modal-header p  { font-size:12px; color:var(--text-secondary); margin:4px 0 0; }
-    .modal-body { padding:20px 24px; overflow-y:auto; }
-
     .empty-state { text-align:center; padding:60px 20px; color:#94a3b8; }
     .empty-state svg { margin:0 auto 12px; display:block; opacity:.4; }
     .empty-state p { font-size:14px; font-weight:600; color:#64748b; }
@@ -249,16 +240,13 @@
 </div>
 
 {{-- ═══════════ MODAL DETALLE FACTURAS ═══════════ --}}
-<div class="modal-overlay" id="modalSincOverlay">
-    <div class="modal" style="max-width:900px;width:min(900px,96vw);max-height:88vh;">
-        <div class="modal-header">
-            <h2 id="modalTitulo">Facturas de importación</h2>
-            <p id="modalDesc">—</p>
-            <button onclick="cerrarModal()" style="position:absolute;right:20px;top:18px;background:none;border:none;font-size:26px;cursor:pointer;color:#94a3b8;line-height:1;">×</button>
-        </div>
-        <div class="modal-body" id="modalBody">Cargando...</div>
-    </div>
-</div>
+<x-modal id="modalSincOverlay" size="xl">
+    <x-slot:header>
+        <h2 id="modalTitulo">Facturas de importación</h2>
+        <p id="modalDesc">—</p>
+    </x-slot:header>
+    <div id="modalBody">Cargando...</div>
+</x-modal>
 
 {{-- Toast --}}
 <div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:360px;"></div>
@@ -280,7 +268,7 @@
         document.getElementById('modalTitulo').textContent = 'Importación #' + id;
         document.getElementById('modalDesc').textContent   = archivo || 'Cargando...';
         document.getElementById('modalBody').innerHTML     = '<div style="text-align:center;padding:48px;color:#94a3b8;">Cargando facturas...</div>';
-        document.getElementById('modalSincOverlay').classList.add('open');
+        CRC.open('modalSincOverlay');
 
         fetch('/facturas/sincronizaciones/' + id + '/facturas', {
             headers: {'X-Requested-With': 'XMLHttpRequest'}
@@ -334,10 +322,6 @@
         .catch(() => {
             document.getElementById('modalBody').innerHTML = '<p style="color:#ef4444;padding:20px 0;">Error al cargar las facturas.</p>';
         });
-    }
-
-    function cerrarModal() {
-        document.getElementById('modalSincOverlay').classList.remove('open');
     }
 
     function desactivarSinc(id) {
