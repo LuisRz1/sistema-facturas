@@ -148,6 +148,41 @@
         .modal-footer .btn { flex: 1 1 auto; }
     }
 
+    /* ── BOTÓN FLOTANTE (esquina inferior derecha) ───────────────────────── */
+    .crc-fab {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        z-index: 150; /* por debajo de modales (200) y toasts (400) */
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 14px 22px;
+        border: none;
+        border-radius: 999px;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, .28), 0 2px 6px rgba(15, 23, 42, .14);
+        transition: transform .15s ease, filter .15s ease;
+    }
+    .crc-fab:hover { transform: translateY(-2px); filter: brightness(1.06); }
+    .crc-fab:focus-visible { outline: 3px solid rgba(245, 200, 66, .4); outline-offset: 2px; }
+    .crc-fab--pendiente { background: linear-gradient(135deg, #f5c842, #e0a800); color: #171204; }
+    .crc-fab--completo { background: var(--sidebar-bg, #171204); color: #fff; }
+    /* Solo se muestra el icono que corresponde al estado actual. */
+    .crc-fab--completo .crc-fab-ico--ok,
+    .crc-fab--pendiente .crc-fab-ico--back { display: none; }
+    /* Sube los toasts para que el FAB no los tape. */
+    body:has(.crc-fab) .toast-stack { bottom: 96px; }
+
+    @media (max-width: 640px) {
+        .crc-fab { right: 16px; bottom: 16px; padding: 13px 18px; }
+        body:has(.crc-fab) .toast-stack { bottom: 88px; }
+    }
+
     /* ── TOASTS ──────────────────────────────────────────────────────────── */
     .toast-stack {
         position: fixed;

@@ -961,6 +961,28 @@
 
         const ROWS_DATA = @json($filas->map(fn($f) => (array) $f));
     </script>
+
+    {{-- Acción flotante: completar la valorización o devolverla a pendiente --}}
+    @php $estadoFab = $cotizacion->estado_valorizacion ?? 'PENDIENTE'; @endphp
+    <button type="button"
+            id="fabEstadoValorizacion"
+            class="crc-fab crc-fab--{{ $estadoFab === 'COMPLETO' ? 'completo' : 'pendiente' }}"
+            data-estado="{{ $estadoFab }}"
+            title="{{ $estadoFab === 'COMPLETO' ? 'Marcar como pendiente' : 'Marcar como completa' }}"
+            onclick="toggleEstadoValorizacion()">
+        <span class="crc-fab-ico crc-fab-ico--ok" aria-hidden="true">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+        </span>
+        <span class="crc-fab-ico crc-fab-ico--back" aria-hidden="true">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M20 20v-6h-6"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20 10a8 8 0 00-14.9-2M4 14a8 8 0 0014.9 2"/>
+            </svg>
+        </span>
+        <span id="fabEstadoValorizacionTxt">{{ $estadoFab === 'COMPLETO' ? 'Marcar pendiente' : 'Completar' }}</span>
+    </button>
 @endsection
 
 @push('scripts')
@@ -989,18 +1011,33 @@
         }
 
         function pintarEstadoValorizacion(estado) {
-            const badge = document.getElementById('badgeEstadoValorizacion');
-            const txt   = document.getElementById('estadoValorizacionTxt');
-            if (!badge) return;
             const completo = estado === 'COMPLETO';
-            badge.dataset.estado = estado;
-            badge.classList.toggle('is-completo', completo);
-            badge.classList.toggle('is-pendiente', !completo);
+
+            const badge = document.getElementById('badgeEstadoValorizacion');
+            if (badge) {
+                badge.dataset.estado = estado;
+                badge.classList.toggle('is-completo', completo);
+                badge.classList.toggle('is-pendiente', !completo);
+            }
+            const txt = document.getElementById('estadoValorizacionTxt');
             if (txt) txt.textContent = estado;
+
+            const fab = document.getElementById('fabEstadoValorizacion');
+            if (fab) {
+                fab.dataset.estado = estado;
+                fab.classList.toggle('crc-fab--completo', completo);
+                fab.classList.toggle('crc-fab--pendiente', !completo);
+                fab.title = completo ? 'Marcar como pendiente' : 'Marcar como completa';
+            }
+            const fabTxt = document.getElementById('fabEstadoValorizacionTxt');
+            if (fabTxt) fabTxt.textContent = completo ? 'Marcar pendiente' : 'Completar';
         }
 
-        async function guardarEstadoValorizacion(confirmado) {
-            const estado = document.getElementById('selectEstadoValorizacion')?.value || 'PENDIENTE';
+        /**
+         * Aplica el estado indicado. Si hay datos incompletos al marcar COMPLETO,
+         * el servidor responde `requiere_confirmacion` y se pide confirmación.
+         */
+        async function aplicarEstadoValorizacion(estado, confirmado) {
             try {
                 const res = await fetch(`/cotizaciones/${COT_ID}/estado`, {
                     method: 'PATCH',
@@ -1025,7 +1062,7 @@
                         faltantes: data.faltantes || [],
                         textoOk: 'Continuar igualmente',
                         textoCancelar: 'Revisar',
-                        onContinuar: () => guardarEstadoValorizacion(true)
+                        onContinuar: () => aplicarEstadoValorizacion(estado, true)
                     });
                     return;
                 }
@@ -1040,6 +1077,19 @@
             } catch (e) {
                 CRC.feedback({ tipo: 'error', titulo: 'No se pudo cambiar el estado', mensaje: e.message });
             }
+        }
+
+        /** Guarda el estado elegido en el modal "Cambiar estado". */
+        function guardarEstadoValorizacion(confirmado) {
+            const estado = document.getElementById('selectEstadoValorizacion')?.value || 'PENDIENTE';
+            return aplicarEstadoValorizacion(estado, confirmado);
+        }
+
+        /** Botón flotante: completa la valorización o la devuelve a pendiente. */
+        function toggleEstadoValorizacion() {
+            const fab = document.getElementById('fabEstadoValorizacion');
+            const actual = fab?.dataset.estado || 'PENDIENTE';
+            return aplicarEstadoValorizacion(actual === 'COMPLETO' ? 'PENDIENTE' : 'COMPLETO', false);
         }
 
         // ── Errores de validación (422) en guardado de filas ───────────────
