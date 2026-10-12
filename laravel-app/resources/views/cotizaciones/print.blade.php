@@ -184,6 +184,8 @@
     <div class="val-subtitle">
         1.- {{ strtoupper($cotizacion->obra) }}
         <br>
+        N° Valorización: {{ $cotizacion->numero_valorizacion }}
+        <br>
         Periodo: {{ \Carbon\Carbon::parse($cotizacion->periodo_inicio)->format('d/m/Y') }} a {{ \Carbon\Carbon::parse($cotizacion->periodo_fin)->format('d/m/Y') }}
     </div>
 

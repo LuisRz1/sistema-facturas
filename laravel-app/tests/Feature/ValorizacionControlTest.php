@@ -344,10 +344,15 @@ class ValorizacionControlTest extends TestCase
         $sheet = $spreadsheet->getActiveSheet();
         $method = new \ReflectionMethod(CotizacionExportController::class, 'buildSheet');
         $method->invoke(app(CotizacionExportController::class), $sheet, $cotizacion, $filas);
-        $this->assertSame('OC / HORAS', $sheet->getCell('O12')->getValue());
-        $this->assertSame('HES', $sheet->getCell('P12')->getValue());
-        $this->assertStringContainsString('OC-120', $sheet->getCell('O13')->getValue());
-        $this->assertSame('HES-001', $sheet->getCell('P13')->getValue());
+        // La fila extra con el N° de valorización va justo debajo del nombre del ítem.
+        $hdr = $this->filaEncabezadoExcel($sheet);
+        $this->assertSame('N° VALORIZACIÓN:', $sheet->getCell('B' . ($hdr - 1))->getValue());
+        $this->assertSame('01', $sheet->getCell('C' . ($hdr - 1))->getValue());
+
+        $this->assertSame('OC / HORAS', $sheet->getCell('O' . $hdr)->getValue());
+        $this->assertSame('HES', $sheet->getCell('P' . $hdr)->getValue());
+        $this->assertStringContainsString('OC-120', (string) $sheet->getCell('O' . ($hdr + 1))->getValue());
+        $this->assertSame('HES-001', $sheet->getCell('P' . ($hdr + 1))->getValue());
         $this->assertTrue($sheet->getColumnDimension('D')->getAutoSize());
         $this->assertTrue($sheet->getColumnDimension('O')->getAutoSize());
         $this->assertTrue($sheet->getColumnDimension('P')->getAutoSize());
@@ -356,6 +361,19 @@ class ValorizacionControlTest extends TestCase
         $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'ocResumen'))->render();
         $this->assertStringContainsString('OC / HORAS', $html);
         $this->assertStringContainsString('HES-001', $html);
+        $this->assertStringContainsString('N° Valorización: 01', $html);
+    }
+
+    /** Fila de encabezados del Excel: la que empieza con FECHA. Evita fijar el layout. */
+    private function filaEncabezadoExcel($sheet): int
+    {
+        foreach ($sheet->getRowIterator() as $row) {
+            $idx = $row->getRowIndex();
+            if (strtoupper((string) $sheet->getCell('B' . $idx)->getValue()) === 'FECHA') {
+                return $idx;
+            }
+        }
+        $this->fail('No se encontró la fila de encabezados en el Excel.');
     }
 
     public function test_continuidad_de_horometro_bloquea_solapamiento_y_exige_completar(): void

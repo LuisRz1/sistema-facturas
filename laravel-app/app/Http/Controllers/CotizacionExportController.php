@@ -173,7 +173,7 @@ class CotizacionExportController extends Controller
         }
 
         // Mantiene el encabezado visible en cada página al imprimir/exportar.
-        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 12);
+        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 13);
 
         $filename = 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.xlsx';
         return $this->streamDownload($spreadsheet, $filename);
@@ -370,8 +370,16 @@ class CotizacionExportController extends Controller
             ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
         $sheet->getRowDimension(11)->setRowHeight(18);
 
-        // ── Row 12: Column headers ────────────────────────────────────────
-        $hdrRow = 12;
+        // ── Row 12: N° de valorización, justo debajo del nombre del ítem ──
+        $sheet->setCellValue('B12', 'N° VALORIZACIÓN:');
+        $sheet->getStyle('B12')->getFont()->setBold(true)->setUnderline(true);
+        $sheet->mergeCells('C12:E12');
+        $sheet->setCellValue('C12', (string) ($cotizacion->numero_valorizacion ?? ''));
+        $sheet->getStyle('C12')->getFont()->setBold(true);
+        $sheet->getRowDimension(12)->setRowHeight(16);
+
+        // ── Row 13: Column headers ────────────────────────────────────────
+        $hdrRow = 13;
         if ($esMaquinaria) {
             $headers = ['FECHA','CHOFER','CISTERNA/VOLQUETE/MAQUINARIA','PLACA/DESCRIPCION','OBRA','N° PARTE DIARIO','HI','HT','HORAS TRABAJADAS','HORAS MINIMAS','PRECIO','TOTAL','FACTURA'];
             $cols    = ['B','C','D','E','F','G','H','I','J','K','L','M','N'];
@@ -540,7 +548,7 @@ class CotizacionExportController extends Controller
         }
 
         // Repite el bloque superior al imprimir o guardar el archivo.
-        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 12);
+        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 13);
         $sheet->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_PORTRAIT);
         $sheet->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_A4);
         $sheet->getPageSetup()->setFitToPage(true);
