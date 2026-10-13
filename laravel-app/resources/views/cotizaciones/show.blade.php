@@ -128,6 +128,13 @@
         .estado-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;border:1.5px solid;}
         .estado-badge.is-completo{background:#d1fae5;color:#065f46;border-color:#6ee7b7;}
         .estado-badge.is-pendiente{background:#fef3c7;color:#92400e;border-color:#fde68a;}
+
+        /* Selector de HES para exportar partes diarios */
+        .hes-lista{display:flex;flex-direction:column;gap:8px;}
+        .hes-opcion{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;background:#fff;cursor:pointer;font-family:inherit;font-size:13px;transition:border-color .15s,background .15s;}
+        .hes-opcion:hover:not(:disabled){border-color:var(--gold-m);background:var(--gold-l);}
+        .hes-opcion:disabled{opacity:.55;cursor:not-allowed;}
+        .hes-opcion span{color:var(--text-muted);font-size:12px;white-space:nowrap;}
     </style>
 @endpush
 
@@ -309,11 +316,17 @@
                 @endif
 
                 @if($totalPartes > 0)
-                    {{-- Descargar PDF de Partes Diarios --}}
-                    <a href="{{ route('cotizaciones.partes.download', $cotizacion->id_cotizacion) }}"
-                       class="btn-doc btn-doc-pdf" target="_blank">
-                        PDF Partes Diarios <span class="doc-count">{{ $totalPartes }}</span>
-                    </a>
+                    @if($usaHes && $hesList->isNotEmpty())
+                        {{-- Elegir de qué HES se exportan los partes diarios --}}
+                        <button type="button" class="btn-doc btn-doc-pdf" onclick="abrirPartesHes()">
+                            PDF Partes Diarios <span class="doc-count">{{ $totalPartes }}</span>
+                        </button>
+                    @else
+                        <a href="{{ route('cotizaciones.partes.download', $cotizacion->id_cotizacion) }}"
+                           class="btn-doc btn-doc-pdf" target="_blank">
+                            PDF Partes Diarios <span class="doc-count">{{ $totalPartes }}</span>
+                        </a>
+                    @endif
 
                     {{-- Enviar por WhatsApp --}}
                     <button type="button" class="btn-doc btn-doc-wa"
@@ -987,6 +1000,36 @@
         </span>
         <span id="fabEstadoValorizacionTxt">{{ $estadoFab === 'COMPLETO' ? 'Marcar pendiente' : 'Completar' }}</span>
     </button>
+
+    {{-- Elegir de qué HES se exportan los partes diarios --}}
+    @if($usaHes && $hesList->isNotEmpty() && $totalPartes > 0)
+        @php
+            $partesPorHes = $hesList->mapWithKeys(fn($h) => [
+                $h->id_hes => $filas->where('id_hes', $h->id_hes)
+                    ->filter(fn($f) => !empty($f->ruta_parte_diario) && $esImagen($f->ruta_parte_diario))
+                    ->count(),
+            ]);
+        @endphp
+        <x-modal id="modalPartesHes" title="Exportar partes diarios" subtitle="Elige el HES o expórtalos todos." size="sm">
+            <div class="hes-lista">
+                <button type="button" class="hes-opcion" onclick="descargarPartesHes(null)">
+                    <strong>Todos los partes diarios</strong>
+                    <span>{{ $totalPartes }} parte(s)</span>
+                </button>
+                @foreach($hesList as $hes)
+                    @php $partesHes = $partesPorHes[$hes->id_hes] ?? 0; @endphp
+                    <button type="button" class="hes-opcion" @disabled($partesHes === 0)
+                            onclick="descargarPartesHes({{ $hes->id_hes }})">
+                        <strong>{{ $hes->codigo }}</strong>
+                        <span>{{ $partesHes }} parte(s)</span>
+                    </button>
+                @endforeach
+            </div>
+            <x-slot:footer>
+                <button type="button" class="btn btn-ghost" data-modal-close>Cancelar</button>
+            </x-slot:footer>
+        </x-modal>
+    @endif
 @endsection
 
 @push('scripts')
@@ -1094,6 +1137,19 @@
             const fab = document.getElementById('fabEstadoValorizacion');
             const actual = fab?.dataset.estado || 'PENDIENTE';
             return aplicarEstadoValorizacion(actual === 'COMPLETO' ? 'PENDIENTE' : 'COMPLETO', false);
+        }
+
+        /** Selector de HES para exportar los partes diarios. */
+        function abrirPartesHes() {
+            abrirModal('modalPartesHes');
+        }
+
+        /** Descarga el PDF de partes diarios; con hesId se limita a ese HES. */
+        function descargarPartesHes(hesId) {
+            const url = new URL(`/cotizaciones/${COT_ID}/partes/download`, window.location.origin);
+            if (hesId) url.searchParams.set('hes', hesId);
+            window.open(url.toString(), '_blank');
+            cerrarModal('modalPartesHes');
         }
 
         // ── Errores de validación (422) en guardado de filas ───────────────

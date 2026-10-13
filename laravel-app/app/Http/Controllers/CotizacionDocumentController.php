@@ -76,9 +76,9 @@ class CotizacionDocumentController extends Controller
 
     /**
      * Filas con imagen de parte diario, en orden estable (fecha, hora e id),
-     * excluyendo rutas vacías.
+     * excluyendo rutas vacías. Con $hesId se limita a las filas de ese HES.
      */
-    private function getFilasPartesDiarios(object $cotizacion, string $table, string $parteDiarioColumn): \Illuminate\Support\Collection
+    private function getFilasPartesDiarios(object $cotizacion, string $table, string $parteDiarioColumn, ?int $hesId = null): \Illuminate\Support\Collection
     {
         $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
 
@@ -88,6 +88,10 @@ class CotizacionDocumentController extends Controller
             ->whereNotNull($parteDiarioColumn)
             ->where($parteDiarioColumn, '<>', '')
             ->orderBy('fecha');
+
+        if ($hesId !== null) {
+            $query->where('id_hes', $hesId);
+        }
 
         if ($esMaquinaria) {
             $query->orderBy('hora_inicio');
@@ -475,21 +479,24 @@ class CotizacionDocumentController extends Controller
         return strtoupper($item);
     }
 
-    private function buildPartesDiariosFilename(object $cotizacion, string $extension = 'pdf'): string
+    private function buildPartesDiariosFilename(object $cotizacion, string $extension = 'pdf', ?string $sufijo = null): string
     {
         $empresa = $this->empresaCode((string) ($cotizacion->razon_social ?? 'EMPRESA'));
         $item = $this->resolveItemNombre($cotizacion);
         $periodo = $this->buildPeriodoTexto((string) $cotizacion->periodo_inicio, (string) $cotizacion->periodo_fin, 'd.m.Y');
 
-        $base = "PD-{$empresa} {$item} {$periodo}";
+        $base = "PD-{$empresa} {$item} {$periodo}" . ($sufijo ? " {$sufijo}" : '');
 
         return $this->sanitizeFilename($base) . '.' . strtolower($extension);
     }
 
-    private function buildPartesDiariosPdfHtml(object $cotizacion, \Illuminate\Support\Collection $filas, $disk, string $title): ?string
+    private function buildPartesDiariosPdfHtml(object $cotizacion, \Illuminate\Support\Collection $filas, $disk, string $title, ?string $hesCodigo = null): ?string
     {
         $logoDataUri = $this->getLogoDataUri();
         $cards = [];
+        $hesHtml = $hesCodigo
+            ? "<div class='hes'>HES: " . htmlspecialchars($hesCodigo, ENT_QUOTES) . '</div>'
+            : '';
         $periodoTexto = 'Periodo: '
             . \Carbon\Carbon::parse($cotizacion->periodo_inicio)->format('d/m/Y')
             . ' a '
@@ -567,6 +574,7 @@ class CotizacionDocumentController extends Controller
                     {$logoHtml}
                     <div class='company'>CONSORCIO RODRIGUEZ CABALLERO S.A.C.</div>
                     <div class='title'>{$title}</div>
+                    {$hesHtml}
                     <div class='periodo'>{$periodoTexto}</div>
                 </div>
                 <div class='items'>{$itemsHtml}</div>
@@ -584,6 +592,7 @@ class CotizacionDocumentController extends Controller
             .logo-fallback{width:42mm;height:14mm;border:1px solid #94a3b8;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#334155;margin:0 auto 4px;}
             .company{font-size:10px;font-weight:800;letter-spacing:.4px;}
             .title{font-size:12px;font-weight:800;margin-top:2px;}
+            .hes{font-size:11px;font-weight:800;color:#92400e;margin-top:2px;letter-spacing:.3px;}
             .periodo{font-size:10px;font-weight:700;color:#334155;margin-top:2px;}
             .items{margin-top:2px;}
             .item{height:120mm;border:1px solid #e2e8f0;border-radius:6px;padding:7px;margin-bottom:6px;background:#fff;page-break-inside:avoid;}
@@ -602,9 +611,11 @@ class CotizacionDocumentController extends Controller
     // ── PDF PARTES DIARIOS ────────────────────────────────────────────────
 
     /**
-     * Descarga un PDF con todas las imágenes de Parte Diario de la cotización.
+     * Descarga un PDF con las imágenes de Parte Diario de la cotización.
+     * Con ?hes=<id_hes> se limita a las filas de ese HES y el PDF lo indica;
+     * sin el parámetro se exportan todos los partes diarios.
      */
-    public function downloadPartesDiarios(int $id)
+    public function downloadPartesDiarios(Request $request, int $id)
     {
         // Embeber muchas imágenes es costoso: mismo margen que los flujos de importación.
         set_time_limit(300);
@@ -621,17 +632,33 @@ class CotizacionDocumentController extends Controller
             abort(422, 'La tabla no tiene columna de ruta de Parte Diario (ruta_parte_diario/ruta_n_parte_diario).');
         }
 
-        $filas = $this->getFilasPartesDiarios($cotizacion, $table, $parteDiarioColumn);
+        $hes = null;
+        if ($request->filled('hes')) {
+            $hes = DB::table('cotizacion_hes')
+                ->where('id_cotizacion', $id)
+                ->where('id_hes', (int) $request->input('hes'))
+                ->first();
+
+            abort_unless($hes, 404, 'El HES indicado no pertenece a esta valorización.');
+        }
+
+        $filas = $this->getFilasPartesDiarios($cotizacion, $table, $parteDiarioColumn, $hes?->id_hes);
 
         if ($filas->isEmpty()) {
-            abort(404, 'No hay imágenes de Parte Diario para esta cotización.');
+            abort(404, $hes
+                ? "No hay partes diarios con imagen para el HES {$hes->codigo}."
+                : 'No hay imágenes de Parte Diario para esta cotización.');
         }
 
         $nombreItem = $cotizacion->tipo_cotizacion === 'MAQUINARIA'
             ? ($cotizacion->maquinaria_nombre ?? 'MAQUINARIA')
             : ($cotizacion->agregado_nombre   ?? 'AGREGADO');
         $title = "{$nombreItem} - {$cotizacion->numero_valorizacion} - {$cotizacion->obra}";
-        $html = $this->buildPartesDiariosPdfHtml($cotizacion, $filas, $disk, $title);
+        if ($hes) {
+            $title .= " - HES: {$hes->codigo}";
+        }
+
+        $html = $this->buildPartesDiariosPdfHtml($cotizacion, $filas, $disk, $title, $hes?->codigo);
 
         if (!$html) {
             abort(404, 'Los archivos no se encuentran en el servidor.');
@@ -639,7 +666,7 @@ class CotizacionDocumentController extends Controller
 
         try {
             $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
-            $filename = $this->buildPartesDiariosFilename($cotizacion, 'pdf');
+            $filename = $this->buildPartesDiariosFilename($cotizacion, 'pdf', $hes?->codigo);
 
             return $pdf->download($filename);
         } catch (\Throwable $e) {

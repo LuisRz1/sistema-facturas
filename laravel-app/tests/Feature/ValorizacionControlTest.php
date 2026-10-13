@@ -542,6 +542,73 @@ class ValorizacionControlTest extends TestCase
         $this->assertGreaterThan($inicio2, $fin2);
     }
 
+    public function test_descarga_de_partes_diarios_filtrada_por_hes(): void
+    {
+        Storage::fake('s3');
+        DB::table('cliente')->insert(['id_cliente' => 1, 'razon_social' => 'Cliente', 'ruc' => '123']);
+        DB::table('maquinaria')->insert(['id_maquinaria' => 1, 'nombre' => 'Volquete']);
+
+        $periodo = ['periodo_inicio' => '2026-09-01', 'periodo_fin' => '2026-09-30'];
+        $base = ['id_cliente' => 1, 'id_maquinaria' => 1, 'tipo_cotizacion' => 'MAQUINARIA',
+                 'activo' => true, 'usa_hes' => true, 'control_oc_activo' => false] + $periodo;
+        $id   = DB::table('cotizacion')->insertGetId(['numero_valorizacion' => '01', 'obra' => 'Obra'] + $base);
+        $otra = DB::table('cotizacion')->insertGetId(['numero_valorizacion' => '02', 'obra' => 'Otra'] + $base);
+
+        $hesDe = fn(int $cotId, string $codigo) => DB::table('cotizacion_hes')->insertGetId([
+            'id_cotizacion' => $cotId, 'codigo' => $codigo, 'ruta_documento' => $codigo . '.pdf',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $hes1 = $hesDe($id, 'HES-1');
+        $hes2 = $hesDe($id, 'HES-2');
+        $hesAjena = $hesDe($otra, 'HES-OTRA');
+
+        $img = imagecreatetruecolor(600, 400);
+        imagefill($img, 0, 0, imagecolorallocate($img, 200, 200, 200));
+        ob_start();
+        imagepng($img);
+        $png = (string) ob_get_clean();
+        imagedestroy($img);
+        Storage::disk('s3')->put("cotizaciones/partes/{$id}/a.png", $png);
+        Storage::disk('s3')->put("cotizaciones/partes/{$id}/b.png", $png);
+
+        $f1 = $this->filaMaq($id, 1, 1);
+        $f2 = $this->filaMaq($id, 1, 1);
+        DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $f1)
+            ->update(['id_hes' => $hes1, 'ruta_parte_diario' => "cotizaciones/partes/{$id}/a.png", 'n_parte_diario' => 'PD-A']);
+        DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $f2)
+            ->update(['id_hes' => $hes2, 'ruta_parte_diario' => "cotizaciones/partes/{$id}/b.png", 'n_parte_diario' => 'PD-B']);
+
+        // Sin filtro: todos los partes y el nombre de archivo sin HES.
+        $todos = $this->get("/cotizaciones/{$id}/partes/download");
+        $todos->assertOk();
+        $this->assertStringNotContainsString('HES-1', (string) $todos->headers->get('content-disposition'));
+
+        // Con filtro: solo ese HES y el nombre de archivo lo indica.
+        $solo = $this->get("/cotizaciones/{$id}/partes/download?hes={$hes1}");
+        $solo->assertOk();
+        $this->assertStringContainsString('HES-1', (string) $solo->headers->get('content-disposition'));
+
+        $ctrl = app(CotizacionDocumentController::class);
+        $cot  = (object) [
+            'id_cotizacion' => $id, 'tipo_cotizacion' => 'MAQUINARIA',
+            'numero_valorizacion' => '01', 'obra' => 'Obra',
+            'periodo_inicio' => '2026-09-01', 'periodo_fin' => '2026-09-30',
+        ];
+
+        $filas = (new \ReflectionMethod(CotizacionDocumentController::class, 'getFilasPartesDiarios'))
+            ->invoke($ctrl, $cot, 'maquinaria_cotizacion', 'ruta_parte_diario', $hes1);
+        $this->assertSame(1, $filas->count(), 'El filtro por HES debe dejar solo sus filas.');
+        $this->assertSame('PD-A', $filas->first()->n_parte_diario);
+
+        // El encabezado del PDF indica de qué HES es.
+        $html = (new \ReflectionMethod(CotizacionDocumentController::class, 'buildPartesDiariosPdfHtml'))
+            ->invoke($ctrl, $cot, $filas, Storage::disk('s3'), 'Titulo', 'HES-1');
+        $this->assertStringContainsString('HES: HES-1', $html);
+
+        // Un HES de otra valorización no sirve.
+        $this->get("/cotizaciones/{$id}/partes/download?hes={$hesAjena}")->assertNotFound();
+    }
+
     private function oc(int $id, string $numero, float $horas): int
     {
         return DB::table('cotizacion_orden_compra')->insertGetId([
