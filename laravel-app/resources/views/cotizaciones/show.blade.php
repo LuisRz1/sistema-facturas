@@ -359,7 +359,13 @@
             <table class="row-table" id="rowTable">
                 <thead>
                 <tr>
-                    @if($usaHes)<th aria-label="Seleccionar fila">✓</th>@endif
+                    @if($usaHes)
+                        <th aria-label="Seleccionar fila">
+                            <input type="checkbox" id="hesSelectAll" onchange="alternarTodasHes(this)"
+                                   title="Seleccionar todas las filas sin HES"
+                                   aria-label="Seleccionar todas las filas sin HES">
+                        </th>
+                    @endif
                     <th>#</th>
                     <th>Fecha</th>
                     <th>Chofer</th>
@@ -1197,11 +1203,28 @@
         }
 
         function seleccionHes() { return [...document.querySelectorAll('.hes-row-select:checked')]; }
+
+        /** Marca o desmarca todas las filas elegibles (facturables y sin HES). */
+        function alternarTodasHes(casilla) {
+            document.querySelectorAll('.hes-row-select:not(:disabled)')
+                .forEach(el => { el.checked = casilla.checked; });
+            actualizarSeleccionHes();
+        }
+
         function actualizarSeleccionHes() {
             if (!USA_HES) return;
             const selected = seleccionHes();
             const cantidad = selected.reduce((sum, el) => sum + Number(el.dataset.cantidad), 0);
             document.getElementById('hesSelectionCount').textContent = `${selected.length} fila(s) · ${cantidad.toFixed(2)} ${ES_MAQUINARIA ? 'h' : 'm³'}`;
+
+            // La casilla de la cabecera refleja cuántas filas elegibles están marcadas.
+            const cabecera = document.getElementById('hesSelectAll');
+            if (cabecera) {
+                const elegibles = document.querySelectorAll('.hes-row-select:not(:disabled)').length;
+                cabecera.disabled    = elegibles === 0;
+                cabecera.checked     = elegibles > 0 && selected.length === elegibles;
+                cabecera.indeterminate = selected.length > 0 && selected.length < elegibles;
+            }
         }
         function abrirHes() {
             const selected = seleccionHes();
@@ -1976,6 +1999,9 @@
             const d = new Date(f + 'T00:00:00');
             return d.toLocaleDateString('es-PE', { day:'2-digit', month:'2-digit', year:'numeric' });
         }
+
+        // Estado inicial de la casilla "seleccionar todas" (se deshabilita si no hay filas elegibles).
+        actualizarSeleccionHes();
 
     </script>
 @endpush
