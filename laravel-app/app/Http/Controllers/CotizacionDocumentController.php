@@ -18,6 +18,86 @@ use Illuminate\Support\Facades\Log;
  */
 class CotizacionDocumentController extends Controller
 {
+    /** Extensiones de imagen que se embeben en el PDF de partes diarios. */
+    private const PDF_IMG_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+    /** Lado mayor máximo (px) de cada imagen embebida en el PDF. */
+    private const PDF_IMG_MAX = 1600;
+
+    /** Calidad JPEG de las imágenes embebidas. */
+    private const PDF_IMG_JPEG_Q = 80;
+
+    /**
+     * Prepara una imagen para embeberla en el PDF: la reduce al lado mayor
+     * permitido, aplana la transparencia sobre blanco y la recomprime en JPEG.
+     * Reduce el peso del PDF y el trabajo de DomPDF de forma drástica.
+     *
+     * @return array{mime: string, b64: string}|null  null si no se pudo procesar.
+     */
+    private function prepararImagenPdf(string $bytes): ?array
+    {
+        $img = @imagecreatefromstring($bytes);
+        if (!$img) {
+            return null;
+        }
+
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $mayor = max($w, $h);
+
+        if ($mayor > self::PDF_IMG_MAX) {
+            $escala = self::PDF_IMG_MAX / $mayor;
+            $reducida = imagescale($img, max(1, (int) round($w * $escala)), max(1, (int) round($h * $escala)), IMG_BICUBIC);
+            if ($reducida) {
+                imagedestroy($img);
+                $img = $reducida;
+                $w = imagesx($img);
+                $h = imagesy($img);
+            }
+        }
+
+        // Aplana sobre blanco: el PDF se imprime en papel y JPEG no tiene alfa.
+        $lienzo = imagecreatetruecolor($w, $h);
+        imagefill($lienzo, 0, 0, imagecolorallocate($lienzo, 255, 255, 255));
+        imagecopy($lienzo, $img, 0, 0, 0, 0, $w, $h);
+        imagedestroy($img);
+
+        ob_start();
+        imagejpeg($lienzo, null, self::PDF_IMG_JPEG_Q);
+        $jpeg = (string) ob_get_clean();
+        imagedestroy($lienzo);
+
+        if ($jpeg === '') {
+            return null;
+        }
+
+        return ['mime' => 'image/jpeg', 'b64' => base64_encode($jpeg)];
+    }
+
+    /**
+     * Filas con imagen de parte diario, en orden estable (fecha, hora e id),
+     * excluyendo rutas vacías.
+     */
+    private function getFilasPartesDiarios(object $cotizacion, string $table, string $parteDiarioColumn): \Illuminate\Support\Collection
+    {
+        $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
+
+        $query = DB::table($table)
+            ->where('id_cotizacion', $cotizacion->id_cotizacion)
+            ->where('activo', 1)
+            ->whereNotNull($parteDiarioColumn)
+            ->where($parteDiarioColumn, '<>', '')
+            ->orderBy('fecha');
+
+        if ($esMaquinaria) {
+            $query->orderBy('hora_inicio');
+        }
+
+        return $query
+            ->orderBy($esMaquinaria ? 'id_cotizacion_maqu' : 'id_cotizacion_agr')
+            ->get([$parteDiarioColumn . ' as ruta_parte_diario', 'n_parte_diario', 'fecha', 'placa']);
+    }
+
     private function getMergeDiagnostics(): array
     {
         $nodePath = $this->findCommand('node');
@@ -416,25 +496,24 @@ class CotizacionDocumentController extends Controller
             . \Carbon\Carbon::parse($cotizacion->periodo_fin)->format('d/m/Y');
 
         foreach ($filas as $f) {
-            if (!$disk->exists($f->ruta_parte_diario)) {
+            $ext = strtolower(pathinfo((string) $f->ruta_parte_diario, PATHINFO_EXTENSION));
+
+            // Solo imágenes soportadas: se descartan PDFs u otros adjuntos.
+            if (!in_array($ext, self::PDF_IMG_EXT, true)) {
                 continue;
             }
 
-            $ext = strtolower(pathinfo($f->ruta_parte_diario, PATHINFO_EXTENSION));
-            $mimeMap = [
-                'jpg' => 'image/jpeg',
-                'jpeg' => 'image/jpeg',
-                'png' => 'image/png',
-                'gif' => 'image/gif',
-                'webp' => 'image/webp',
-            ];
-            $mime = $mimeMap[$ext] ?? null;
+            try {
+                $bytes = (string) $disk->get($f->ruta_parte_diario);
+            } catch (\Throwable $e) {
+                continue; // Objeto ausente o ilegible: se omite sin romper el PDF.
+            }
 
-            if (!$mime) {
+            $imagen = $this->prepararImagenPdf($bytes);
+            if (!$imagen) {
                 continue;
             }
 
-            $b64   = base64_encode($disk->get($f->ruta_parte_diario));
             $label = $f->n_parte_diario ? "N° Parte: {$f->n_parte_diario}" : 'N° Parte: —';
             $fecha = $f->fecha ? \Carbon\Carbon::parse($f->fecha)->format('d/m/Y') : '—';
             $placa = $f->placa ? "Placa: {$f->placa}" : 'Placa: —';
@@ -443,8 +522,8 @@ class CotizacionDocumentController extends Controller
                 'label' => $label,
                 'fecha' => $fecha,
                 'placa' => $placa,
-                'mime'  => $mime,
-                'b64'   => $b64,
+                'mime'  => $imagen['mime'],
+                'b64'   => $imagen['b64'],
             ];
         }
 
@@ -527,6 +606,10 @@ class CotizacionDocumentController extends Controller
      */
     public function downloadPartesDiarios(int $id)
     {
+        // Embeber muchas imágenes es costoso: mismo margen que los flujos de importación.
+        set_time_limit(300);
+        ini_set('memory_limit', '512M');
+
         $cotizacion = $this->getCotizacionConMetadatos($id);
         if (!$cotizacion) abort(404);
         $disk = Storage::disk('s3');
@@ -538,12 +621,7 @@ class CotizacionDocumentController extends Controller
             abort(422, 'La tabla no tiene columna de ruta de Parte Diario (ruta_parte_diario/ruta_n_parte_diario).');
         }
 
-        $filas = DB::table($table)
-            ->where('id_cotizacion', $id)
-            ->where('activo', 1)
-            ->whereNotNull($parteDiarioColumn)
-            ->orderBy('fecha')
-            ->get([$parteDiarioColumn . ' as ruta_parte_diario', 'n_parte_diario', 'fecha', 'placa']);
+        $filas = $this->getFilasPartesDiarios($cotizacion, $table, $parteDiarioColumn);
 
         if ($filas->isEmpty()) {
             abort(404, 'No hay imágenes de Parte Diario para esta cotización.');
@@ -559,9 +637,30 @@ class CotizacionDocumentController extends Controller
             abort(404, 'Los archivos no se encuentran en el servidor.');
         }
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
-        $filename = $this->buildPartesDiariosFilename($cotizacion, 'pdf');
-        return $pdf->download($filename);
+        try {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadHTML($html)->setPaper('a4', 'portrait');
+            $filename = $this->buildPartesDiariosFilename($cotizacion, 'pdf');
+
+            return $pdf->download($filename);
+        } catch (\Throwable $e) {
+            Log::error('Partes diarios: no se pudo generar el PDF', [
+                'id_cotizacion' => $id,
+                'imagenes'      => $filas->count(),
+                'error'         => $e->getMessage(),
+            ]);
+
+            // Se abre en pestaña nueva, así que se responde una página legible en vez de un 500 seco.
+            return response(
+                '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
+                . '<title>No se pudo generar el PDF</title></head>'
+                . '<body style="font-family:Arial,Helvetica,sans-serif;padding:40px;color:#0f172a;">'
+                . '<h1 style="font-size:18px;margin-bottom:12px;">No se pudo generar el PDF de partes diarios</h1>'
+                . '<p style="font-size:14px;color:#475569;margin-bottom:20px;">' . e($e->getMessage()) . '</p>'
+                . '<p><a href="' . e(route('cotizaciones.show', $id)) . '" style="color:#1d4ed8;">Volver a la valorización</a></p>'
+                . '</body></html>',
+                500
+            );
+        }
     }
 
     // ── PDF GRRs ──────────────────────────────────────────────────────────
@@ -716,6 +815,10 @@ class CotizacionDocumentController extends Controller
      */
     public function enviarPartesDiariosWA(int $id)
     {
+        // Embeber muchas imágenes es costoso: mismo margen que los flujos de importación.
+        set_time_limit(300);
+        ini_set('memory_limit', '512M');
+
         $cotizacion = $this->getCotizacionConMetadatos($id, true);
         $disk = Storage::disk('s3');
 
@@ -737,12 +840,7 @@ class CotizacionDocumentController extends Controller
             return response()->json(['success' => false, 'error' => 'La tabla no tiene columna de ruta de Parte Diario (ruta_parte_diario/ruta_n_parte_diario).'], 422);
         }
 
-        $filas = DB::table($table)
-            ->where('id_cotizacion', $id)
-            ->where('activo', 1)
-            ->whereNotNull($parteDiarioColumn)
-            ->orderBy('fecha')
-            ->get([$parteDiarioColumn . ' as ruta_parte_diario', 'n_parte_diario', 'fecha', 'placa']);
+        $filas = $this->getFilasPartesDiarios($cotizacion, $table, $parteDiarioColumn);
 
         if ($filas->isEmpty()) {
             return response()->json(['success' => false, 'error' => 'No hay Partes Diarios con imagen en esta cotización.'], 422);

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\CotizacionDocumentController;
 use App\Http\Controllers\CotizacionExportController;
 use App\Services\ValorizacionOcService;
 use Illuminate\Database\Schema\Blueprint;
@@ -21,7 +22,11 @@ class ValorizacionControlTest extends TestCase
             $this->markTestSkipped('La extensión pdo_sqlite no está disponible en este entorno.');
         }
         DB::connection()->getPdo()->sqliteCreateFunction('CONCAT', fn (...$parts) => implode('', $parts));
-        Schema::create('cliente', function (Blueprint $t) { $t->increments('id_cliente'); });
+        Schema::create('cliente', function (Blueprint $t) {
+            $t->increments('id_cliente');
+            $t->string('razon_social')->nullable();
+            $t->string('ruc')->nullable();
+        });
         Schema::create('maquinaria', function (Blueprint $t) {
             $t->increments('id_maquinaria'); $t->string('nombre')->nullable(); $t->string('numero_maquina')->nullable();
         });
@@ -397,6 +402,99 @@ class ValorizacionControlTest extends TestCase
         // Con completar_salto se crea el ajuste y la fila queda continua.
         $this->postJson("/cotizaciones/{$id}/rows", $base + ['hora_inicio' => 60, 'hora_fin' => 70, 'completar_salto' => 1])->assertOk();
         $this->assertSame(1, DB::table('maquinaria_cotizacion')->where('es_ajuste_horometro', true)->count());
+    }
+
+    public function test_descarga_de_partes_diarios_recomprime_y_omite_no_imagenes(): void
+    {
+        Storage::fake('s3');
+        DB::table('cliente')->insert(['id_cliente' => 1]);
+        DB::table('maquinaria')->insert(['id_maquinaria' => 1, 'nombre' => 'Volquete']);
+
+        $id = DB::table('cotizacion')->insertGetId([
+            'id_cliente' => 1, 'id_maquinaria' => 1, 'tipo_cotizacion' => 'MAQUINARIA',
+            'numero_valorizacion' => '01', 'obra' => 'Obra', 'control_oc_activo' => false,
+            'usa_hes' => false, 'activo' => true,
+            'periodo_inicio' => '2026-09-01', 'periodo_fin' => '2026-09-30',
+        ]);
+
+        // Imagen grande y ruidosa (PNG 2400x1600), un adjunto que no es imagen
+        // y una ruta cuyo objeto no existe en el disco.
+        $img = imagecreatetruecolor(2400, 1600);
+        for ($x = 0; $x < 2400; $x += 10) {
+            for ($y = 0; $y < 1600; $y += 10) {
+                imagefilledrectangle($img, $x, $y, $x + 9, $y + 9,
+                    imagecolorallocate($img, random_int(0, 255), random_int(0, 255), random_int(0, 255)));
+            }
+        }
+        ob_start();
+        imagepng($img);
+        $png = (string) ob_get_clean();
+        imagedestroy($img);
+
+        Storage::disk('s3')->put('cotizaciones/partes/1/grande.png', $png);
+        Storage::disk('s3')->put('cotizaciones/partes/1/otro.pdf', '%PDF-1.4');
+
+        $filas = collect([
+            (object) ['ruta_parte_diario' => 'cotizaciones/partes/1/grande.png', 'n_parte_diario' => 'PD-1', 'fecha' => '2026-09-01', 'placa' => 'ABC-123'],
+            (object) ['ruta_parte_diario' => 'cotizaciones/partes/1/otro.pdf', 'n_parte_diario' => 'PD-2', 'fecha' => '2026-09-02', 'placa' => 'ABC-124'],
+            (object) ['ruta_parte_diario' => 'cotizaciones/partes/1/falta.png', 'n_parte_diario' => 'PD-3', 'fecha' => '2026-09-03', 'placa' => 'ABC-125'],
+        ]);
+
+        $cotizacion = (object) [
+            'id_cotizacion' => $id, 'tipo_cotizacion' => 'MAQUINARIA',
+            'numero_valorizacion' => '01', 'obra' => 'Obra',
+            'periodo_inicio' => '2026-09-01', 'periodo_fin' => '2026-09-30',
+            'razon_social' => 'Cliente', 'maquinaria_nombre' => 'Volquete',
+        ];
+
+        $method = new \ReflectionMethod(CotizacionDocumentController::class, 'buildPartesDiariosPdfHtml');
+        $html = $method->invoke(app(CotizacionDocumentController::class), $cotizacion, $filas, Storage::disk('s3'), 'Titulo');
+
+        $this->assertNotNull($html);
+        // Solo entra la imagen válida: el PDF y el objeto inexistente se omiten.
+        $this->assertSame(1, substr_count($html, "<img src='data:"));
+        $this->assertStringContainsString('PD-1', $html);
+        $this->assertStringNotContainsString('PD-2', $html);
+        $this->assertStringNotContainsString('PD-3', $html);
+
+        // Se recomprime a JPEG y se limita el lado mayor a 1600 px: eso reduce
+        // el peso y el trabajo de DomPDF sin depender del contenido concreto.
+        $this->assertSame(1, preg_match("/data:image\/jpeg;base64,([A-Za-z0-9+\/=]+)/", $html, $m));
+        $incrustada = base64_decode($m[1]);
+        $info = getimagesizefromstring($incrustada);
+        $this->assertSame(1600, max($info[0], $info[1]));
+        $this->assertLessThan(2400 * 1600, $info[0] * $info[1], 'La imagen no se redujo.');
+    }
+
+    public function test_descarga_de_partes_diarios_responde_un_pdf(): void
+    {
+        Storage::fake('s3');
+        DB::table('cliente')->insert(['id_cliente' => 1, 'razon_social' => 'Cliente', 'ruc' => '123']);
+        DB::table('maquinaria')->insert(['id_maquinaria' => 1, 'nombre' => 'Volquete']);
+
+        $id = DB::table('cotizacion')->insertGetId([
+            'id_cliente' => 1, 'id_maquinaria' => 1, 'tipo_cotizacion' => 'MAQUINARIA',
+            'numero_valorizacion' => '01', 'obra' => 'Obra', 'activo' => true,
+            'periodo_inicio' => '2026-09-01', 'periodo_fin' => '2026-09-30',
+        ]);
+
+        $img = imagecreatetruecolor(600, 400);
+        imagefill($img, 0, 0, imagecolorallocate($img, 200, 200, 200));
+        ob_start();
+        imagepng($img);
+        $png = (string) ob_get_clean();
+        imagedestroy($img);
+        Storage::disk('s3')->put("cotizaciones/partes/{$id}/pd.png", $png);
+
+        $fila = $this->filaMaq($id, 1, 1);
+        DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $fila)
+            ->update(['ruta_parte_diario' => "cotizaciones/partes/{$id}/pd.png", 'n_parte_diario' => 'PD-1']);
+
+        $res = $this->get("/cotizaciones/{$id}/partes/download");
+
+        $res->assertOk();
+        $this->assertStringContainsString('application/pdf', (string) $res->headers->get('content-type'));
+        $this->assertStringContainsString('.pdf', (string) $res->headers->get('content-disposition'));
     }
 
     private function oc(int $id, string $numero, float $horas): int

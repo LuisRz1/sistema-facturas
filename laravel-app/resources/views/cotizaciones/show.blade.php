@@ -6,8 +6,12 @@
     $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
     $CSRF         = csrf_token();
 
-    // Contar archivos adjuntos
-    $totalPartes = $filas->filter(fn($f) => !empty($f->ruta_parte_diario))->count();
+    // Contar archivos adjuntos. El contador de partes solo cuenta imágenes que el
+    // PDF sí puede embeber (mismas extensiones soportadas por el controlador).
+    $extImagen = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    $esImagen  = fn($ruta) => in_array(strtolower(pathinfo((string) $ruta, PATHINFO_EXTENSION)), $extImagen, true);
+
+    $totalPartes = $filas->filter(fn($f) => !empty($f->ruta_parte_diario) && $esImagen($f->ruta_parte_diario))->count();
     $totalGRRs   = $filas->filter(fn($f) => !empty($f->ruta_grr))->count();
     $usaHes = (bool) $cotizacion->usa_hes;
     $controlOc = $esMaquinaria && (bool) $cotizacion->control_oc_activo;
