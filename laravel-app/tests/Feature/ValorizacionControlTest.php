@@ -370,9 +370,9 @@ class ValorizacionControlTest extends TestCase
     }
 
     /** Fila de encabezados del Excel: la que empieza con FECHA. Evita fijar el layout. */
-    private function filaEncabezadoExcel($sheet): int
+    private function filaEncabezadoExcel($sheet, int $desde = 1): int
     {
-        foreach ($sheet->getRowIterator() as $row) {
+        foreach ($sheet->getRowIterator($desde) as $row) {
             $idx = $row->getRowIndex();
             if (strtoupper((string) $sheet->getCell('B' . $idx)->getValue()) === 'FECHA') {
                 return $idx;
@@ -495,6 +495,51 @@ class ValorizacionControlTest extends TestCase
         $res->assertOk();
         $this->assertStringContainsString('application/pdf', (string) $res->headers->get('content-type'));
         $this->assertStringContainsString('.pdf', (string) $res->headers->get('content-disposition'));
+    }
+
+    public function test_export_masivo_apila_los_bloques_en_la_fila_indicada(): void
+    {
+        DB::table('cliente')->insert(['id_cliente' => 1, 'razon_social' => 'Cliente', 'ruc' => '123']);
+        DB::table('maquinaria')->insert(['id_maquinaria' => 1, 'nombre' => 'Volquete']);
+        $id = DB::table('cotizacion')->insertGetId([
+            'id_cliente' => 1, 'id_maquinaria' => 1, 'tipo_cotizacion' => 'MAQUINARIA',
+            'numero_valorizacion' => '01', 'obra' => 'Obra', 'activo' => true,
+            'control_oc_activo' => false, 'usa_hes' => false,
+            'periodo_inicio' => '2026-09-01', 'periodo_fin' => '2026-09-30',
+        ]);
+        $filaId = $this->filaMaq($id, 4, 3);
+
+        $fila = DB::table('maquinaria_cotizacion')->where('id_cotizacion_maqu', $filaId)->first();
+        $fila->chofer_nombre = 'Chofer';
+        $fila->maquinaria_nombre = 'Maquinaria';
+        $filas = app(ValorizacionOcService::class)->detallarFilas(collect([$fila]));
+
+        $cotizacion = (object) [
+            'id_cotizacion' => $id, 'tipo_cotizacion' => 'MAQUINARIA',
+            'control_oc_activo' => false, 'usa_hes' => false,
+            'numero_valorizacion' => '01', 'obra' => 'Obra',
+            'periodo_inicio' => '2026-09-01', 'periodo_fin' => '2026-09-30',
+            'razon_social' => 'Cliente', 'ruc' => '123',
+            'maquinaria_nombre' => 'Volquete', 'orden_compra' => null,
+            'total' => 100, 'base_sin_igv' => 84.75, 'total_igv' => 15.25,
+        ];
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $method = new \ReflectionMethod(CotizacionExportController::class, 'buildSheet');
+        $ctrl = app(CotizacionExportController::class);
+
+        $fin1 = $method->invoke($ctrl, $sheet, $cotizacion, $filas, 1);
+        $this->assertSame(13, $this->filaEncabezadoExcel($sheet), 'El primer bloque debe empezar en la fila 1.');
+
+        // El segundo bloque se escribe directo en su fila final, sin copiar celdas.
+        $inicio2 = $fin1 + 6;
+        $fin2 = $method->invoke($ctrl, $sheet, $cotizacion, $filas, $inicio2);
+
+        $this->assertSame($inicio2 + 12, $this->filaEncabezadoExcel($sheet, $inicio2), 'El segundo bloque debe repetir el formato desplazado.');
+        $this->assertSame('N° VALORIZACIÓN:', $sheet->getCell('B' . ($inicio2 + 11))->getValue());
+        $this->assertSame('01', $sheet->getCell('C' . ($inicio2 + 11))->getValue());
+        $this->assertGreaterThan($inicio2, $fin2);
     }
 
     private function oc(int $id, string $numero, float $horas): int

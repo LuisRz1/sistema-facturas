@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Services\ValorizacionOcService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -89,6 +88,11 @@ class CotizacionExportController extends Controller
 
         $pdfPaths = [];
 
+        // El logo no cambia entre cotizaciones: se lee una sola vez.
+        $logoDataUri = $this->getLogoDataUri();
+        $logoPath = $this->getLogoFilePath();
+        $forPdf = true;
+
         foreach ($ids as $id) {
             $cotizacion = $this->getCotizacionWithDetails((int) $id);
             if (!$cotizacion) {
@@ -98,9 +102,6 @@ class CotizacionExportController extends Controller
             $filas = $this->getFilas($cotizacion);
             $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
             $ocResumen = $esMaquinaria ? app(ValorizacionOcService::class)->resumen((int)$id) : null;
-            $forPdf = true;
-            $logoDataUri = $this->getLogoDataUri();
-            $logoPath = $this->getLogoFilePath();
 
             $html = view('cotizaciones.print', compact('cotizacion', 'filas', 'esMaquinaria', 'forPdf', 'logoDataUri', 'logoPath', 'ocResumen'))->render();
             $html = preg_replace('/<div class="no-print".*?<\/div>/s', '', $html);
@@ -163,17 +164,15 @@ class CotizacionExportController extends Controller
 
             $filas = $this->getFilas($cotizacion);
 
-            $endRow = $this->appendCotizacionBlock($sheet, $cotizacion, $filas, $startRow);
-            $startRow = $endRow + 6; // 5 blank rows between blocks
+            // Escribe el bloque directamente en su fila final: sin hoja temporal ni copia de celdas.
+            $endRow = $this->buildSheet($sheet, $cotizacion, $filas, $startRow);
+            $startRow = $endRow + 6; // 5 filas en blanco entre bloques
             $rendered++;
         }
 
         if ($rendered === 0) {
             return back()->with('error', 'No se encontraron cotizaciones válidas para exportar.');
         }
-
-        // Mantiene el encabezado visible en cada página al imprimir/exportar.
-        $sheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 13);
 
         $filename = 'Valorizaciones_CRC_' . now()->format('Ymd_Hi') . '.xlsx';
         return $this->streamDownload($spreadsheet, $filename);
@@ -212,11 +211,23 @@ class CotizacionExportController extends Controller
     }
 
     // ── Build one sheet matching the provided Excel format ────────────────
+    /**
+     * Escribe el bloque de una valorización en la hoja indicada.
+     * $startRow permite apilar varios bloques en la misma hoja (export masivo)
+     * escribiendo directamente en su fila final, sin copiar celdas.
+     *
+     * @return int Última fila usada por el bloque.
+     */
     private function buildSheet(
         \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet,
         object $cotizacion,
-        \Illuminate\Support\Collection $filas
-    ): void {
+        \Illuminate\Support\Collection $filas,
+        int $startRow = 1
+    ): int {
+        $o = max(0, $startRow - 1);
+        /** Desplaza una celda o rango ('B6', 'B1:D4', "F1:{$lastCol}1") a su fila final. */
+        $A = fn(string $coord) => $this->offsetRangeRows($coord, $o);
+
         $esMaquinaria = $cotizacion->tipo_cotizacion === 'MAQUINARIA';
         $controlOc = $esMaquinaria && (bool) $cotizacion->control_oc_activo;
         $usaHes = (bool) $cotizacion->usa_hes;
@@ -263,123 +274,120 @@ class CotizacionExportController extends Controller
         $sheet->getColumnDimension('A')->setWidth(3);
 
         // ── Row heights ──────────────────────────────────────────────────
-        $sheet->getRowDimension(1)->setRowHeight(48);
-        $sheet->getRowDimension(2)->setRowHeight(20);
-        $sheet->getRowDimension(3)->setRowHeight(26);
-        $sheet->getRowDimension(4)->setRowHeight(18);
-        $sheet->getRowDimension(5)->setRowHeight(6);
-        $sheet->getRowDimension(9)->setRowHeight(6);
+        foreach ([1 => 48, 2 => 20, 3 => 26, 4 => 18, 5 => 6, 9 => 6] as $fila => $alto) {
+            $sheet->getRowDimension($o + $fila)->setRowHeight($alto);
+        }
 
-        $this->addLogoToSheet($sheet);
+        $this->addLogoToSheet($sheet, $o + 1);
 
         // ── Row 1-4: Header block ────────────────────────────────────────
         // Left: logo placeholder + company name
-        $sheet->mergeCells('B1:D4');
-        $sheet->setCellValue('B1', "CONSORCIO RODRIGUEZ CABALLERO SAC");
-        $sheet->getStyle('B1')
+        $sheet->mergeCells($A('B1:D4'));
+        $sheet->setCellValue($A('B1'), "CONSORCIO RODRIGUEZ CABALLERO SAC");
+        $sheet->getStyle($A('B1'))
             ->getFont()->setBold(true)->setSize(9);
-        $sheet->getStyle('B1')
+        $sheet->getStyle($A('B1'))
             ->getAlignment()->setVertical(Alignment::VERTICAL_BOTTOM)
             ->setWrapText(true);
 
         // Right: big name
-        $sheet->mergeCells("F1:{$lastCol}1");
-        $sheet->setCellValue('F1', 'CONSORCIO RODRIGUEZ CABALLERO');
-        $sheet->getStyle("F1:{$lastCol}1")
+        $sheet->mergeCells($A("F1:{$lastCol}1"));
+        $sheet->setCellValue($A('F1'), 'CONSORCIO RODRIGUEZ CABALLERO');
+        $sheet->getStyle($A("F1:{$lastCol}1"))
             ->getFont()->setBold(true)->setSize(16);
-        $this->styleCenter($sheet, "F1:{$lastCol}1");
+        $this->styleCenter($sheet, $A("F1:{$lastCol}1"));
 
-        $sheet->mergeCells("F2:{$lastCol}2");
-        $sheet->setCellValue('F2', 'RUC:20482304665');
-        $sheet->getStyle("F2:{$lastCol}2")
+        $sheet->mergeCells($A("F2:{$lastCol}2"));
+        $sheet->setCellValue($A('F2'), 'RUC:20482304665');
+        $sheet->getStyle($A("F2:{$lastCol}2"))
             ->getFont()->setBold(true)->setSize(12);
-        $this->styleCenter($sheet, "F2:{$lastCol}2");
+        $this->styleCenter($sheet, $A("F2:{$lastCol}2"));
 
-        $sheet->mergeCells("F3:{$lastCol}3");
-        $sheet->setCellValue('F3', 'Abastecimiento de agua en cisternas, venta de agregados para la construcción, alquiler maquinaria pesada y otras actividades de transporte.');
-        $sheet->getStyle("F3:{$lastCol}3")
+        $sheet->mergeCells($A("F3:{$lastCol}3"));
+        $sheet->setCellValue($A('F3'), 'Abastecimiento de agua en cisternas, venta de agregados para la construcción, alquiler maquinaria pesada y otras actividades de transporte.');
+        $sheet->getStyle($A("F3:{$lastCol}3"))
             ->getFont()->setSize(7)->getColor()->setRGB('0070C0');
-        $this->styleCenter($sheet, "F3:{$lastCol}3");
-        $sheet->getStyle("F3:{$lastCol}3")->getAlignment()->setWrapText(true);
+        $this->styleCenter($sheet, $A("F3:{$lastCol}3"));
+        $sheet->getStyle($A("F3:{$lastCol}3"))->getAlignment()->setWrapText(true);
 
         // ── Row 6: VALORIZACION + PERIODO ────────────────────────────────
         $tipoLabel = $esMaquinaria ? 'ALQUILER DE ' : '';
         $itemConCorrelativo = strtoupper($itemNombre) . ($correlativoVal !== '' ? ' - ' . $correlativoVal : '');
         $valLabel  = strtoupper($tipoLabel) . $itemConCorrelativo;
 
-        $sheet->setCellValue('B6', 'VALORIZACION:');
-        $sheet->getStyle('B6')->getFont()->setBold(true)->setUnderline(true);
+        $sheet->setCellValue($A('B6'), 'VALORIZACION:');
+        $sheet->getStyle($A('B6'))->getFont()->setBold(true)->setUnderline(true);
 
-        $sheet->mergeCells('C6:E6');
-        $sheet->setCellValue('C6', $valLabel);
-        $sheet->getStyle('C6:E6')
+        $sheet->mergeCells($A('C6:E6'));
+        $sheet->setCellValue($A('C6'), $valLabel);
+        $sheet->getStyle($A('C6:E6'))
             ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('D9D9D9');
-        $sheet->getStyle('C6:E6')->getFont()->setBold(true);
+        $sheet->getStyle($A('C6:E6'))->getFont()->setBold(true);
 
-        $sheet->setCellValue('F6', 'PERIODO');
-        $sheet->getStyle('F6')->getFont()->setBold(true)->setUnderline(true);
-        $sheet->setCellValue('G6', strtoupper($periodoInicio));
-        $sheet->setCellValue('H6', 'AL');
-        $this->styleCenter($sheet, 'H6');
-        $sheet->mergeCells("I6:{$lastCol}6");
-        $sheet->setCellValue('I6', strtoupper($periodoFin));
+        $sheet->setCellValue($A('F6'), 'PERIODO');
+        $sheet->getStyle($A('F6'))->getFont()->setBold(true)->setUnderline(true);
+        $sheet->setCellValue($A('G6'), strtoupper($periodoInicio));
+        $sheet->setCellValue($A('H6'), 'AL');
+        $this->styleCenter($sheet, $A('H6'));
+        $sheet->mergeCells($A("I6:{$lastCol}6"));
+        $sheet->setCellValue($A('I6'), strtoupper($periodoFin));
 
         // ── Row 7: EMPRESA + RUC ─────────────────────────────────────────
-        $sheet->setCellValue('B7', 'EMPRESA:');
-        $sheet->getStyle('B7')->getFont()->setBold(true)->setUnderline(true);
-        $sheet->mergeCells('C7:E7');
-        $sheet->setCellValue('C7', strtoupper($cotizacion->razon_social));
+        $sheet->setCellValue($A('B7'), 'EMPRESA:');
+        $sheet->getStyle($A('B7'))->getFont()->setBold(true)->setUnderline(true);
+        $sheet->mergeCells($A('C7:E7'));
+        $sheet->setCellValue($A('C7'), strtoupper($cotizacion->razon_social));
 
-        $sheet->setCellValue('F7', 'RUC:');
-        $sheet->getStyle('F7')->getFont()->setBold(true)->setUnderline(true);
-        $sheet->setCellValueExplicit('G7', (string)($cotizacion->ruc ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $sheet->setCellValue($A('F7'), 'RUC:');
+        $sheet->getStyle($A('F7'))->getFont()->setBold(true)->setUnderline(true);
+        $sheet->setCellValueExplicit($A('G7'), (string)($cotizacion->ruc ?? ''), \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
 
         // ── Row 8: OBRA ──────────────────────────────────────────────────
-        $sheet->setCellValue('B8', 'OBRA:');
-        $sheet->getStyle('B8')->getFont()->setBold(true)->setUnderline(true);
-        $sheet->mergeCells('C8:E8');
-        $sheet->setCellValue('C8', strtoupper($cotizacion->obra));
-        $sheet->setCellValue('F8', 'ORDEN DE COMPRA:');
-        $sheet->getStyle('F8')->getFont()->setBold(true)->setUnderline(true);
-        $sheet->mergeCells("G8:{$lastCol}8");
+        $sheet->setCellValue($A('B8'), 'OBRA:');
+        $sheet->getStyle($A('B8'))->getFont()->setBold(true)->setUnderline(true);
+        $sheet->mergeCells($A('C8:E8'));
+        $sheet->setCellValue($A('C8'), strtoupper($cotizacion->obra));
+        $sheet->setCellValue($A('F8'), 'ORDEN DE COMPRA:');
+        $sheet->getStyle($A('F8'))->getFont()->setBold(true)->setUnderline(true);
+        $sheet->mergeCells($A("G8:{$lastCol}8"));
         $numerosOc = $controlOc
             ? DB::table('cotizacion_orden_compra')->where('id_cotizacion', $cotizacion->id_cotizacion)
                 ->orderBy('id_orden_compra')->get()->map(fn($oc) => $oc->numero . ' (' . $oc->horas_autorizadas . ' h)')->implode(' · ')
             : (string) ($cotizacion->orden_compra ?? '');
-        $sheet->setCellValueExplicit('G8', $numerosOc, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+        $sheet->setCellValueExplicit($A('G8'), $numerosOc, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
 
         // ── Row 10: Company title ─────────────────────────────────────────
-        $sheet->mergeCells("B10:{$lastCol}10");
-        $sheet->setCellValue('B10', strtoupper($cotizacion->razon_social));
-        $this->styleCenter($sheet, "B10:{$lastCol}10");
-        $sheet->getStyle("B10:{$lastCol}10")->getFont()->setBold(true)->setSize(11);
-        $sheet->getStyle("B10:{$lastCol}10")
+        $sheet->mergeCells($A("B10:{$lastCol}10"));
+        $sheet->setCellValue($A('B10'), strtoupper($cotizacion->razon_social));
+        $this->styleCenter($sheet, $A("B10:{$lastCol}10"));
+        $sheet->getStyle($A("B10:{$lastCol}10"))->getFont()->setBold(true)->setSize(11);
+        $sheet->getStyle($A("B10:{$lastCol}10"))
             ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
-        $sheet->getStyle("B10:{$lastCol}10")
+        $sheet->getStyle($A("B10:{$lastCol}10"))
             ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFFFF');
-        $sheet->getRowDimension(10)->setRowHeight(20);
+        $sheet->getRowDimension($o + 10)->setRowHeight(20);
 
         // ── Row 11: Item name ─────────────────────────────────────────────
-        $sheet->mergeCells("B11:{$lastCol}11");
-        $sheet->setCellValue('B11', '1.-' . $itemConCorrelativo);
-        $this->styleCenter($sheet, "B11:{$lastCol}11");
-        $sheet->getStyle("B11:{$lastCol}11")->getFont()->setBold(true);
-        $sheet->getStyle("B11:{$lastCol}11")
+        $sheet->mergeCells($A("B11:{$lastCol}11"));
+        $sheet->setCellValue($A('B11'), '1.-' . $itemConCorrelativo);
+        $this->styleCenter($sheet, $A("B11:{$lastCol}11"));
+        $sheet->getStyle($A("B11:{$lastCol}11"))->getFont()->setBold(true);
+        $sheet->getStyle($A("B11:{$lastCol}11"))
             ->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFF99');
-        $sheet->getStyle("B11:{$lastCol}11")
+        $sheet->getStyle($A("B11:{$lastCol}11"))
             ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
-        $sheet->getRowDimension(11)->setRowHeight(18);
+        $sheet->getRowDimension($o + 11)->setRowHeight(18);
 
         // ── Row 12: N° de valorización, justo debajo del nombre del ítem ──
-        $sheet->setCellValue('B12', 'N° VALORIZACIÓN:');
-        $sheet->getStyle('B12')->getFont()->setBold(true)->setUnderline(true);
-        $sheet->mergeCells('C12:E12');
-        $sheet->setCellValue('C12', (string) ($cotizacion->numero_valorizacion ?? ''));
-        $sheet->getStyle('C12')->getFont()->setBold(true);
-        $sheet->getRowDimension(12)->setRowHeight(16);
+        $sheet->setCellValue($A('B12'), 'N° VALORIZACIÓN:');
+        $sheet->getStyle($A('B12'))->getFont()->setBold(true)->setUnderline(true);
+        $sheet->mergeCells($A('C12:E12'));
+        $sheet->setCellValue($A('C12'), (string) ($cotizacion->numero_valorizacion ?? ''));
+        $sheet->getStyle($A('C12'))->getFont()->setBold(true);
+        $sheet->getRowDimension($o + 12)->setRowHeight(16);
 
         // ── Row 13: Column headers ────────────────────────────────────────
-        $hdrRow = 13;
+        $hdrRow = $o + 13;
         if ($esMaquinaria) {
             $headers = ['FECHA','CHOFER','CISTERNA/VOLQUETE/MAQUINARIA','PLACA/DESCRIPCION','OBRA','N° PARTE DIARIO','HI','HT','HORAS TRABAJADAS','HORAS MINIMAS','PRECIO','TOTAL','FACTURA'];
             $cols    = ['B','C','D','E','F','G','H','I','J','K','L','M','N'];
@@ -407,6 +415,8 @@ class CotizacionExportController extends Controller
 
         // ── Data rows ─────────────────────────────────────────────────────
         $dataStart = $hdrRow + 1;
+        $numCols   = $esMaquinaria ? ['H','I','J','K','L','M'] : ['H','I','J'];
+        $textCols  = $esMaquinaria ? ['N','O','P'] : ['L','M'];
         $r = $dataStart;
 
         foreach ($filas as $f) {
@@ -429,8 +439,6 @@ class CotizacionExportController extends Controller
                 if ($controlOc) $vals[] = $f->oc_asignaciones->map(fn($a) => $a->numero . ': ' . $a->horas_asignadas . ' h')->implode(' · ')
                     . ($f->horas_sin_oc > 0 ? ' · SIN OC: ' . $f->horas_sin_oc . ' h' : '');
                 if ($usaHes) $vals[] = (string) ($f->codigo_hes ?? '');
-                // Numeric cols alignment right
-                $numCols = ['H','I','J','K','L','M'];
             } else {
                 $vals = [
                     \Carbon\Carbon::parse($f->fecha)->format('d/m/Y'),
@@ -446,30 +454,33 @@ class CotizacionExportController extends Controller
                     (string) ($f->numero_factura ?? ''),
                 ];
                 if ($usaHes) $vals[] = (string) ($f->codigo_hes ?? '');
-                $numCols = ['H','I','J'];
             }
 
             foreach ($vals as $i => $val) {
-                if (in_array($cols[$i], $esMaquinaria ? ['N','O','P'] : ['L','M'], true)) {
+                if (in_array($cols[$i], $textCols, true)) {
                     $sheet->setCellValueExplicit($cols[$i] . $r, $val, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
                 } else {
                     $sheet->setCellValue($cols[$i] . $r, $val);
                 }
             }
 
-            foreach ($numCols as $nc) {
-                $sheet->getStyle($nc . $r)
-                    ->getNumberFormat()->setFormatCode('#,##0.00');
-                $sheet->getStyle($nc . $r)
-                    ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-            }
-
-            $sheet->getStyle("B{$r}:{$lastCol}{$r}")
-                ->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
-            $sheet->getStyle("B{$r}:{$lastCol}{$r}")
-                ->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
             $sheet->getRowDimension($r)->setRowHeight(14);
             $r++;
+        }
+
+        // Estilos del bloque de datos en una sola pasada por estilo: pedir el
+        // estilo celda a celda es lo más caro de armar la hoja.
+        $dataEnd = $r - 1;
+        if ($dataEnd >= $dataStart) {
+            $bloque = "B{$dataStart}:{$lastCol}{$dataEnd}";
+            $sheet->getStyle($bloque)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+            $sheet->getStyle($bloque)->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
+
+            foreach ($numCols as $nc) {
+                $columna = "{$nc}{$dataStart}:{$nc}{$dataEnd}";
+                $sheet->getStyle($columna)->getNumberFormat()->setFormatCode('#,##0.00');
+                $sheet->getStyle($columna)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            }
         }
 
         // ── TOTAL row ─────────────────────────────────────────────────────
@@ -533,6 +544,8 @@ class CotizacionExportController extends Controller
         $sheet->getStyle("{$numCol}{$s3}")->getFill()
             ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FFFFC0');
 
+        $ultimaFila = $s3;
+
         if ($controlOc) {
             $ordenes = app(ValorizacionOcService::class)->resumen((int)$cotizacion->id_cotizacion);
             $filaOc = $s3 + 2;
@@ -540,10 +553,12 @@ class CotizacionExportController extends Controller
                 $sheet->setCellValue("B{$filaOc}", 'OC ' . $oc->numero);
                 $sheet->setCellValue("C{$filaOc}", 'Autorizadas: ' . $oc->horas_autorizadas . ' h');
                 $sheet->setCellValue("D{$filaOc}", 'Consumidas: ' . $oc->horas_consumidas . ' h');
+                $ultimaFila = $filaOc;
                 $filaOc++;
             }
             if ($ordenes['horas_sin_oc'] > 0) {
                 $sheet->setCellValue("B{$filaOc}", 'SIN OC: ' . $ordenes['horas_sin_oc'] . ' h');
+                $ultimaFila = $filaOc;
             }
         }
 
@@ -554,6 +569,8 @@ class CotizacionExportController extends Controller
         $sheet->getPageSetup()->setFitToPage(true);
         $sheet->getPageSetup()->setFitToWidth(1);
         $sheet->getPageSetup()->setFitToHeight(0);
+
+        return $ultimaFila;
     }
 
     private function extraerCorrelativoValorizacion(string $numeroValorizacion): string
@@ -567,69 +584,6 @@ class CotizacionExportController extends Controller
         $primera = trim((string)($partes[0] ?? ''));
 
         return $primera !== '' ? $primera : $numeroValorizacion;
-    }
-
-    private function appendCotizacionBlock(
-        \PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $targetSheet,
-        object $cotizacion,
-        \Illuminate\Support\Collection $filas,
-        int $startRow
-    ): int {
-        $tmpSpreadsheet = new Spreadsheet();
-        $tmpSheet = $tmpSpreadsheet->getActiveSheet();
-        $this->buildSheet($tmpSheet, $cotizacion, $filas);
-
-        $highestRow = $tmpSheet->getHighestRow();
-        $highestCol = $tmpSheet->getHighestColumn();
-        $highestColIdx = Coordinate::columnIndexFromString($highestCol);
-
-        foreach (range(1, $highestColIdx) as $colIdx) {
-            $col = Coordinate::stringFromColumnIndex($colIdx);
-            $width = $tmpSheet->getColumnDimension($col)->getWidth();
-            if ($tmpSheet->getColumnDimension($col)->getAutoSize()) {
-                $targetSheet->getColumnDimension($col)->setWidth($width)->setAutoSize(true);
-            } elseif ($width > 0) {
-                $targetSheet->getColumnDimension($col)->setWidth($width);
-            }
-        }
-
-        foreach (range(1, $highestRow) as $row) {
-            $targetRow = $startRow + $row - 1;
-            $rowHeight = $tmpSheet->getRowDimension($row)->getRowHeight();
-            if ($rowHeight > 0) {
-                $targetSheet->getRowDimension($targetRow)->setRowHeight($rowHeight);
-            }
-
-            foreach (range(1, $highestColIdx) as $colIdx) {
-                $col = Coordinate::stringFromColumnIndex($colIdx);
-                $cell = $tmpSheet->getCell($col . $row);
-                $targetCell = $col . $targetRow;
-                $targetSheet->setCellValueExplicit($targetCell, $cell->getValue(), $cell->getDataType());
-
-                $xfIndex = $cell->getXfIndex();
-                $style = $tmpSpreadsheet->getCellXfByIndex($xfIndex);
-                if ($style !== null) {
-                    $targetSheet->duplicateStyle($style, $targetCell);
-                }
-            }
-        }
-
-        foreach ($tmpSheet->getMergeCells() as $mergedRange) {
-            $targetSheet->mergeCells($this->offsetRangeRows($mergedRange, $startRow - 1));
-        }
-
-        foreach ($tmpSheet->getDrawingCollection() as $drawing) {
-            $newDrawing = clone $drawing;
-            $newDrawing->setCoordinates(
-                $this->offsetCellRow($drawing->getCoordinates(), $startRow - 1)
-            );
-            $newDrawing->setWorksheet($targetSheet);
-        }
-
-        $tmpSpreadsheet->disconnectWorksheets();
-        unset($tmpSpreadsheet);
-
-        return $startRow + $highestRow - 1;
     }
 
     private function offsetRangeRows(string $range, int $offset): string
@@ -702,7 +656,7 @@ class CotizacionExportController extends Controller
             ->setVertical(Alignment::VERTICAL_CENTER);
     }
 
-    private function addLogoToSheet(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet): void
+    private function addLogoToSheet(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet, int $row = 1): void
     {
         $logoPath = resource_path('img/logo.png');
         if (!is_file($logoPath)) {
@@ -713,7 +667,7 @@ class CotizacionExportController extends Controller
         $drawing->setName('CRC Logo');
         $drawing->setDescription('Logo CRC');
         $drawing->setPath($logoPath);
-        $drawing->setCoordinates('B1');
+        $drawing->setCoordinates('B' . $row);
         $drawing->setOffsetX(2);
         $drawing->setOffsetY(2);
         $drawing->setResizeProportional(false);
